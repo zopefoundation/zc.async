@@ -1,0 +1,1222 @@
+The datamanager module contains the queues that zc.async clients use to
+deposit jobs, and the queues that workers use to put jobs they are working on.
+
+The main datamanager object simply has a queue for thread jobs, a queue for
+reactor jobs, and a mapping of workers.  It starts out empty [#setUp]_.
+
+    >>> import zc.async.datamanager
+    >>> dm = root['zc.async.datamanager'] = zc.async.datamanager.DataManager()
+    >>> import transaction
+    >>> transaction.commit()
+    >>> len(dm.workers)
+    0
+    >>> len(dm.thread)
+    0
+    >>> len(dm.reactor)
+    0
+
+As shown in the README.txt of this package, the data manager will typically
+be registered as an adapter to persistent objects that provides
+zc.async.interfaces.IDataManager [#verify]_.  
+
+Workers
+=======
+
+When it is installed, workers register themselves.  Workers typically
+get their UUID from the instanceuuid module in this package, but we will
+generate our own here.
+
+    >>> import uuid
+    >>> worker1 = zc.async.datamanager.Worker(uuid.uuid1())
+    >>> res = dm.workers.add(worker1)
+    >>> dm.workers[worker1.UUID] is worker1
+    True
+    >>> res is worker1
+    True
+
+The `workers` object has a mapping read API, with `items`, `values`, `keys`,
+`__len__`, `__getitem__`, and `get` [#check_workers_mapping]_.  You remove
+workers with their UUID [#check_UUID_equivalence]_.
+
+    >>> dm.workers.remove(worker1.UUID)
+    >>> len(dm.workers)
+    0
+
+Let's add the worker back.  Notice that the __parent__ is None when it is out
+of the workers, but set to the workers object when it is inside.  Since the
+workers object also has a __parent__ reference to its parent, the data manager,
+the worker has a link back to the datamanager.
+
+    >>> worker1.__parent__ # None
+    >>> res = dm.workers.add(worker1)
+    >>> worker1.__parent__ is dm.workers
+    True
+    >>> dm.workers.__parent__ is dm
+    True
+
+Each worker has several other attributes.  We'll look at four now:
+`UUID`, which we have already seen; `thread`, a sequence of the thread
+jobs the worker is working on; `reactor`, a sequence of the reactor jobs
+the worker is working on; and `engineUUID`, a uuid of the engine that is
+in charge of running the worker, if any [#verify_worker]_.
+
+The two sequences are unusual in that they are sized: if len(sequence)
+== size, trying to put another item in the sequence raises
+zc.async.interfaces.FullError.  By default, workers have a reactor size
+of 4, and a thread size of 1.
+
+    >>> worker1.thread.size
+    1
+    >>> worker1.reactor.size
+    4
+    >>> def multiply(*args):
+    ...     res = 1
+    ...     for a in args:
+    ...         res *= a
+    ...     return res
+    ...
+    >>> import zc.async.partial
+    >>> p1 = zc.async.partial.Partial(multiply, 2, 3)
+    >>> res = worker1.thread.add(p1)
+    >>> len(worker1.thread)
+    1
+    >>> p2 = zc.async.partial.Partial(multiply, 5, 6)
+    >>> worker1.thread.add(p2)
+    ... # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    FullError: <zc.async.datamanager.SizedSequence object at ...>
+
+You can change the queue size.
+
+    >>> worker1.thread.size = 2
+    >>> res = worker1.thread.add(p2)
+    >>> len(worker1.thread)
+    2
+
+Decreasing it beyond the current len is acceptable, and will only affect
+how many partials must be removed before new ones may be added.
+
+    >>> worker1.thread.size = 1
+    >>> len(worker1.thread)
+    2
+
+You can also set it during instantiation of a worker: `reactor_size` and
+`thread_size` are optional arguments.
+
+    >>> worker2 = zc.async.datamanager.Worker(uuid.uuid1(), 2, 1)
+    >>> worker2.reactor.size
+    2
+    >>> worker2.thread.size
+    1
+
+We'll add the second worker to the data manager.
+
+    >>> res = dm.workers.add(worker2)
+    >>> len(dm.workers)
+    2
+
+Engines claim workers by putting their UUID on them.  Initially a worker has
+no engineUUID.  We'll assign two (arbitrary) UUIDs.
+
+    >>> worker1.engineUUID
+    >>> worker1.engineUUID = uuid.uuid4()
+    >>> worker2.engineUUID = uuid.uuid4()
+
+This indicates that both workers are "open for business".  A worker without an
+engine is a dead husk.
+
+We'll look at partials in workers more a little later
+[#remove_partials]_.  Next we're going to look at partials in the
+data manager queues.
+
+Partials
+========
+
+Once a Zope has started, it will typically have at least one worker installed,
+with one virtual loop per worker checking the data manager for new jobs (see
+README.txt for integration examples).  Now client code can start requesting
+that partials be done.
+
+Basic Story
+-----------
+
+Simplest use is to get the data manager and add a callable.  As
+mentioned above, and demonstrated in README.txt, the typical way to get
+the data manager is to adapt a persistent context to IDataManager. We'll
+assume we already have the data manager, and that a utility providing
+zc.async.interfaces.IUUID named 'instance' is available
+[#setUp_UUID_utility]_.
+
+    >>> def send_message():
+    ...     print "imagine this sent a message to another machine"
+    ...
+    >>> p = dm.thread.put(send_message)
+
+Now p is a partial wrapping the send_message call.  It is specifically a
+data manager partial [#basic_data_manager_partial_checks]_.
+
+    >>> p.callable is send_message
+    True
+    >>> zc.async.interfaces.IDataManagerPartial.providedBy(p)
+    True
+
+The IDataManagerPartial interface extends IPartial and describes the
+interface needed for a partial added to a data manager.  Here are the
+attributes on the interface.
+
+- Set automatically:
+
+  * assignerUUID (the UUID of the software instance that put the partial in
+    the queue)
+
+  * workerUUID (the UUID of the worker who claimed the partial)
+
+  * thread (None or bool: whether the partial was assigned to a thread (True)
+    or reactor (False) queue)
+
+- Potentially set by user, not honored for callbacks:
+
+  * selectedUUIDs (the UUIDs of workers that should work on the partial, as
+    selected by user)
+
+  * excludedUUIDs (the UUIDs of workers that should not work on the partial,
+    as selected by user)
+
+  * begin_after (a datetime.datetime with pytz.UTC timezone that specifies a
+    date and time to wait till running the partial; defaults to creation
+    time)
+
+  * begin_by (a datetime.timedelta of a duration after begin_after after
+    which workers should call `fail` on the partial; defaults to one hour)
+
+These are described in some more detail on the IDataManagerPartial
+interface.
+
+The thread queue contains the partial.
+
+    >>> len(dm.thread)
+    1
+    >>> list(dm.thread) == [p]
+    True
+
+If you ask the data manager for all due jobs, it also includes the partial.
+
+    >>> list(dm.thread.iterDue()) == [p]
+    True
+
+The partial knows its __parent__ and can be used to obtain its data manager.
+
+    >>> zc.async.interfaces.IDataManager(p) is dm
+    True
+    >>> p.__parent__ is dm.thread
+    True
+
+The easiest for a worker to get a task is to call pullNext, passing its
+UUID. It will get the next available task that does not exclude it (and
+that includes it), removing it from the queue.  If nothing is available,
+return None.
+
+    >>> res = dm.thread.pullNext(worker1.UUID)
+    >>> res is p
+    True
+    >>> len(dm.thread)
+    0
+
+Once a partial has been put in a data manager, it is "claimed": trying to
+put it in another one (or back in the same one) will raise an error.
+
+    >>> dm.thread.put(p)
+    Traceback (most recent call last):
+    ...
+    ValueError: cannot add already-assigned partial
+
+If we remove the assignerUUID, we can put it back in.
+
+    >>> p.assignerUUID = None
+    >>> res = dm.thread.put(p)
+    >>> res is p
+    True
+    >>> len(dm.thread)
+    1
+    >>> transaction.commit()
+
+In normal behavior, after client code has put the task in the thread queue,
+an engine (associated with a persistent worker in a one-to-one relationship,
+in which the worker is the persistent store for the transient, per-process
+engine) will claim and perform it like this (we'll do this from the
+perspective of worker 1).
+
+    >>> trans = transaction.begin()
+    >>> import Queue
+    >>> thread_queue = Queue.Queue(0)
+    >>> claimed = dm.workers[worker1.UUID].thread
+    >>> ct = 0
+    >>> while 1:
+    ...     if len(claimed) < claimed.size:
+    ...         next = dm.thread.pullNext(worker1.UUID)
+    ...         if next is not None:
+    ...             claimed.add(next)
+    ...             database_name = next._p_jar.db().database_name
+    ...             identifier = next._p_oid
+    ...             try:
+    ...                 transaction.commit()
+    ...             except ZODB.POSException.TransactionError:
+    ...                 transaction.abort()
+    ...                 ct += 1
+    ...                 if ct < 5: # in twisted, this would probably callLater
+    ...                     continue
+    ...             else:
+    ...                 thread_queue.put((database_name, identifier))
+    ...                 ct = 0
+    ...                 continue # in twisted, this would probably callLater
+    ...     break
+    ... # doctest: +ELLIPSIS
+    ...
+    <zc.async.adapters.DataManagerPartial object at ...>
+
+Now the worker 1 has claimed it.  
+
+    >>> len(worker1.thread)
+    1
+
+A thread in that worker will begin it,
+given the database name and _p_oid of the partial it should perform, and will
+do something like this.
+
+    >>> import thread
+    >>> database_name, identifier = thread_queue.get(False)
+    >>> claimed = dm.workers[worker1.UUID].thread # this would actually open a
+    ... # connection and get the worker thread queue object by id
+    >>> for p in claimed:
+    ...     if (p._p_oid == identifier and
+    ...         p._p_jar.db().database_name == database_name):
+    ...         p.thread = thread.get_ident()
+    ...         transaction.commit()
+    ...         try:
+    ...             p()
+    ...         except ZODB.POSException.TransactionError:
+    ...             transaction.abort()
+    ...             p.fail()
+    ...         while 1:
+    ...             try:
+    ...                 claimed.remove(p)
+    ...                 claimed.__parent__.completed.add(p)
+    ...                 transaction.commit()
+    ...             except ZODB.POSException.TransactionError:
+    ...                 transaction.abort() # retry forever!
+    ...             else:
+    ...                 break
+    ...         break
+    ...
+    imagine this sent a message to another machine
+
+And look, there's our message: the partial was called.
+
+The worker's thread list is empty, and the partial has a note of what thread
+ran it.
+
+    >>> len(worker1.thread)
+    0
+    >>> p.thread == thread.get_ident()
+    True
+
+Notice also that the `completed` container now contains the partial.
+
+    >>> len(worker1.completed)
+    1
+    >>> list(worker1.completed) == [p]
+    True
+
+The API of the completed container is still in flux [#test_completed]_.
+
+For Reactors
+------------
+
+If you are into Twisted programming, use the reactor queue.  The story is
+very similar, so we'll go a bit quicker.
+
+    >>> import twisted.internet.defer
+    >>> import twisted.internet.reactor
+    >>> def twistedPartDeux(d):
+    ...     d.callback(42)
+    ...
+    >>> def doSomethingInTwisted():
+    ...     d = twisted.internet.defer.Deferred()
+    ...     twisted.internet.reactor.callLater(0, twistedPartDeux, d)
+    ...     return d
+    ...
+    >>> p = dm.reactor.put(doSomethingInTwisted)
+    >>> def arbitraryThingThatNeedsAConnection(folder, result):
+    ...     folder['result'] = result
+    ...
+    >>> p_callback = p.addCallbacks(zc.async.partial.Partial(
+    ...     arbitraryThingThatNeedsAConnection, root))
+    >>> transaction.commit()
+
+The engine might do something like this [#set_up_reactor]_.
+
+    >>> import zc.twist
+    >>> def remove(container, partial, result):
+    ...     container.remove(partial)
+    ...
+    >>> def perform(p):
+    ...     res = p()
+    ...     p.addCallback(zc.async.partial.Partial(
+    ...         remove, p.__parent__, p))
+    ...     transaction.commit()
+    ...
+    >>> trans = transaction.begin()
+    >>> claimed = dm.workers[worker2.UUID].reactor
+    >>> ct = 0
+    >>> while 1:
+    ...     if len(claimed) < claimed.size:
+    ...         next = dm.reactor.pullNext(worker2.UUID)
+    ...         if next is not None:
+    ...             claimed.add(next)
+    ...             partial = zc.twist.Partial(perform, next)
+    ...             try:
+    ...                 transaction.commit()
+    ...             except ZODB.POSException.TransactionError:
+    ...                 transaction.abort()
+    ...                 ct += 1
+    ...                 if ct < 5: # this would probably callLater really
+    ...                     continue
+    ...             else:
+    ...                 twisted.internet.reactor.callLater(0, partial)
+    ...                 ct = 0
+    ...                 continue # this would probably callLater really
+    ...     break
+    ... # doctest: +ELLIPSIS
+    ...
+    <zc.async.adapters.DataManagerPartial object at ...>
+
+Then the reactor would churn, and eventually we'd get our result.  The
+execution should be something like this (where `time_passes` represents
+one tick of the Twisted reactor that you would normally not have to call
+explicitly--this is just for demonstration purposes).
+
+    >>> time_passes() # perform and doSomethingInTwisted
+    True
+    >>> trans = transaction.begin()
+    >>> p.result # None
+    >>> len(worker2.reactor)
+    1
+    >>> time_passes() # twistedPartDeux and arbitraryThingThatNeedsAConnection
+    True
+    >>> trans = transaction.begin()
+    >>> p.result
+    42
+    >>> root['result']
+    42
+    >>> p.state == zc.async.interfaces.COMPLETED
+    True
+    >>> len(worker2.reactor)
+    0
+
+[#tear_down_reactor]_
+
+Held Calls
+----------
+
+Both of the examples so far request that jobs be done as soon as possible.
+It's also possible to request that jobs be done later.  Let's assume we
+can control the current time generated by datetime.datetime.now with a
+`set_now` callable [#set_up_datetime]_.  A partial added without any special
+calls gets a `begin_after` attribute of now.
+
+    >>> import datetime
+    >>> import pytz
+    >>> datetime.datetime.now(pytz.UTC) 
+    datetime.datetime(2006, 8, 10, 15, 44, 22, 211, tzinfo=<UTC>)
+    >>> res1 = dm.thread.put(
+    ...     zc.async.partial.Partial(multiply, 3, 6))
+    ...
+    >>> res1.begin_after
+    datetime.datetime(2006, 8, 10, 15, 44, 22, 211, tzinfo=<UTC>)
+
+This means that it's immediately ready to be performed.  `iterDue` shows this.
+
+    >>> list(dm.thread.iterDue()) == [res1]
+    True
+
+You can also specify a begin_after date when you make the call.  Then it
+isn't due immediately.
+
+    >>> res2 = dm.thread.put(
+    ...     zc.async.partial.Partial(multiply, 4, 6),
+    ...     datetime.datetime(2006, 8, 10, 16, tzinfo=pytz.UTC))
+    ...
+    >>> len(dm.thread)
+    2
+    >>> res2.begin_after
+    datetime.datetime(2006, 8, 10, 16, 0, tzinfo=<UTC>)
+    >>> list(dm.thread.iterDue()) == [res1]
+    True
+
+When the time passes, it is available.  Partials are ordered by their
+begin_after dates.
+
+    >>> set_now(datetime.datetime(2006, 8, 10, 16, 0, 0, 1, tzinfo=pytz.UTC))
+    >>> list(dm.thread.iterDue()) == [res1, res2]
+    True
+
+Pre-dating (before now) makes the item come first (or in order with other
+pre-dated items.
+
+    >>> res3 = dm.thread.put(
+    ...     zc.async.partial.Partial(multiply, 5, 6),
+    ...     begin_after=datetime.datetime(2006, 8, 10, 15, 35, tzinfo=pytz.UTC))
+    ...
+    >>> res3.begin_after
+    datetime.datetime(2006, 8, 10, 15, 35, tzinfo=<UTC>)
+    >>> list(dm.thread) == [res3, res1, res2]
+    True
+    >>> list(dm.thread.iterDue()) == [res3, res1, res2]
+    True
+
+Other timezones are normalized to UTC.
+
+    >>> res4 = dm.thread.put(
+    ...     zc.async.partial.Partial(multiply, 6, 6),
+    ...     pytz.timezone('EST').localize(
+    ...         datetime.datetime(2006, 8, 10, 11, 30)))
+    ...
+    >>> res4.begin_after
+    datetime.datetime(2006, 8, 10, 16, 30, tzinfo=<UTC>)
+    >>> list(dm.thread.iterDue()) == [res3, res1, res2]
+    True
+
+Naive timezones are not allowed.
+
+    >>> dm.thread.put(send_message, datetime.datetime(2006, 8, 10, 16, 15))
+    Traceback (most recent call last):
+    ...
+    ValueError: cannot use timezone-naive values
+
+Iteration, again, is based on begin_after, not the order added.
+
+    >>> res5 = dm.thread.put(
+    ...     zc.async.partial.Partial(multiply, 7, 6),
+    ...     datetime.datetime(2006, 8, 10, 16, 15, tzinfo=pytz.UTC))
+    ...
+    >>> list(dm.thread) == [res3, res1, res2, res5, res4]
+    True
+    >>> list(dm.thread.iterDue()) == [res3, res1, res2]
+    True
+
+pullNext only returns items that are due.
+
+    >>> dm.thread.pullNext(worker1.UUID) == res3
+    True
+    >>> dm.thread.pullNext(worker1.UUID) == res1
+    True
+    >>> dm.thread.pullNext(worker1.UUID) == res2
+    True
+    >>> dm.thread.pullNext(worker1.UUID) # None
+
+When it is due, begin_after also affects pullNext.
+
+    >>> set_now(datetime.datetime(2006, 8, 10, 16, 31, tzinfo=pytz.UTC))
+    >>> dm.thread.pullNext(worker1.UUID) == res5
+    True
+    >>> dm.thread.pullNext(worker1.UUID) == res4
+    True
+    >>> dm.thread.pullNext(worker1.UUID) # None
+
+Selecting and Excluding Workers
+-------------------------------
+
+Some use cases want to limit the workers that can perform a given partial,
+either by explicitly selecting or excluding certain workers.  Here are some of
+those use cases:
+
+- You may want to divide up your workers by tasks: certain long running tasks
+  should only tie up one set of workers, so short tasks that users expect
+  more responsiveness from can use any available worker, including some that
+  are reserved for them.
+
+- You may only have the system resources necessary to perform a given task on
+  a certain set of your workers.
+
+- You may want to broadcast a message to all workers, so you need to generate
+  a task specifically for each.  This would be an interesting way to build
+  a simple but potentially powerful WSGI reverse proxy that supported
+  invalidations, for instance.
+
+There are probably more, and even these have interesting variants.  For
+instance, for the second, what if you don't know which workers are
+appropriate and need to test to find out?  You could write a partial
+that contains a partial.  The outer partial's job is to find a worker
+with an environment appropriate for the inner one.  When it runs, if the
+worker's environment is appropriate, it performs the inner partial.  If
+it is not, it creates a new outer partial wrapping its inner partial,
+specifies the current worker UUID as excluded, and schedules it to be
+called.  If the next worker is also inappropriate, in creates a third
+outer wrapper that excludes both of the failed workers' UUIDs...and so
+on.
+
+To do this, you use worker UUIDs in a partial's selectedUUIDs and
+excludedUUIDs sets.  An empty selectedUUIDs set is interpreted as a
+catch-all.  For a worker to be able to perform a partial, it must not
+be in the excludedUUIDs and either selectedUUIDs is empty or it is within
+selectedUUIDs.
+
+Let's look at some examples.  We'll assume the five partials we looked at
+above are all back in the dm.threads [#reinstate]_.  We've already looked
+at partials with empty sets for excludedUUIDs and selectedUUIDs: every
+partial we've shown up to now has fit that description.
+
+(order is [res3, res1, res2, res5, res4])
+
+    >>> res3.selectedUUIDs.add(uuid.uuid1()) # nobody here
+    >>> res1.selectedUUIDs.add(worker1.UUID)
+    >>> res2.selectedUUIDs.update((worker1.UUID, worker2.UUID))
+    >>> res2.excludedUUIDs.add(worker2.UUID)
+    >>> res5.excludedUUIDs.add(worker2.UUID)
+    >>> res4.excludedUUIDs.update((worker2.UUID, worker1.UUID))
+
+Now poor worker2 can't get any work.
+
+    >>> dm.thread.pullNext(worker2.UUID) # None
+
+worker1 can get three of them: res1, res2, and res 5.
+
+    >>> dm.thread.pullNext(worker1.UUID) is res1
+    True
+    >>> dm.thread.pullNext(worker1.UUID) is res2
+    True
+    >>> dm.thread.pullNext(worker1.UUID) is res5
+    True
+    >>> dm.thread.pullNext(worker1.UUID) # None
+
+Now we have two jobs that can never be claimed (as long as we have only
+these two workers and the selected/excluded values are not changed. 
+What happens to them?
+
+Never-Claimed Calls
+-------------------
+
+Sometimes, due to impossible worker selections or exclusions, or simply
+workers that are too busy, we need to give up and say that a given partial
+will not be run, and should fail.  Partials have a begin_by attribute which
+controls approximately when this should happen.  The begin_by value should
+be a non-negative datetime.timedelta, which is added to the begin_after value
+to determine when the partial should fail.  If you put a partial in a
+data manager with no begin_by value set, the data manager sets it to one hour.
+
+    >>> res3.begin_by
+    datetime.timedelta(0, 3600)
+
+This can be changed.
+
+    >>> res3.begin_by = datetime.timedelta(hours=2)
+
+So how are they cancelled?  `pullNext` will wrap any expired partial with
+another partial that calls the inner `fail` method.  This will be handed to
+any worker.
+
+    >>> res3.begin_after + res3.begin_by
+    datetime.datetime(2006, 8, 10, 17, 35, tzinfo=<UTC>)
+    >>> res4.begin_after + res4.begin_by
+    datetime.datetime(2006, 8, 10, 17, 30, tzinfo=<UTC>)
+    >>> set_now(datetime.datetime(2006, 8, 10, 17, 32, tzinfo=pytz.UTC))
+    >>> p = dm.thread.pullNext(worker1.UUID)
+    >>> p()
+    >>> res4.state == zc.async.interfaces.COMPLETED
+    True
+    >>> print res4.result.getTraceback()
+    ... # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    zc.async.interfaces.AbortedError:
+    >>> dm.thread.pullNext(worker1.UUID) # None
+
+    >>> set_now(datetime.datetime(2006, 8, 10, 17, 37, tzinfo=pytz.UTC))
+    >>> p = dm.thread.pullNext(worker1.UUID)
+    >>> p()
+    >>> res3.state == zc.async.interfaces.COMPLETED
+    True
+    >>> print res3.result.getTraceback()
+    ... # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    zc.async.interfaces.AbortedError:
+    >>> dm.thread.pullNext(worker1.UUID) # None
+    >>> len(dm.thread)
+    0
+
+Dead Workers
+------------
+
+What happens when an engine, driving a worker, dies?  If it is the only
+engine/worker, that's the end: when the worker restarts it should clean
+out its old worker object and then proceed.  But what if there are more
+than one simultaneous worker?  How do we know to clean out the dead
+workers jobs?
+
+In addition to the jobs listed above, each worker virtual main loop has
+an additional task: be his brother's keeper.  Each must update a ping
+date on its worker object at a given maximum interval, and check the
+next sibling.  To support this story, the worker objects have a few more
+attributes we haven't talked about: `poll_seconds`, `ping_interval`,
+`ping_death_interval` and `last_ping`.
+
+    >>> worker1.poll_seconds
+    5
+    >>> worker1.ping_interval
+    datetime.timedelta(0, 60)
+    >>> worker1.ping_death_interval
+    datetime.timedelta(0, 30)
+
+`pullNext` on a thread queue will return a partial to clean a worker when the
+next highest one by UUID (circling around to the lowest one when the uuid
+is the highest).  So let's set a ping on worker1.
+
+    >>> worker1.last_ping = datetime.datetime.now(pytz.UTC)
+    >>> worker1.last_ping
+    datetime.datetime(2006, 8, 10, 17, 37, tzinfo=<UTC>)
+
+Let's put res1, res2, res3, res4, and res5 in worker1.
+
+    >>> len(worker1.thread)
+    0
+    >>> worker1.thread.size = 3
+    >>> res1.excludedUUIDs.clear()
+    >>> res1.selectedUUIDs.clear()
+    >>> r = worker1.thread.add(res1) # PENDING
+    >>> res2._state = zc.async.interfaces.ACTIVE
+    >>> r = worker1.reactor.add(res2)
+    >>> r = worker1.thread.add(res3) # COMPLETED
+    >>> r = worker1.reactor.add(res4) # COMPLETED
+    >>> res5._state = zc.async.interfaces.CALLBACKS
+    >>> res5._result = res5.callable(*res5.args, **dict(res5.kwargs))
+    >>> r = worker1.thread.add(res5)
+
+While we are still within our acceptable time period, the `checkSibling`
+method will not do anything.
+
+    >>> len(dm.workers)
+    2
+    >>> len(dm.thread)
+    0
+    >>> set_now(worker1.last_ping + worker1.ping_interval)
+    >>> dm.checkSibling(worker2.UUID)
+    >>> len(dm.workers)
+    2
+    >>> len(dm.thread)
+    0
+
+We need to move now to after last_ping + ping_interval +
+ping_death_interval. Now when worker2 calls checkSibling on the data
+manager, worker1 will have engineUUID set to None, and a partial will be
+added to clean out the partials in worker 1.
+
+    >>> set_now(worker1.last_ping + worker1.ping_interval +
+    ...         worker1.ping_death_interval + datetime.timedelta(seconds=1))
+    >>> worker1.engineUUID is not None
+    True
+    >>> worker2.engineUUID is not None
+    True
+    >>> dm.checkSibling(worker2.UUID)
+    >>> len(dm.workers)
+    2
+    >>> worker1.engineUUID is not None
+    False
+    >>> worker2.engineUUID is not None
+    True
+    >>> len(dm.thread)
+    1
+
+So worker2 can get the job and perform it.
+
+    >>> res = dm.thread.pullNext(worker2.UUID)
+    >>> partial = worker2.thread.add(res)
+    >>> len(worker1.thread)
+    3
+    >>> len(worker1.reactor)
+    2
+    >>> res()
+    >>> len(worker1.thread)
+    0
+    >>> len(worker1.reactor)
+    0
+    >>> r = dm.thread.pullNext(worker2.UUID)()
+    >>> r = dm.thread.pullNext(worker2.UUID)()
+    >>> r = dm.reactor.pullNext(worker2.UUID)()
+    >>> dm.thread.pullNext(worker2.UUID) # None
+    >>> dm.reactor.pullNext(worker2.UUID) # None
+    
+    >>> res1.state == zc.async.interfaces.COMPLETED
+    True
+    >>> res2.state == zc.async.interfaces.COMPLETED
+    True
+    >>> res3.state == zc.async.interfaces.COMPLETED
+    True
+    >>> res4.state == zc.async.interfaces.COMPLETED
+    True
+    >>> res5.state == zc.async.interfaces.COMPLETED
+    True
+
+If you have multiple workers, it is strongly suggested that you get the
+associated servers connected to a shared time server.
+
+[#tear_down_datetime]_
+
+=========
+Footnotes
+=========
+
+.. [#setUp] We'll actually create the state that the text needs here.
+
+    >>> from ZODB.tests.util import DB
+    >>> db = DB()
+    >>> conn = db.open()
+    >>> root = conn.root()
+
+    You must have two adapter registrations: IConnection to
+    ITransactionManager, and IPersistent to IConnection.  We will also
+    register IPersistent to ITransactionManager because the adapter is
+    designed for it.
+
+    >>> from zc.twist import transactionManager, connection
+    >>> import zope.component
+    >>> zope.component.provideAdapter(transactionManager)
+    >>> zope.component.provideAdapter(connection)
+    >>> import ZODB.interfaces
+    >>> zope.component.provideAdapter(
+    ...     transactionManager, adapts=(ZODB.interfaces.IConnection,))
+
+    We need to be able to get data manager partials for functions and methods;
+    normal partials for functions and methods; and a data manager for a partial.
+    Here are the necessary registrations.
+
+    >>> import zope.component
+    >>> import types
+    >>> import zc.async.interfaces
+    >>> import zc.async.partial
+    >>> import zc.async.adapters
+    >>> zope.component.provideAdapter(
+    ...     zc.async.adapters.method_to_datamanagerpartial)
+    >>> zope.component.provideAdapter(
+    ...     zc.async.adapters.function_to_datamanagerpartial)
+    >>> zope.component.provideAdapter( # partial -> datamanagerpartial
+    ...     zc.async.adapters.DataManagerPartial,
+    ...     provides=zc.async.interfaces.IDataManagerPartial)
+    >>> zope.component.provideAdapter(
+    ...     zc.async.adapters.partial_to_datamanager)
+    >>> zope.component.provideAdapter(
+    ...     zc.async.partial.Partial,
+    ...     adapts=(types.FunctionType,),
+    ...     provides=zc.async.interfaces.IPartial)
+    >>> zope.component.provideAdapter(
+    ...     zc.async.partial.Partial,
+    ...     adapts=(types.MethodType,),
+    ...     provides=zc.async.interfaces.IPartial)
+    ...
+
+.. [#verify] Verify data manager interface.
+
+    >>> from zope.interface.verify import verifyObject
+    >>> verifyObject(zc.async.interfaces.IDataManager, dm)
+    True
+    >>> verifyObject(zc.async.interfaces.IPartialQueue, dm.thread)
+    True
+    >>> verifyObject(zc.async.interfaces.IPartialQueue, dm.reactor)
+    True
+    >>> verifyObject(zc.async.interfaces.IWorkers, dm.workers)
+    True
+
+.. [#check_workers_mapping]
+
+    >>> len(dm.workers)
+    1
+    >>> list(dm.workers.keys()) == [worker1.UUID]
+    True
+    >>> list(dm.workers) == [worker1.UUID]
+    True
+    >>> list(dm.workers.values()) == [worker1]
+    True
+    >>> list(dm.workers.items()) == [(worker1.UUID, worker1)]
+    True
+    >>> dm.workers.get(worker1.UUID) is worker1
+    True
+    >>> dm.workers.get(2) is None
+    True
+    >>> dm.workers[worker1.UUID] is worker1
+    True
+    >>> dm.workers[2]
+    Traceback (most recent call last):
+    ...
+    KeyError: 2
+
+.. [#check_UUID_equivalence] This is paranoid--it should be the responsibility
+    of the uuid.UUID class--but we'll check it anyway.
+
+     >>> equivalent_UUID = uuid.UUID(bytes=worker1.UUID.bytes)
+     >>> dm.workers[equivalent_UUID] is worker1
+     True
+     >>> dm.workers.remove(equivalent_UUID)
+     >>> len(dm.workers)
+     0
+     >>> res = dm.workers.add(worker1)
+
+.. [#verify_worker]
+
+    >>> verifyObject(zc.async.interfaces.IWorker, worker1)
+    True
+    >>> verifyObject(zc.async.interfaces.ISizedSequence, worker1.thread)
+    True
+    >>> verifyObject(zc.async.interfaces.ISizedSequence, worker1.reactor)
+    True
+    >>> isinstance(worker1.UUID, uuid.UUID)
+    True
+
+.. [#remove_partials] We can remove our partials from a worker with
+    `remove`.
+
+    >>> worker1.thread.remove(p1)
+    >>> len(worker1.thread)
+    1
+    >>> list(worker1.thread) == [p2]
+    True
+    >>> worker1.thread.remove(p2)
+    >>> len(worker1.thread)
+    0
+
+    The remove method of the worker thread and reactor sequences
+    raises IndexError if you ask for the index of something that isn't
+    contained.
+
+    >>> worker1.thread.remove((2, 4)) # an iterable can surprise some
+    ... # naive string replacements, so we use this to verify we didn't
+    ... # fall into that trap.
+    Traceback (most recent call last):
+    ...
+    ValueError: (2, 4) not in queue
+
+.. [#setUp_UUID_utility] We need to provide an IUUID utility that
+    identifies the current instance.
+
+    >>> import uuid
+    >>> zope.interface.classImplements(uuid.UUID, zc.async.interfaces.IUUID)
+    >>> zope.component.provideUtility(
+    ...     worker1.UUID, zc.async.interfaces.IUUID, 'instance')
+
+    Normally this would be the UUID instance in zc.async.instanceuuid.
+
+    While we're at it, we'll get "now" so we can compare it in the footnote
+    below.
+
+    >>> import datetime
+    >>> import pytz
+    >>> _before = datetime.datetime.now(pytz.UTC)
+
+.. [#basic_data_manager_partial_checks] Even though the functionality checks
+    belong elsewhere, here are a few default checks for the values.
+
+    >>> verifyObject(zc.async.interfaces.IDataManagerPartial, p)
+    True
+    >>> p.workerUUID # None
+    >>> isinstance(p.assignerUUID, uuid.UUID)
+    True
+    >>> p.selectedUUIDs
+    zc.set.Set([])
+    >>> p.excludedUUIDs
+    zc.set.Set([])
+    >>> _before <= p.begin_after <= datetime.datetime.now(pytz.UTC)
+    True
+    >>> p.begin_by
+    datetime.timedelta(0, 3600)
+    >>> p.thread # None
+
+.. [#test_completed] Here are some nitty-gritty tests of the completed
+    container.
+
+    >>> verifyObject(zc.async.interfaces.ICompletedCollection,
+    ...              worker1.completed)
+    True
+    >>> bool(worker1.completed)
+    True
+    >>> len(worker2.completed)
+    0
+    >>> bool(worker2.completed)
+    False
+    >>> list(worker1.completed.iter()) == [p]
+    True
+    >>> list(worker1.completed.iter(p.begin_after)) == [p]
+    True
+    >>> list(worker1.completed.iter(
+    ...     p.begin_after - datetime.timedelta(seconds=1))) == []
+    True
+    >>> list(worker2.completed) == []
+    True
+    >>> list(worker2.completed.iter()) == []
+    True
+    >>> worker1.completed.first() is p
+    True
+    >>> worker1.completed.last() is p
+    True
+    >>> worker2.completed.first()
+    Traceback (most recent call last):
+    ...
+    ValueError: None
+    >>> worker2.completed.last()
+    Traceback (most recent call last):
+    ...
+    ValueError: None
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.first() is p
+    True
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.first() is p
+    True
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.first() is p
+    True
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.first() is p
+    True
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.first() is p
+    True
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.first()
+    Traceback (most recent call last):
+    ...
+    ValueError: None
+
+    Let's look at the completed collection with a few more partials in it.
+    The rotation means we can look at its behavior as the underlying buckets
+    are rotated out.
+
+    >>> root['coll_p0'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p1'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p2'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p3'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p4'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p5'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p6'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p7'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p8'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p9'] = zc.async.interfaces.IDataManagerPartial(send_message)
+    >>> root['coll_p0'].begin_after = datetime.datetime(
+    ...     2006, 1, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p1'].begin_after = datetime.datetime(
+    ...     2006, 2, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p2'].begin_after = datetime.datetime(
+    ...     2006, 3, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p3'].begin_after = datetime.datetime(
+    ...     2006, 4, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p4'].begin_after = datetime.datetime(
+    ...     2006, 5, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p5'].begin_after = datetime.datetime(
+    ...     2006, 6, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p6'].begin_after = datetime.datetime(
+    ...     2006, 7, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p7'].begin_after = datetime.datetime(
+    ...     2006, 8, 1, tzinfo=pytz.UTC)
+    >>> root['coll_p8'].begin_after = datetime.datetime(
+    ...     2006, 8, 2, tzinfo=pytz.UTC)
+    >>> root['coll_p9'].begin_after = datetime.datetime(
+    ...     2006, 8, 3, tzinfo=pytz.UTC)
+    >>> transaction.commit()
+    >>> worker1.completed.add(root['coll_p8'])
+    >>> worker1.completed.add(root['coll_p6'])
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.add(root['coll_p4'])
+    >>> worker1.completed.add(root['coll_p2'])
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.add(root['coll_p0'])
+    >>> worker1.completed.add(root['coll_p1'])
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.add(root['coll_p3'])
+    >>> worker1.completed.add(root['coll_p5'])
+    >>> worker1.completed.rotate()
+    >>> worker1.completed.add(root['coll_p7'])
+    >>> worker1.completed.add(root['coll_p9'])
+    >>> list(worker1.completed) == [
+    ...     root['coll_p9'], root['coll_p8'], root['coll_p7'], root['coll_p6'],
+    ...     root['coll_p5'], root['coll_p4'], root['coll_p3'], root['coll_p2'],
+    ...     root['coll_p1'], root['coll_p0']]
+    True
+    >>> len(worker1.completed)
+    10
+
+    The `iter` method can simply work like __iter__, but can also take starts
+    and stops for relatively efficient jumps.
+
+    >>> list(worker1.completed.iter()) == [
+    ...     root['coll_p9'], root['coll_p8'], root['coll_p7'], root['coll_p6'],
+    ...     root['coll_p5'], root['coll_p4'], root['coll_p3'], root['coll_p2'],
+    ...     root['coll_p1'], root['coll_p0']]
+    True
+    >>> list(worker1.completed.iter(start=datetime.datetime(
+    ...     2006, 7, 15, tzinfo=pytz.UTC))) == [
+    ...     root['coll_p6'],
+    ...     root['coll_p5'], root['coll_p4'], root['coll_p3'], root['coll_p2'],
+    ...     root['coll_p1'], root['coll_p0']]
+    True
+    >>> list(worker1.completed.iter(start=datetime.datetime(
+    ...     2006, 7, 1, tzinfo=pytz.UTC))) == [
+    ...     root['coll_p6'],
+    ...     root['coll_p5'], root['coll_p4'], root['coll_p3'], root['coll_p2'],
+    ...     root['coll_p1'], root['coll_p0']]
+    True
+    >>> list(worker1.completed.iter(stop=datetime.datetime(
+    ...     2006, 7, 15, tzinfo=pytz.UTC))) == [
+    ...     root['coll_p9'], root['coll_p8'], root['coll_p7']]
+    True
+    >>> list(worker1.completed.iter(stop=datetime.datetime(
+    ...     2006, 7, 1, tzinfo=pytz.UTC))) == [
+    ...     root['coll_p9'], root['coll_p8'], root['coll_p7']]
+    True
+    >>> list(worker1.completed.iter(stop=datetime.datetime(
+    ...     2006, 6, 30, tzinfo=pytz.UTC))) == [
+    ...     root['coll_p9'], root['coll_p8'], root['coll_p7'], root['coll_p6']]
+    True
+    >>> list(worker1.completed.iter(start=datetime.datetime(
+    ...     2006, 7, 1, tzinfo=pytz.UTC), stop=datetime.datetime(
+    ...     2006, 3, 1, tzinfo=pytz.UTC))) == [
+    ...     root['coll_p6'], root['coll_p5'], root['coll_p4'], root['coll_p3']]
+    True
+    
+    `first` and `last` give you the ability to find limits including given
+    start and stop points, respectively.
+    
+    >>> worker1.completed.first() == root['coll_p9']
+    True
+    >>> worker1.completed.last() == root['coll_p0']
+    True
+    >>> worker1.completed.first(
+    ...     datetime.datetime(2006, 7, 15, tzinfo=pytz.UTC)) == (
+    ...     root['coll_p6'])
+    True
+    >>> worker1.completed.last(
+    ...     datetime.datetime(2006, 7, 15, tzinfo=pytz.UTC)) == (
+    ...     root['coll_p7'])
+    True
+
+    As you rotate the completed container, older items disappear.
+
+    >>> worker1.completed.rotate()
+    >>> list(worker1.completed.iter()) == [
+    ...     root['coll_p9'], root['coll_p7'],
+    ...     root['coll_p5'], root['coll_p4'], root['coll_p3'], root['coll_p2'],
+    ...     root['coll_p1'], root['coll_p0']]
+    True
+    >>> worker1.completed.rotate() # no change
+    >>> list(worker1.completed.iter()) == [
+    ...     root['coll_p9'], root['coll_p7'],
+    ...     root['coll_p5'], root['coll_p4'], root['coll_p3'], root['coll_p2'],
+    ...     root['coll_p1'], root['coll_p0']]
+    True
+    >>> worker1.completed.rotate()
+    >>> list(worker1.completed.iter()) == [
+    ...     root['coll_p9'], root['coll_p7'],
+    ...     root['coll_p5'], root['coll_p3'],
+    ...     root['coll_p1'], root['coll_p0']]
+    True
+    >>> worker1.completed.rotate()
+    >>> list(worker1.completed.iter()) == [
+    ...     root['coll_p9'], root['coll_p7'],
+    ...     root['coll_p5'], root['coll_p3']]
+    True
+    >>> worker1.completed.rotate()
+    >>> list(worker1.completed.iter()) == [
+    ...     root['coll_p9'], root['coll_p7']]
+    True
+    >>> worker1.completed.rotate()
+    >>> list(worker1.completed.iter()) == []
+    True
+    >>> transaction.commit()
+
+.. [#set_up_reactor] We monkeypatch twisted.internet.reactor
+    (and replace it below).
+
+    >>> import twisted.internet.reactor
+    >>> oldCallLater = twisted.internet.reactor.callLater
+    >>> import bisect
+    >>> class FauxReactor(object):
+    ...     def __init__(self):
+    ...         self.time = 0
+    ...         self.calls = []
+    ...     def callLater(self, delay, callable, *args, **kw):
+    ...         res = (delay + self.time, callable, args, kw)
+    ...         bisect.insort(self.calls, res)
+    ...         # normally we're supposed to return something but not needed
+    ...     def time_flies(self, time):
+    ...         end = self.time + time
+    ...         ct = 0
+    ...         while self.calls and self.calls[0][0] <= end:
+    ...             self.time, callable, args, kw = self.calls.pop(0)
+    ...             callable(*args, **kw) # normally this would get try...except
+    ...             ct += 1
+    ...         self.time = end
+    ...         return ct
+    ...     def time_passes(self):
+    ...         if self.calls and self.calls[0][0] <= self.time:
+    ...             self.time, callable, args, kw = self.calls.pop(0)
+    ...             callable(*args, **kw)
+    ...             return True
+    ...         return False
+    ...
+    >>> faux = FauxReactor()
+    >>> twisted.internet.reactor.callLater = faux.callLater
+    >>> time_flies = faux.time_flies
+    >>> time_passes = faux.time_passes
+
+.. [#tear_down_reactor]
+
+    >>> twisted.internet.reactor.callLater = oldCallLater
+
+.. [#set_up_datetime] A monkeypatch, removed in another footnote below.
+
+    >>> import datetime
+    >>> import pytz
+    >>> old_datetime = datetime.datetime
+    >>> def set_now(dt):
+    ...     global _now
+    ...     _now = _datetime(*dt.__reduce__()[1])
+    ...
+    >>> class _datetime(old_datetime):
+    ...     @classmethod
+    ...     def now(klass, tzinfo=None):
+    ...         if tzinfo is None:
+    ...             return _now.replace(tzinfo=None)
+    ...         else:
+    ...             return _now.astimezone(tzinfo)
+    ...     def astimezone(self, tzinfo):
+    ...         return _datetime(
+    ...             *super(_datetime,self).astimezone(tzinfo).__reduce__()[1])
+    ...     def replace(self, *args, **kwargs):
+    ...         return _datetime(
+    ...             *super(_datetime,self).replace(
+    ...                 *args, **kwargs).__reduce__()[1])
+    ...     def __repr__(self):
+    ...         raw = super(_datetime, self).__repr__()
+    ...         return "datetime.datetime%s" % (
+    ...             raw[raw.index('('):],)
+    ...     def __reduce__(self):
+    ...         return (argh, super(_datetime, self).__reduce__()[1])
+    >>> def argh(*args, **kwargs):
+    ...     return _datetime(*args, **kwargs)
+    ...
+    >>> datetime.datetime = _datetime
+    >>> _now = datetime.datetime(2006, 8, 10, 15, 44, 22, 211, pytz.UTC)
+
+.. [#reinstate]
+
+    >>> for p in (res1, res2, res3, res4, res5):
+    ...     p.assignerUUID = None
+    ...     res = dm.thread.put(p)
+    ...
+    >>> list(dm.thread) == [res3, res1, res2, res5, res4]
+    True
+    >>> list(dm.thread.iterDue()) == [res3, res1, res2, res5, res4]
+    True
+
+.. [#tear_down_datetime]
+
+    >>> datetime.datetime = old_datetime
