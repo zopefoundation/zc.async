@@ -428,12 +428,12 @@ thread, where the twisted reactor is running.
     ...
     >>> p = dm.thread.put(zc.async.partial.Partial.bind(callWithProgressReport))
     >>> transaction.commit()
-    >>> ignore = time_flies(10); acquired = main_lock.acquire()
-    ... # get the reactor to kick for main call; then get the reactor to
-    ... # kick for progress report; then wait for lock release.
+    >>> ignore = time_flies(5); acquired = main_lock.acquire()
+    ... # get the reactor to kick for main call; then wait for lock release.
     do some work
     more work
     about half done
+    >>> ignore = time_flies(5) # get the reactor to kick for progress report
     >>> t = transaction.begin() # sync
     >>> p.annotations.get('zc.async.partial_txt.half_done')
     True
