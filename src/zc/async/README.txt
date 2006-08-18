@@ -356,7 +356,8 @@ partial, or within the `addCallbacks` call.  If you want the job to be done
 asynchronously, make the callback with a partial.  The partial will get
 a reference to the data_manager used by the main partial.  It can create a
 partial, assign it to one of the data manager queues, and return the partial.
-Consider the following.
+Consider the following (we use a `resolve` function to let all of the pending
+calls resolve before the example proceeds [#resolve]_).
 
     >>> def multiply(*args):
     ...     res = 1
@@ -373,14 +374,7 @@ Consider the following.
     >>> p_callback = p.addCallbacks(
     ...     zc.async.partial.Partial.bind(doCallbackWithPartial))
     >>> transaction.commit()
-    >>> import time
-    >>> for i in range(100):
-    ...     ignore = time_flies(5)
-    ...     time.sleep(0)
-    ...     t = transaction.begin()
-    ...     if p_callback.state == zc.async.interfaces.COMPLETED:
-    ...         break
-    ...
+    >>> resolve(p_callback)
     >>> p.result
     12
     >>> p.state == zc.async.interfaces.COMPLETED
@@ -412,6 +406,7 @@ thread, where the twisted reactor is running.
     ...     partial.annotations[annotation_key] = value
     ...
     >>> import threading
+    >>> import sys
     >>> thread_lock = threading.Lock()
     >>> main_lock = threading.Lock()
     >>> acquired = thread_lock.acquire()
@@ -440,13 +435,7 @@ thread, where the twisted reactor is running.
     >>> p.state == zc.async.interfaces.ACTIVE
     True
     >>> thread_lock.release()
-    >>> for i in range(100):
-    ...     ignore = time_flies(5)
-    ...     time.sleep(0)
-    ...     t = transaction.begin()
-    ...     if p.state == zc.async.interfaces.COMPLETED:
-    ...         break
-    ...
+    >>> resolve(p)
     >>> p.result
     42
     >>> thread_lock.release()
@@ -559,12 +548,13 @@ Footnotes
 .. [#setup] This is a bit more than standard set-up code for a ZODB test,
     because it sets up a multi-database.
 
-    >>> from ZODB.tests.util import DB # use conflict resolution test one XXX
+    >>> from zc.queue.tests import ConflictResolvingMappingStorage
+    >>> from ZODB import DB
     >>> class Factory(object):
     ...     def __init__(self, name):
     ...         self.name = name
     ...     def open(self):
-    ...         return DB()
+    ...         return DB(ConflictResolvingMappingStorage('test'))
     ...
     >>> import zope.app.appsetup.appsetup
     >>> db = zope.app.appsetup.appsetup.multi_database(
@@ -678,22 +668,32 @@ Footnotes
     ...         self._lock.release()
     ...     def addSystemEventTrigger(self, *args):
     ...         self.triggers.append(args) # 'before', 'shutdown', callable
+    ...     def _get_next(self, end):
+    ...         self._lock.acquire()
+    ...         try:
+    ...             if self.calls and self.calls[0][0] <= end:
+    ...                 return self.calls.pop(0)
+    ...         finally:
+    ...             self._lock.release()
     ...     def time_flies(self, time):
     ...         global _now
     ...         end = self.time + time
     ...         ct = 0
-    ...         while self.calls and self.calls[0][0] <= end:
-    ...             self.time, callable, args, kw = self.calls.pop(0)
+    ...         next = self._get_next(end)
+    ...         while next is not None:
+    ...             self.time, callable, args, kw = next
     ...             _now = _datetime(
     ...                 *(_start + datetime.timedelta(
     ...                     seconds=self.time)).__reduce__()[1])
     ...             callable(*args, **kw) # normally this would get try...except
     ...             ct += 1
+    ...             next = self._get_next(end)
     ...         self.time = end
     ...         return ct
     ...     def time_passes(self):
-    ...         if self.calls and self.calls[0][0] <= self.time:
-    ...             self.time, callable, args, kw = self.calls.pop(0)
+    ...         next = self._get_next(self.time)
+    ...         if next is not None:
+    ...             self.time, callable, args, kw = next
     ...             callable(*args, **kw)
     ...             return True
     ...         return False
@@ -723,6 +723,26 @@ Footnotes
     will be called with no arguments, so you must supply all necessary
     arguments for the callable on creation time.
 
+.. [#resolve]
+
+    >>> import time
+    >>> import ZODB.POSException
+    >>> def resolve(p):
+    ...     for i in range(100):
+    ...         t = transaction.begin()
+    ...         ignore = time_flies(5)
+    ...         time.sleep(0)
+    ...         t = transaction.begin()
+    ...         try:
+    ...             if (len(dm.thread) == 0 and
+    ...                 len(dm.workers.values()[0].thread) == 0 and
+    ...                 p.state == zc.async.interfaces.COMPLETED): 
+    ...                 break
+    ...         except ZODB.POSException.ReadConflictError:
+    ...             pass
+    ...     else:
+    ...         print 'Timed out'
+
 .. [#tear_down]
 
     >>> twisted.internet.reactor.callLater = oldCallLater
@@ -730,3 +750,12 @@ Footnotes
     >>> twisted.internet.reactor.addSystemEventTrigger = (
     ...     oldAddSystemEventTrigger)
     >>> datetime.datetime = old_datetime
+    >>> import zc.async.engine
+    >>> engine = zc.async.engine.engines[worker.UUID]
+    >>> while 1: # make sure all the threads are dead before we close down
+    ...     for t in engine._threads:
+    ...         if t.isAlive():
+    ...             break
+    ...     else:
+    ...         break
+    ...

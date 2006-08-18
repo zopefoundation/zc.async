@@ -20,6 +20,8 @@ def perform(p):
     p()
     p.addCallback(zc.async.partial.Partial(remove, p.__parent__, p))
 
+engines = {}
+
 class Engine(object):
     # this intentionally does not have an interface.  It would be nicer if this
     # could be a Twisted service, part of the main Zope service, but that does
@@ -38,6 +40,8 @@ class Engine(object):
         self._threads = []
         self.UUID = uuid.uuid4() # this is supposed to distinguish this engine
         # instance from any others potentially wanting to work on the worker.
+        assert UUID not in engines
+        engines[UUID] = self
 
     def perform_thread(self):
         try:
@@ -109,8 +113,16 @@ class Engine(object):
             now = datetime.datetime.now(pytz.UTC)
             worker = datamanager.workers.get(self.workerUUID)
             if worker is not None:
-                if (worker.engineUUID is not None and
-                    worker.engineUUID != self.UUID):
+                if worker.engineUUID is None:
+                    worker.engineUUID = self.UUID
+                    try:
+                        tm.commit()
+                    except ZODB.POSException.TransactionError:
+                        # uh-oh.  Somebody else may be adding a worker for the
+                        # same UUID.  we'll just return for now, and figure that
+                        # the next go-round will report the problem.
+                        return # will call finally clause, including abort
+                elif worker.engineUUID != self.UUID:
                     # uh-oh.  Maybe another engine is in on the action?
                     time_of_death = (worker.last_ping + worker.ping_interval
                                      + worker.ping_death_interval)
@@ -118,6 +130,14 @@ class Engine(object):
                         # hm.  Looks like it's dead.
                         zc.async.datamanager.cleanDeadWorker(worker)
                         worker.engineUUID = self.UUID
+                        try:
+                            tm.commit()
+                        except ZODB.POSException.TransactionError:
+                            # uh-oh.  Somebody else may be adding a worker for
+                            # the same UUID.  we'll just return for now, and
+                            # figure that the next go-round will report the
+                            # problem.
+                            return # will call finally clause, including abort
                     else:
                         # this is some other engine's UUID,
                         # and it isn't dead (yet?).  Houston, we have a problem.
@@ -132,16 +152,6 @@ class Engine(object):
                             interval.days, interval.seconds,
                             interval.microseconds)
                         return # which will call the finally clause
-                else:
-                    worker.engineUUID = self.UUID
-                try:
-                    tm.commit()
-                except ZODB.POSException.TransactionError:
-                    tm.abort()
-                    # uh-oh.  Somebody else may be adding a worker for the
-                    # same UUID.  we'll just return for now, and figure that
-                    # the next go-round will report the problem.
-                    return # will call finally clause
             else:
                 worker = self.factory(self.workerUUID)
                 datamanager.workers.add(worker)
@@ -149,18 +159,17 @@ class Engine(object):
                 try:
                     tm.commit()
                 except ZODB.POSException.TransactionError:
-                    tm.abort()
                     # uh-oh.  Somebody else may be adding a worker for the
                     # same UUID.  we'll just return for now, and figure that
                     # the next go-round will report the problem.
-                    return # will call finally clause
+                    return # will call finally clause, including abort
             poll_seconds = worker.poll_seconds
             datamanager.checkSibling(worker.UUID)
             try:
                 tm.commit()
             except ZODB.POSException.TransactionError:
                 tm.abort()
-                # we'll retry next poll.
+                # we'll retry next poll.  Let's keep going.
             if (worker.completed.last_rotation +
                 worker.completed.rotation_interval) <= now:
                 worker.completed.rotate()
@@ -168,14 +177,13 @@ class Engine(object):
                     tm.commit()
                 except ZODB.POSException.TransactionError:
                     tm.abort()
-                    # we'll retry next poll.
+                    # we'll retry next poll.  Keep going.
             if worker.last_ping + worker.ping_interval <= now:
                 worker.last_ping = now
                 try:
                     tm.commit()
                 except ZODB.POSException.TransactionError:
                     # uh-oh: are there two engines working with the same worker?
-                    tm.abort() # and retry next time
                     logging.error(
                         "Transaction error for worker %s.  This should not "
                         "happen.", self.workerUUID)
@@ -219,7 +227,6 @@ class Engine(object):
                     tm.commit()
                 except ZODB.POSException.TransactionError:
                     # uh-oh: are there two engines working with the same worker?
-                    tm.abort() # and retry next time
                     logging.error(
                         "Transaction error for worker %s.  This should not "
                         "happen.", self.workerUUID)
