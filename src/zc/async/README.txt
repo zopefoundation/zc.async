@@ -2,29 +2,273 @@
 zc.async
 ========
 
-The zc.async package provides a way to make asynchronous application
-calls.
+Goals
+=====
 
-Calls are handled by worker processes, each of which is typically a
-standard Zope process, identified by a UUID [#uuid]_, that
-may simultaneously perform other tasks (such as handle standard web
-requests).  Each worker is responsible for claiming and performing calls
-in its main thread or additional threads.  To have multiple workers on
-the same queue of tasks, share the database with ZEO.
+The zc.async package provides a way to make scalable asynchronous application
+calls.  Here are some example core use cases.
 
-Pending calls and worker data objects are stored in a data manager
-object in the ZODB.  This is typically stored in the root of the ZODB,
-alongside the application object, with a key of 'zc.async.datamanager',
-but the adapter that obtains the data manager can be replaced to point
-to a different location.
+- You want to let users create PDFs through your application.  This can take
+  quite a bit of time, and will use both system resources and one of the
+  precious application threads until it is done.  Naively done, six or seven
+  simultaneous PDF requests could make your application unresponsive to any
+  other users.  Using zc.async, the job can be sent to other machines; you
+  can write AJAX to poll for job completion, or you might have the end of the
+  job send an email to deliver the PDF.
 
-Worker data objects have queues representing potential or current tasks
-for the worker, in the main thread or a secondary thread.  Each worker
-has a virtual loop, part of the Twisted main loop, for every worker
-process, which is responsible for responding to system calls (like
-pings) and for claiming pending main thread calls by moving them from
-the datamanager async queue to their own.  Each worker thread queue also
-represents spots for claiming and performing pending thread calls.
+- You want to let users spider a web site; communicate with a credit card
+  company; query a large, slow LDAP database on another machine; or do
+  some other action that generates network requests from the server. 
+  Again, if something goes wrong, several requests could make your
+  application unresponsive.  With zc.async, this could be serialized,
+  with objects indicating that a spidering is in-progress; and performed
+  out of the main application threads.
+
+- You have an application job in the ZODB that you discover is taking
+  longer than users can handle, even after you optimize it.  You want a
+  quick fix to move the work out-of-band.
+
+A common thread with these core use cases is that end-users need to be
+able to start expensive processes on demand.  These are not scheduled
+tasks. You may want to have a bank of workers that can perform the task.
+You may want to be able to quickly and easily convert an application
+server process to a worker process, or vice versa, on the basis of
+traffic and demand.
+
+Another Zope 3 package that approaches somewhat similar use cases to
+these is lovely.remotetask (http://svn.zope.org/lovely.remotetask/). 
+There appear to be some notable differences; describing them
+authoritatively and without possible misrepresentation will have to
+wait for another day.
+
+Another set of use cases center around scheduling: we need to retry an
+asynchronous task after a given amount of time; or we want to have a
+requested job happen late at night; or we want to have a job happen
+regularly.  The Zope 3 scheduler
+(http://svn.zope.org/Zope3/trunk/src/scheduler/) approaches the last of
+these tasks with more infrastructure than zc.async, as arguably does a
+typical "cron wget" approach.  However, both approaches are prone to
+serious problems when the scheduled task takes more time than expected,
+and one instance of a task overlaps the previous one, sometimes causing
+disastrous problems.  By using zc.async partials to represent the
+pending result, and even to schedule the next call, this problem can be
+alleviated.
+
+History
+=======
+
+This is a second-generation design.  The first generation was `zasync`,
+a mission-critical and successful Zope 2 product in use for a number of
+high-volume Zope 2 installations.  It had the following goals:
+
+- be scalable, so that another process or machine could do the asynchronous
+  work;
+
+- support lengthy jobs outside of the ZODB;
+
+- support lengthy jobs inside the ZODB;
+
+- be recoverable, so that crashes would not lose work;
+
+- be discoverable, so that logs and web interfaces give a view into the work
+  being done asynchronously;
+
+- be easily extendible, to do new jobs; and
+
+- support graceful job expiration and cancellation.
+
+It met its goals well in some areas and adequately in others.
+
+Based on experience with the first generation, this second generation
+identifies several areas of improvement from the first design, and adds
+several goals.
+
+- Improvements
+
+  * More carefully delineate the roles of the comprising components.
+
+    The zasync design has three main components, as divided by their
+    roles: persistent deferreds, now called partials; persistent
+    deferred queues (the original zasync's "asynchronous call manager");
+    and asynchronous workers (the original zasync ZEO client).  The
+    zasync 1.x design blurred the lines between the three components
+    such that the component parts could only be replaced with
+    difficulty, if at all. A goal for the 2.x design is to clearly
+    define the role for each of three components such that, for
+    instance, a user of a persistent deferred does not need to know
+    about the persistent deferred queue.
+
+  * Improve scalability of asynchronous workers.
+
+    The 1.x line was initially designed for a single asynchronous worker,
+    which could be put on another machine thanks to ZEO.  Tarek Ziadé of
+    Nuxeo wrote zasyncdispatcher, which allowed multiple asynchronous workers
+    to accept work, allowing multiple processes and multiple machines to
+    divide and conquer. It worked around the limitations of the original
+    zasync design to provide even more scalability. However, it was forced to
+    divide up work well before a given worker looks at the queue.
+
+    While dividing work earlier allows guesses and heuristics a chance to
+    predict what worker might be more free in the future, a more reliable
+    approach is to let the worker gauge whether it should take a job at the
+    time the job is taken. Perhaps the worker will choose based on the
+    worker's load, or other concurrent jobs in the process, or other details.
+    A goal for the 2.x line is to more directly support this type of
+    scalability.
+
+  * Improve scalability of registering deferreds.
+
+    The 1.x line initially wasn't concerned about very many concurrent
+    asynchronous requests.  When this situation was encountered, it caused
+    ConflictErrors between the worker process reading the deferred queue
+    and the code that was adding the deferreds.  Thanks to Nuxeo, this
+    problem was addressed in the 1.x line.  A goal for the new version
+    is to include and improve upon the 1.x solution.
+
+  * Make it even simpler to provide new jobs.
+
+    In the first version, `plugins` performed jobs.  They had a specific
+    API and they had to be configured.  A goal for the new version is to
+    require no specific API for jobs, and to not require any configuration.
+
+  * Improve report information, especially through the web.
+
+    The component that the first version of zasync provided to do the
+    asynchronous work, the zasync client, provided very verbose logs of the
+    jobs done, but they were hard to read and also did not have a through-
+    the-web parallel.  Two goals for the new version are to improve the
+    usefulness of the filesystem logs and to include more complete
+    through-the-web visibility of the status of the provided asynchronous
+    clients.
+
+  * Make it easier to configure and start, especially for small deployments.
+
+    A significant barrier to experimentation and deployment of the 1.x line
+    was the difficulty in configuration.  The 1.x line relied on ZConfig
+    for zasync client configuration, demanding non-extensible
+    similar-yet-subtly-different .conf files like the Zope conf files.
+    The 2.x line plans to provide code that Zope 3 can configure to run in
+    the same process as a standard Zope 3 application.  This means that
+    development instances can start a zasync quickly and easily.  It also
+    means that processes can be reallocated on the fly during production use,
+    so that a machine being used as a zasync process can quickly be converted
+    to a web server, if needed, and vice versa.  It further means that the
+    Zope web server can be used for through-the-web reports of the current
+    zasync process state.
+
+- New goals
+
+  * Support intermediate return calls so that jobs can report back how they
+    are doing.
+
+    A frequent request from users of zasync 1.x was the ability for a long-
+    running asynchronous process to report back progress to the original
+    requester.  The 2.x line addresses this with three changes:
+
+    + persistent deferreds are annotatable;
+
+    + persistent deferreds should not be modified in an asynchronous
+      job that does work (though they may be read);
+
+    + jobs can request another deferred in a synchronous process that
+      annotates the deferred with progress status or other information.
+
+    Because of relatively recent changes in ZODB--multi version concurrency
+    control--this simple pattern should not generate conflict errors.
+
+  * Support time-delayed calls.
+
+    Retries and other use cases make time-delayed deferred calls desirable.
+    The new design supports these sort of calls.
+
+It's worthwhile noting that zc.async has absolutely no backwards
+comapatibility with zasync.
+
+Status
+======
+
+This is alpha software.  Tests range for various components range from
+very good to preliminary.  All existing tests pass.  Even the first
+"final" release is not scheduled to meet all goals identified in the
+history discussion above.  See TODO.txt in this package.
+
+Dependencies
+============
+
+zc.async relies on the uuid module as currently found in the Python 2.5
+library (this can be used with earlier versions of Python).  See
+http://svn.python.org/view/python/trunk/Lib/uuid.py?view=auto.
+
+It currently relies on the Twisted reactor running, but does not require
+that the Twisted reactor be used for any particular task (such as being
+used as a web server, for instance).  That said, when used with Zope,
+zc.async currently requires that a Twisted server be used.  Future
+revisions may provide alternate worker engines for Medusa, as used by
+ZServer; though, of course, reactor tasks would either not be supported
+or be reduced to Medusa capabilities.
+
+zc.twist (http://svn.zope.org/zc.twist/) is used for the Twisted
+reactor/ZODB interactions.
+
+zc.set (http://svn.zope.org/zc.set/) and zc.queue
+(http://svn.zope.org/zc.queue/) are used for internal data structures.
+
+Design Overview
+===============
+
+An application typically has a single zc.async datamanager, which is the
+object that client code will obtain to use the primary zc.async
+capabilities.  Expected spelling to get the datamanager is something
+like ``dm = zc.async.interfaces.IDataManager(context)``.  The
+datamanager is typically stored in the root of the ZODB, alongside the
+application object, with a key of 'zc.async.datamanager', but the
+adapter that obtains the data manager can be replaced to point to a
+different location.
+
+Clients of zc.async need to identify the job they want done.  It must be
+a single pickleable callable: a global function, a callable persistent
+object, a method of a persistent object, or a special
+zc.async.partial.Partial object, discussed later.  This job should be
+passed to the `put` method of one of two queues on the datamanager: a
+`thread` queue and a `reactor` queue.
+
+- A `thread` job is one that is to be performed in a thread with a
+  dedicated ZODB connection.  It's the simplest to use for typical
+  tasks. A thread job also may be overkill for some jobs that don't need
+  a connection constantly.  It also is not friendly to Twisted services. 
+
+- A `reactor` job is a non-blocking job to be performed in the main thread,
+  in a call scheduled by the Twisted reactor.  It has some gotchas (see
+  zc.twist's README), but it can be good for jobs that don't need a
+  constant connection, and for jobs that can leverage Twisted code.
+
+The `put` call will return an object that represents the job--both the
+information about the job requested, and the state and result of
+performing the job.  An example spelling for this might be
+``self.pending_result = dm.thread.put(self.performSpider)``.  The
+returned object can be simply persisted and polled to see when the job
+is complete; or it can be set to do tasks when it completes.
+
+If nothing else is done, the call will be done as soon as possible:
+zc.async client code shouldn't typically have to worry further.  The
+client code could have specifed that the job should `begin_after` a
+certain datetime; or that the job should `begin_by` a duration after
+`begin_after` or else it will fail; or that the job should be performed
+by a certain process, or not by a certain process.
+
+While client code can forget about the rest of the design, people
+configuring a production system using zc.async need to know a bit more.
+Calls are handled by workers, each of which is a persistent object
+matched with a software instance identified by a UUID [#uuid]_.  A
+worker is responsible for keeping track of current jobs and for
+implementing a policy for selecting jobs from the main datamanager
+queues. A worker's software instance may simultaneously perform other
+tasks (such as handle standard web requests).  Each worker is
+responsible for claiming and performing calls in its main thread or
+additional threads.  To have multiple workers on the same queue of
+tasks, share the database with ZEO. Workers are driven by `engines`,
+non-persistent objects that are alive only for a single process, and
+that are responsible for providing the heart-beat for a matched worker.
 
 Set Up
 ======
