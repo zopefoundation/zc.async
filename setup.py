@@ -21,7 +21,7 @@ setup(
         'zc.queue',
         'zc.set',
         'zc.twist',
-        'zc.twisted-2.5.0dev-r17773',
+        'zc.twisted',
         'zope.app.appsetup',
         'zope.bforest',
         'zope.component',
