@@ -415,7 +415,7 @@ change the result of the original job. Since callbacks are jobs, you can chain
 results, but generally callbacks for the same job all get the same result as
 input.
 
-Also ote that, during execution of a callback, there is no guarantee that
+Also note that, during execution of a callback, there is no guarantee that
 the callback will be processed on the same machine as the main call.  Also,
 some of the ``local`` functions, discussed below, will not work as desired.
 
