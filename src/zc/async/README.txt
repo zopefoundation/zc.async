@@ -861,7 +861,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
         The 1.x line was initially designed for a single asynchronous
         worker, which could be put on another machine thanks to ZEO. 
-        Tarek Ziadé of Nuxeo wrote zasyncdispatcher, which allowed
+        Tarek Ziad of Nuxeo wrote zasyncdispatcher, which allowed
         multiple asynchronous workers to accept work, allowing multiple
         processes and multiple machines to divide and conquer. It worked
         around the limitations of the original zasync design to provide
