@@ -1,17 +1,17 @@
 This is a document for maintainers and for testing.
 
-Partials manage their own transactions when they are called.  In normal
+Jobs manage their own transactions when they are called.  In normal
 use, this means that transactions are committed and aborted by the
-partial itself at the points marked "COMMIT" and "ABORT" in this list
+job itself at the points marked "COMMIT" and "ABORT" in this list
 (other software components will make commits, just not the partial):
 
-- client creates a partial, puts it in a queue, and assigns callbacks to it
+- client creates a job, puts it in a queue, and assigns callbacks to it
   before it is run.
-- a worker claims a partial
-- a worker calls a partial
-- partial changes state to ACTIVE: COMMIT
-- partial runs the wrapped callable, stores the result on its "result"
-  attribute, changes the state to CALLBACKS, and tries to COMMIT.
+- an agent claims a job
+- a dispatcher calls a job for the agent in a thread
+- job changes status to ACTIVE: COMMIT
+- job runs the wrapped callable, stores the result on its "result"
+  attribute, changes the status to CALLBACKS, and tries to COMMIT.
   * if there is a ZODB.POSException.TransactionError, abort and retry 5
     times, after which ABORT, set a Failure on the result attribute,
     COMMIT, and skip to `complete`_ step below.
@@ -20,45 +20,45 @@ partial itself at the points marked "COMMIT" and "ABORT" in this list
     errors) ABORT and raise.
   * if there are any other exceptions, ABORT, set a Failure on the result
     attribute, COMMIT, and skip to `complete`_ step below.
-- If the result of the wrapped callable is a partial or Twisted deferred,
-  add a callable for a method that sets the result, sets the state to
+- If the result of the wrapped callable is a job or Twisted deferred,
+  add a callable for a method that sets the result, sets the status to
   CALLBACKS, tries to commit as described above, and then proceeds with
   the `complete`_ step.  COMMIT and return.
-- _`complete`: for each callback (which is itself a partial), call it.
-  Each callback partial will commit as described here.  The top partial
+- _`complete`: for each callback (which is itself a job), call it.
+  Each callback job will commit as described here.  The top job
   catches no errors while it runs the callbacks.
-- When all callbacks have been called, set state to COMPLETED and COMMIT.
+- When all callbacks have been called, set status to COMPLETED and COMMIT.
   if there is a ZODB.POSException.TransactionError, look in the callbacks to
   see if there is a new one.  If there is, perform it and try again; otherwise,
   retry this forever, logging every time, because this should not happen
   except in the case of a new additional callback.
   logging retries: there should be no conflict errors, because no two
-  workers should be touching this partial.
-- If a callback is added to this completed partial, perform the callback
+  workers should be touching this job.
+- If a callback is added to this completed job, perform the callback
   and COMMIT.  If anything fails, including a ConflictError, just raise it.
   Someone else should abort as necessary.
-- If a callback is added to a partial in any other state, set the partial's
+- If a callback is added to a job in any other status, set the job's
   _p_changed to True and commit so that we raise a ConflictError, check the
-  state again, and retry if the partial's state changed while we were
+  status again, and retry if the job's status changed while we were
   checking it.
 
 Note the following:
-- if a partial's wrapped callable returns a failure, that means that it
-  is taking responsiblity for any necessary abort: the partial will still
+- if a job's wrapped callable returns a failure, that means that it
+  is taking responsiblity for any necessary abort: the job will still
   attempt to commit.
-- the state never changes out of COMPLETED even when a new callback is
+- the status never changes out of COMPLETED even when a new callback is
   added.
 - __call__ *can* raise a ConflictError; the only known way is to have two
-  workers start the same partial, which should not be possible in normal
+  workers start the same job, which should not be possible in normal
   zc.async usage.
 - addCallbacks may raise a ConflictError: this would happen, for instance,
-  when state is COMPLETED so callbacks are performed immediately.
+  when status is COMPLETED so callbacks are performed immediately.
 
 What could go wrong?  In this list "T1" stands for one hypothetical
 thread, and "T2" stands for another hypothetical thread, often
 overlapping in time with T1.
 
-- T1 goes to CALLBACKS state and begins evaluating callbacks.  T2 adds another
+- T1 goes to CALLBACKS status and begins evaluating callbacks.  T2 adds another
   callback [#set_up]_.  We need to be careful that the callback is executed.
 
     >>> import threading
@@ -76,31 +76,31 @@ overlapping in time with T1.
     ...     _thread_lock.acquire()
     ...     called += 1
     ...
-    >>> def call_from_thread(p):
-    ...     id = p._p_oid
+    >>> def call_from_thread(j):
+    ...     id = j._p_oid
     ...     def call():
     ...         conn = db.open()
-    ...         p = conn.get(id)
-    ...         p()
+    ...         j = conn.get(id)
+    ...         j()
     ...     return call
     ...
     >>> _thread_lock.acquire()
     True
     >>> _main_lock.acquire()
     True
-    >>> import zc.async.partial
-    >>> root['p'] = p = zc.async.partial.Partial(locked_call)
-    >>> p2 = p.addCallbacks(locked_call)
+    >>> import zc.async.job
+    >>> root['j'] = j = zc.async.job.Job(locked_call)
+    >>> j2 = j.addCallbacks(locked_call)
     >>> import transaction
     >>> transaction.commit()
-    >>> t = threading.Thread(target=call_from_thread(p))
+    >>> t = threading.Thread(target=call_from_thread(j))
     >>> t.start()
     >>> _main_lock.acquire()
     True
     >>> called
     0
     >>> trans = transaction.begin()
-    >>> p.state == zc.async.interfaces.ACTIVE
+    >>> j.status == zc.async.interfaces.ACTIVE
     True
     >>> safe_release(_thread_lock)
     >>> _main_lock.acquire()
@@ -108,9 +108,9 @@ overlapping in time with T1.
     >>> called # the main call
     1
     >>> trans = transaction.begin()
-    >>> p.state == zc.async.interfaces.CALLBACKS
+    >>> j.status == zc.async.interfaces.CALLBACKS
     True
-    >>> p2 = p.addCallbacks(locked_call)
+    >>> j3 = j.addCallbacks(locked_call)
     >>> transaction.commit()
     >>> safe_release(_thread_lock)
     >>> _main_lock.acquire()
@@ -127,15 +127,15 @@ overlapping in time with T1.
     3
     >>> _main_lock.release()
 
-- T1 goes to CALLBACKS state.  In the split second between checking for
-  any remaining callbacks and changing state to COMPLETED, T2 adds a
+- T1 goes to CALLBACKS status.  In the split second between checking for
+  any remaining callbacks and changing status to COMPLETED, T2 adds a
   callback and commits.  T1 commits.  T2 thinks that callbacks are still
   being processed, so does not process the callback, but meanwhile the
-  state is being switched to COMPLETED, and the new callback is never
+  status is being switched to COMPLETED, and the new callback is never
   made. For this, we could turn off MVCC, but we don't want to do that
   if we can help it because of efficiency.  A better solution is to set
-  _p_changed in T2 on the partial, and commit; if there's a conflict
-  error, re-get the state because its change may have caused the
+  _p_changed in T2 on the job, and commit; if there's a conflict
+  error, re-get the status because its change may have caused the
   conflict.
 
     >>> import sys
@@ -154,34 +154,34 @@ overlapping in time with T1.
     ...             _thread_lock.acquire()
     ...         setattr(obj, '_z_locked_' + self.name, value)
     ...
-    >>> import zc.async.partial
-    >>> class Partial(zc.async.partial.Partial):
-    ...     _state = LockedSetter(
-    ...         '_state',
+    >>> import zc.async.job
+    >>> class Job(zc.async.job.Job):
+    ...     _status = LockedSetter(
+    ...         '_status',
     ...         lambda o, v: v == zc.async.interfaces.COMPLETED,
-    ...         zc.async.interfaces.PENDING)
+    ...         zc.async.interfaces.NEW)
     ...
     >>> called = 0
     >>> def call(res=None):
     ...     global called
     ...     called += 1
     ...
-    >>> root['p2'] = p = Partial(call)
+    >>> root['j2'] = j = Job(call)
     >>> transaction.commit()
     >>> _thread_lock.acquire()
     True
     >>> _main_lock.acquire()
     True
-    >>> t = threading.Thread(target=call_from_thread(p))
+    >>> t = threading.Thread(target=call_from_thread(j))
     >>> t.start()
     >>> _main_lock.acquire()
     True
     >>> trans = transaction.begin()
     >>> called
     1
-    >>> p.state == zc.async.interfaces.CALLBACKS
+    >>> j.status == zc.async.interfaces.CALLBACKS
     True
-    >>> p2 = p.addCallbacks(call)
+    >>> j2 = j.addCallbacks(call)
     >>> transaction.commit()
     >>> safe_release(_thread_lock)
     >>> _main_lock.acquire()
@@ -189,7 +189,7 @@ overlapping in time with T1.
     >>> trans = transaction.begin()
     >>> called
     2
-    >>> p.state == zc.async.interfaces.CALLBACKS
+    >>> j.status == zc.async.interfaces.CALLBACKS
     True
     >>> safe_release(_thread_lock)
     >>> safe_release(_thread_lock)
@@ -199,9 +199,9 @@ overlapping in time with T1.
     >>> _main_lock.release()
 
   Note, because of this, addCallbacks can raise a ConflictError: it probably
-  means that the state changed out from under it.  Just retry.
+  means that the status changed out from under it.  Just retry.
 
-- T1 is performing callbacks.  T2 begins and adds a callback.  T1 changes state
+- T1 is performing callbacks.  T2 begins and adds a callback.  T1 changes status
   to COMPLETED and commits.  T2 commits.  If we don't handle it carefully,
   the callback is never called.  So we handle it carefully.
 
@@ -210,10 +210,10 @@ overlapping in time with T1.
     >>> _main_lock.acquire()
     True
     >>> called = 0
-    >>> root['p3'] = p = zc.async.partial.Partial(call)
-    >>> p1 = p.addCallbacks(locked_call)
+    >>> root['j3'] = j = zc.async.job.Job(call)
+    >>> j1 = j.addCallbacks(locked_call)
     >>> transaction.commit()
-    >>> t = threading.Thread(target=call_from_thread(p))
+    >>> t = threading.Thread(target=call_from_thread(j))
     >>> t.start()
     >>> _main_lock.acquire()
     True
@@ -224,7 +224,7 @@ overlapping in time with T1.
     ...     global called
     ...     called += 1
     ...
-    >>> p2 = p.addCallbacks(call_and_unlock)
+    >>> j2 = j.addCallbacks(call_and_unlock)
     >>> safe_release(_thread_lock)
     >>> safe_release(_thread_lock)
     >>> while t.isAlive():
@@ -235,22 +235,22 @@ overlapping in time with T1.
     >>> transaction.commit() # doctest: +ELLIPSIS
     Traceback (most recent call last):
     ...
-    ConflictError: database conflict error (..., class zc.async.partial.Partial)
+    ConflictError: database conflict error (..., class zc.async.job.Job)
     >>> transaction.abort()
-    >>> p2 = p.addCallbacks(call_and_unlock)
+    >>> j2 = j.addCallbacks(call_and_unlock)
     >>> called
     3
     >>> transaction.commit()
     >>> _main_lock.release()
 
-- T1 adds a callback to COMPLETED state.  It immediately runs the callback.
-  Simultaneously, T2 adds a callback to COMPLETED state.  No problem.
+- T1 adds a callback to COMPLETED status.  It immediately runs the callback.
+  Simultaneously, T2 adds a callback to COMPLETED status.  No problem.
 
-- two workers might claim and start the same partial.  This should
+- two workers might claim and start the same job.  This should
   already be stopped by workers committing transactions after they claimed
   them.  This is considered to be a pathological case.
 
-- Generally, if a worker is determined to be dead, and its partials are
+- Generally, if a worker is determined to be dead, and its jobs are
   handed out to other workers, but the worker is actually alive, this can
   be a serious problem.  This is also considered to be a pathological case.
 
@@ -264,31 +264,5 @@ Footnotes
     >>> db = DB()
     >>> conn = db.open()
     >>> root = conn.root()
-
-    You must have two adapter registrations: IConnection to
-    ITransactionManager, and IPersistent to IConnection.  We will also
-    register IPersistent to ITransactionManager because the adapter is
-    designed for it.
-
-    >>> from zc.twist import transactionManager, connection
-    >>> import zope.component
-    >>> zope.component.provideAdapter(transactionManager)
-    >>> zope.component.provideAdapter(connection)
-    >>> import ZODB.interfaces
-    >>> zope.component.provideAdapter(
-    ...     transactionManager, adapts=(ZODB.interfaces.IConnection,))
-
-    We also need to adapt Function and Method to IPartial.
-
-    >>> import zc.async.partial
-    >>> import zc.async.interfaces
-    >>> import zope.component
-    >>> import types
-    >>> zope.component.provideAdapter(
-    ...     zc.async.partial.Partial,
-    ...     adapts=(types.FunctionType,),
-    ...     provides=zc.async.interfaces.IPartial)
-    >>> zope.component.provideAdapter(
-    ...     zc.async.partial.Partial,
-    ...     adapts=(types.MethodType,),
-    ...     provides=zc.async.interfaces.IPartial)
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()

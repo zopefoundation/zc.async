@@ -1,30 +1,14 @@
-For beta:
-
-- Refactor Worker API, harden engine API.  Policy decisions should be within
-  workers.  IDataManager.pullNext is a mistake; this is policy that should be
-  pushed down to the worker.  Write doctest for engine.
-- Refactor README as introductory text, or provide alternative simple start.
-  Split setup code into another document (or put as footnote)?
-- Write configure.zcml
-- Write doctest for edge cases.
-- Write stress test.
-- Make it possible to have a zc.twist partial to retry forever.
-- Contemplate thread-only Medusa workers.
-- Clarify that only subscribers.py is Zope 3-specific; the rest is ZODB only.
-
-For RC:
-
-- Announce RC, wait a bit for any feedback
-- Deploy internally
-
-For final:
-
-- Feel good about RC
+- Write the z3monitor tests.
+- See if combined README + README_2 + README_3 makes a comprehensible document
 
 For future versions:
 
+- queues should be pluggable like agent with filter
+- show how to broadcast, maybe add conveniences
+- show how to use with collapsing jobs (hint to future self: use external queue
+  to put in work, and have job(s) just pull what they can see from queue)
+
+For some other package, maybe:
+
 - TTW Management and logging views, as in zasync (see goals in the "History"
   section of the README).
-- Write a Zope 3 request/context munger that sets security context and site
-  based on current values.
-- Maybe become friendly to Medusa.

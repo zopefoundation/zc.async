@@ -1,0 +1,353 @@
+Monitoring Dispatchers
+======================
+
+A process's zc.async dispatcher [#setUp]_ can be monitored in-process via
+zc.z3monitor plugins.  Let's imagine we have a connection over which we
+can send text messages to the monitor server [#z3monitor_setup]_.
+
+All monitoring is done through the ``async`` command.  Here is its
+description, using the zc.z3monitor ``help`` command.
+
+    >>> connection.test_input('help async\n')
+    Help for async:
+    <BLANKLINE>
+    A collection of tools to monitor zc.async activity in this process.
+    <BLANKLINE>
+        To see a list of async tools, use 'async help'.
+    <BLANKLINE>
+        To learn more about an async monitor tool, use 'async help <tool name>'.
+    -> CLOSE
+
+As you can see, you use ``async help`` to get more information about each
+async-specific command.
+
+    >>> connection.test_input('async help\n')
+    These are the tools available.  Usage for each tool is 
+    'async <tool name> [modifiers...]'.  Learn more about each 
+    tool using 'async help <tool name>'.
+    <BLANKLINE>
+    UUID: Get instance UUID in hex.
+    help: Get help on an async monitor tool.
+    job: Local information about a job as of last poll, if known.
+    jobs: Show active jobs as of last poll, sorted from newest to oldest.
+    jobstats: Statistics on historical jobs as of last poll.
+    poll: Get information about a single poll, defaulting to most recent.
+    polls: Get information about recent polls, defaulting to most recent.
+    status: Get general zc.async dispatcher information.
+    utcnow: Return the current time in UTC, in ISO 8601 format. 
+    -> CLOSE
+
+Let's give a quick run through these for an overview, and then we'll dig in
+just a bit.
+
+The ``UUID`` command returns the instance's UUID.
+
+    >>> connection.test_input('async help UUID\n')
+    Get instance UUID in hex. 
+    -> CLOSE
+
+    >>> connection.test_input('async UUID\n')
+    d10f43dc-ffdf-11dc-abd4-0017f2c49bdd 
+    -> CLOSE
+
+The ``utcnow`` command returns the current time in UTC.  This can be
+convenient to decipher the meaning of UTC datetimes returned from other
+commands.
+
+    >>> connection.test_input('async help utcnow\n')
+    Return the current time in UTC, in ISO 8601 format. 
+    -> CLOSE
+
+    >>> connection.test_input('async utcnow\n')
+    2006-08-10T15:44:23.000211Z 
+    -> CLOSE
+
+The ``status`` command is the first of the "serious" monitoring
+commands.  As such, it starts some patterns that the rest of the
+commands will follow.
+
+- output is pretty-printed JSON
+
+- durations are in a dict of keys 'days', 'hours', 'minutes', and 'seconds',
+  with all as ints except seconds, which is a float.
+
+    >>> connection.test_input('async help status\n')
+    Get general zc.async dispatcher information.
+    <BLANKLINE>
+        'status' is one of 'STUCK', 'STARTING', 'RUNNING', or 'STOPPED'. 
+    -> CLOSE
+
+    >>> connection.test_input('async status\n')
+    {
+        "poll interval": {
+            "seconds": 5.0
+        }, 
+        "status": "RUNNING", 
+        "time since last poll": {
+            "seconds": 1.0
+        }, 
+        "uptime": {
+            "seconds": 1.0
+        }, 
+        "uuid": "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd"
+    } 
+    -> CLOSE
+
+Here's the ``jobs`` command.  It introduces some new patterns.
+
+- some command modifiers are available as <modifier>:<value>
+
+- several commands have the "queue:" and "agent:" modifiers.
+
+    >>> connection.test_input('async help jobs\n')
+    Show active jobs as of last poll, sorted from newest to oldest.
+    <BLANKLINE>
+        Usage:
+    <BLANKLINE>
+            jobs
+            (returns active jobs as of last poll, newest to oldest)
+    <BLANKLINE>
+            jobs queue:<queue name>
+            (jobs are filtered to those coming from the named queue)
+    <BLANKLINE>
+            jobs agent:<agent name>
+            (jobs are filtered to those coming from agents with given name)
+    <BLANKLINE>
+        "queue:" and "agent:" modifiers may be combined.
+    <BLANKLINE>
+        Example:
+    <BLANKLINE>
+            async jobs queue: agent:main
+            (results filtered to queue named '' and agent named 'main') 
+    -> CLOSE
+
+    >>> connection.test_input('async jobs\n')
+    [] 
+    -> CLOSE
+
+The ``jobstats`` analyzes past polls and job information to come up with
+some potentially useful statistics.  It includes the optional "queue:" and
+"agent:" modifiers.  It also shows some new patterns.
+
+- datetimes are in UTC, in ISO 8601 format.
+
+- The "at:", "before:" and "since:" modifiers are intervals, or poll keys.
+
+- "at:" and "before:" may not be combined.
+
+    >>> connection.test_input('async help jobstats\n')
+    Statistics on historical jobs as of last poll.
+    <BLANKLINE>
+        Usage:
+    <BLANKLINE>
+            jobstats
+            (returns statistics on historical jobs as of last poll)
+    <BLANKLINE>
+            jobstats queue:<queue name>
+            (statistics are filtered to those coming from the named queue)
+    <BLANKLINE>
+            jobstats agent:<agent name>
+            (statistics are filtered to those coming from agents with given name)
+    <BLANKLINE>
+            jobstats at:<poll key or interval>
+            (statistics are collected at or before the poll key or interval)
+    <BLANKLINE>
+            jobstats before:<pollkey or interval>
+            (statistics are collected before the poll key or interval)
+    <BLANKLINE>
+            jobstats since:<pollkey or interval>
+            (statistics are collected since poll key or interval, inclusive)
+    <BLANKLINE>
+        The modifiers "queue:", "agent:", "since:", and one of "at:" or "before:"
+        may be combined.
+    <BLANKLINE>
+        Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
+        be replaced with a positive integer, and "D," "H," "M," and "S" are
+        literals standing for "days," "hours," "minutes," and "seconds." 
+        For instance, you might use ``5M`` for five minutes, ``20S`` for
+        twenty seconds, or ``1H30M`` for an hour and a half.
+    <BLANKLINE>
+        Poll keys are the values shown as "key" from the ``poll`` or ``polls``
+        command.
+    <BLANKLINE>
+        Example:
+    <BLANKLINE>
+            async jobstats queue: agent:main since:1H
+            (results filtered to queue named '' and agent named 'main' from now
+             till one hour ago) 
+    -> CLOSE
+
+    >>> connection.test_input('async jobstats\n')
+    {
+        "failed": 0, 
+        "longest active": null, 
+        "longest failed": null, 
+        "longest successful": null, 
+        "shortest active": null, 
+        "shortest failed": null, 
+        "shortest successful": null, 
+        "started": 0, 
+        "statistics end": "2006-08-10T15:44:22.000211Z", 
+        "statistics start": "2006-08-10T15:44:22.000211Z", 
+        "successful": 0, 
+        "unknown": 0
+    } 
+    -> CLOSE
+
+The ``poll`` command uses patterns we've seen above.
+
+    >>> connection.test_input('async help poll\n')
+    Get information about a single poll, defaulting to most recent.
+    <BLANKLINE>
+        Usage:
+    <BLANKLINE>    
+            poll
+            (returns most recent poll)
+    <BLANKLINE>
+            poll at:<poll key or interval>
+            (returns poll at or before the poll key or interval)
+    <BLANKLINE>
+            poll before:<poll key or interval>
+            (returns poll before the poll key or interval)
+    <BLANKLINE>
+        Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
+        be replaced with a positive integer, and "D," "H," "M," and "S" are
+        literals standing for "days," "hours," "minutes," and "seconds." 
+        For instance, you might use ``5M`` for five minutes, ``20S`` for
+        twenty seconds, or ``1H30M`` for an hour and a half.
+    <BLANKLINE>
+        Example:
+    <BLANKLINE>
+            async poll at:5M
+            (get the poll information at five minutes ago or before) 
+    -> CLOSE
+
+    >>> connection.test_input('async poll\n')
+    {
+        "key": 6420106068108777167, 
+        "results": {
+            "": {}
+        }, 
+        "time": "2006-08-10T15:44:22.000211Z"
+    } 
+    -> CLOSE
+
+``polls`` does too.
+
+    >>> connection.test_input('async help polls\n')
+    Get information about recent polls, defaulting to most recent.
+    <BLANKLINE>
+        Usage:
+    <BLANKLINE>
+            polls
+            (returns most recent 3 poll)
+    <BLANKLINE>
+            polls at:<poll key or interval>
+            (returns up to 3 polls at or before the poll key or interval)
+    <BLANKLINE>
+            polls before:<poll key or interval>
+            (returns up to 3 polls before the poll key or interval)
+    <BLANKLINE>
+            polls since:<poll key or interval>
+            (returns polls since the poll key or interval, inclusive)
+    <BLANKLINE>
+            polls count <positive integer>
+            (returns the given number of the most recent files)
+    <BLANKLINE>
+        The modifiers "since:", "count:", and one of "at:" or "before:" may
+        be combined.
+    <BLANKLINE>
+        Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
+        be replaced with a positive integer, and "D," "H," "M," and "S" are
+        literals standing for "days," "hours," "minutes," and "seconds." 
+        For instance, you might use ``5M`` for five minutes, ``20S`` for
+        twenty seconds, or ``1H30M`` for an hour and a half.
+    <BLANKLINE>
+        Example:
+    <BLANKLINE>
+            async polls before:5M since:10M
+            (get the poll information from 5 to 10 minutes ago) 
+    -> CLOSE
+
+    >>> connection.test_input('async polls\n')
+    [
+        {
+            "key": 6420106068108777167, 
+            "results": {
+                "": {}
+            }, 
+            "time": "2006-08-10T15:44:22.000211Z"
+        }
+    ] 
+    -> CLOSE
+
+.. [#setUp] See the discussion in other documentation to explain this code.
+
+    >>> import ZODB.FileStorage
+    >>> storage = ZODB.FileStorage.FileStorage(
+    ...     'zc_async.fs', create=True)
+    >>> from ZODB.DB import DB 
+    >>> db = DB(storage) 
+    >>> conn = db.open()
+    >>> root = conn.root()
+
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+
+    >>> import zc.async.testing
+    >>> reactor = zc.async.testing.Reactor()
+    >>> reactor.start() # this mokeypatches datetime.datetime.now 
+
+    >>> import zc.async.queue
+    >>> import zc.async.interfaces
+    >>> mapping = root[zc.async.interfaces.KEY] = zc.async.queue.Queues()
+    >>> queue = mapping[''] = zc.async.queue.Queue()
+    >>> import transaction
+    >>> transaction.commit()
+
+    >>> import zc.async.dispatcher
+    >>> dispatcher = zc.async.dispatcher.Dispatcher(db, reactor)
+    >>> dispatcher.activate()
+    >>> reactor.time_flies(1)
+    1
+
+    >>> import zc.async.agent
+    >>> agent = zc.async.agent.Agent()
+    >>> queue.dispatchers[dispatcher.UUID]['main'] = agent
+    >>> transaction.commit()
+
+    >>> import time
+    >>> def wait_for(*jobs, **kwargs):
+    ...     reactor.time_flies(dispatcher.poll_interval) # starts thread
+    ...     # now we wait for the thread
+    ...     for i in range(kwargs.get('attempts', 10)):
+    ...         while reactor.time_passes():
+    ...             pass
+    ...         transaction.begin()
+    ...         for j in jobs:
+    ...             if j.status != zc.async.interfaces.COMPLETED:
+    ...                 break
+    ...         else:
+    ...             break
+    ...         time.sleep(0.1)
+    ...     else:
+    ...         print 'TIME OUT'
+    ...
+
+.. [#z3monitor_setup] This part actually sets up the monitoring.
+
+    >>> import zc.ngi.testing
+    >>> import zc.z3monitor
+
+    >>> connection = zc.ngi.testing.TextConnection()
+    >>> server = zc.z3monitor.Server(connection)
+
+    >>> import zc.async.monitor
+    >>> import zope.component
+    >>> import zc.z3monitor.interfaces
+    >>> zope.component.provideUtility(
+    ...     zc.async.monitor.async,
+    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin,
+    ...     'async')
+    >>> zope.component.provideUtility(zc.z3monitor.help,
+    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin, 'help')

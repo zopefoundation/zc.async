@@ -1,0 +1,921 @@
+====
+Jobs
+====
+
+What if you want to persist a reference to the method of a persistent
+object--you can't persist that normally in the ZODB, but that can be
+very useful, especially to store asynchronous calls.  What if you want
+to act on the result of an asynchronous call that may be called later?
+The zc.async package offers an approach that combines ideas of a partial
+and that of Twisted deferred code: ``zc.async.job.Job``.  
+
+To use it, simply wrap the callable--a method of a persistent object or
+a callable persistent object or a global function--in the job.  You can
+include ordered and keyword arguments to the job, which may be
+persistent objects or simply pickleable objects.
+
+Unlike a partial but like a Twisted deferred, the result of the wrapped
+call goes on the job's ``result`` attribute, and the immediate return of
+the call might not be the job's end result.  It could also be a failure,
+indicating an exception; or another partial, indicating that we are
+waiting to be called back by the second partial; or a twisted deferred,
+indicating that we are waiting to be called back by a twisted Deferred
+(see the ``zc.twist``).  After you have the partial, you can then use a
+number of methods and attributes on the partial for further set up. 
+Let's show the most basic use first, though.
+
+Note that, even though this looks like an interactive prompt, all
+functions and classes defined in this document act as if they were
+defined within a module.  Classes and functions defined in an interactive
+prompt are normally not picklable, and Jobs must work with
+picklable objects [#set_up]_.
+
+    >>> import zc.async.job
+    >>> def call():
+    ...     print 'hello world'
+    ...     return 'my result'
+    ...
+    >>> j = root['j'] = zc.async.job.Job(call)
+    >>> import transaction
+    >>> transaction.commit()
+
+Now we have a job [#verify]_.  The __repr__ tries to be helpful, identifying
+the persistent object identifier ("oid") in hex and the database ("db"), and
+trying to render the call.
+
+    >>> j # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ... db 'unnamed') ``zc.async.doctest_test.call()``>
+
+Initially it has a NEW status.
+
+    >>> import zc.async.interfaces
+    >>> j.status == zc.async.interfaces.NEW
+    True
+
+We can call the job from the NEW (or ASSIGNED, see later) status, and
+then see that the function was called, and see the result on the partial.
+
+    >>> res = j()
+    hello world
+    >>> j.result
+    'my result'
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
+
+The result of the job also happens to be the end result of the call,
+but as mentioned above, the job may return a deferred or another job.
+
+    >>> res
+    'my result'
+
+In addition to using a global function, we can also use a method of a
+persistent object.  Imagine we have a ZODB root that we can put objects
+in to.
+
+    >>> import persistent
+    >>> class Demo(persistent.Persistent):
+    ...     counter = 0
+    ...     def increase(self, value=1):
+    ...         self.counter += value
+    ...
+    >>> demo = root['demo'] = Demo()
+    >>> demo.counter
+    0
+    >>> j = root['j'] = zc.async.job.Job(demo.increase)
+    >>> j # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.async.job.Job (oid ?, db ?)
+     ``zc.async.doctest_test.Demo (oid ?, db ?) :increase()``>
+
+    >>> transaction.commit()
+    >>> j # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.async.job.Job (oid ..., db 'unnamed')
+     ``zc.async.doctest_test.Demo (oid ..., db 'unnamed') :increase()``>
+    >>> j() # result is None
+    >>> demo.counter
+    1
+
+So our two calls so far have returned direct successes.  This one returns
+a failure, because the wrapped call raises an exception.
+
+    >>> def callFailure():
+    ...     raise RuntimeError('Bad Things Happened Here')
+    ...
+    >>> j = root['j'] = zc.async.job.Job(callFailure)
+    >>> transaction.commit()
+    >>> res = j()
+    >>> j.result
+    <zc.twist.Failure exceptions.RuntimeError>
+
+These are standard twisted Failures, except that frames in the stored
+traceback have been converted to reprs, so that we don't keep references
+around when we pass the Failures around (over ZEO, for instance)
+[#no_live_frames]_.  This doesn't stop us from getting nice tracebacks,
+though.
+
+    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    exceptions.RuntimeError: Bad Things Happened Here
+
+Note that all calls can return a failure explicitly, rather than raising
+an exception that the job converts to an exception.  However, there
+is an important difference in behavior.  If a wrapped call raises an
+exception, the job aborts the transaction; but if the wrapped call
+returns a failure, no abort occurs.  Wrapped calls that explicitly return
+failures are thus responsible for any necessary transaction aborts.  See
+the footnote for an example [#explicit_failure_example]_.
+
+Now let's return a job from the job.  This generally represents a result
+that is waiting on another asynchronous persistent call, which would
+normally be called by a worker thread in a dispatcher.  We'll fire the
+second call ourselves for this demonstration.
+
+    >>> def innerCall():
+    ...     return 42
+    ...
+    >>> ij = root['ij'] = zc.async.job.Job(innerCall)
+    >>> def callJob():
+    ...     return ij
+    ...
+    >>> j = root['j'] = zc.async.job.Job(callJob)
+    >>> transaction.commit()
+    >>> res = j()
+    >>> res is ij
+    True
+
+While we are waiting for the result, the status is ACTIVE.
+
+    >>> j.status == zc.async.interfaces.ACTIVE
+    True
+
+When we call the inner job, the result will be placed on the outer job.
+
+    >>> j.result # None
+    >>> res = ij()
+    >>> j.result
+    42
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
+
+This is accomplished with callbacks, discussed below in the Callbacks_
+section.
+
+Now we'll return a Twisted deferred.  The story is almost identical to
+the inner job story, except that, in our demonstration, we must handle
+transactions, because the deferred story uses the ``zc.twist`` package
+to let the Twisted reactor communicate safely with the ZODB: see
+the package's README for details.
+
+    >>> import twisted.internet.defer
+    >>> inner_d = twisted.internet.defer.Deferred()
+    >>> def callDeferred():
+    ...     return inner_d
+    ...
+    >>> j = root['j2'] = zc.async.job.Job(callDeferred)
+    >>> transaction.commit()
+    >>> res = j()
+    >>> res is inner_d
+    True
+    >>> j.status == zc.async.interfaces.ACTIVE
+    True
+    >>> j.result # None
+
+After the deferred receives its result, we need to sync our connection to see
+it.
+
+    >>> inner_d.callback(42)
+    >>> j.result # still None; we need to sync our connection to see the result
+    >>> j.status == zc.async.interfaces.ACTIVE # it's completed, but need to sync
+    True
+    >>> trans = transaction.begin() # sync our connection
+    >>> j.result
+    42
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
+
+As the last step in looking at the basics, let's look at passing arguments
+into the job.  They can be persistent objects or generally picklable
+objects, and they can be ordered or keyword arguments.
+
+    >>> class PersistentDemo(persistent.Persistent):
+    ...     def __init__(self, value=0):
+    ...         self.value = value
+    ...
+    >>> root['demo2'] = PersistentDemo()
+    >>> import operator
+    >>> def argCall(ob, ob2=None, value=0, op=operator.add):
+    ...     for o in (ob, ob2):
+    ...         if o is not None:
+    ...             o.value = op(o.value, value)
+    ...
+    >>> j = root['j3'] = zc.async.job.Job(
+    ...     argCall, root['demo2'], value=4)
+    >>> transaction.commit()
+    >>> j # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.async.job.Job (oid ..., db 'unnamed')
+     ``zc.async.doctest_test.argCall(zc.async.doctest_test.PersistentDemo (oid ..., db 'unnamed'),
+                                     value=4)``>
+    >>> j()
+    >>> root['demo2'].value
+    4
+
+And, of course, this job acts as a partial: we can specify some
+arguments when the job is made, and some when it is called.
+
+    >>> root['demo3'] = PersistentDemo(10)
+    >>> j = root['j3'] = zc.async.job.Job(
+    ...     argCall, root['demo2'], value=4)
+    >>> transaction.commit()
+    >>> j(root['demo3'], op=operator.mul)
+    >>> root['demo2'].value
+    16
+    >>> root['demo3'].value
+    40
+
+This last feature makes jobs possible to use for callbacks: our next
+topic.
+
+Callbacks
+---------
+
+The job object can also be used to handle return values and
+exceptions from the call.  The ``addCallbacks`` method enables the
+functionality.  Its signature is (success=None, failure=None).  It may
+be called multiple times, each time adding a success and/or failure
+callable that takes an end result: a value or a zc.async.Failure object,
+respectively.  Failure objects are passed to failure callables, and
+any other results are passed to success callables.
+
+The return value of the success and failure callables is
+important for chains and for determining whether a job had any
+errors that need logging, as we'll see below.  The call to
+``addCallbacks`` returns a job, which can be used for chaining (see
+``Chaining Callbacks``_).
+
+Let's look at a simple example.
+
+    >>> def call(*args):
+    ...     res = 1
+    ...     for a in args:
+    ...         res *= a
+    ...     return res
+    ...
+    >>> def callback(res):
+    ...     return 'the result is %r' % (res,)
+    ...
+    >>> j = root['j4'] = zc.async.job.Job(call, 2, 3)
+    >>> j_callback = j.addCallbacks(callback)
+    >>> transaction.commit()
+    >>> res = j(4)
+    >>> j.result
+    24
+    >>> res
+    24
+    >>> j_callback.result
+    'the result is 24'
+
+Here are some callback examples adding a success and a failure
+simultaneously.  This one causes a success...
+
+    >>> def multiply(first, second, third=None):
+    ...     res = first * second
+    ...     if third is not None:
+    ...         res *= third
+    ...     return res
+    ...
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 3)
+    >>> transaction.commit()
+    >>> def success(res):
+    ...     print "success!", res
+    ...
+    >>> def failure(f):
+    ...     print "failure.", f
+    ...
+    >>> j.addCallbacks(success, failure) # doctest: +ELLIPSIS
+    <zc.async.job.Job ...>
+    >>> res = j()
+    success! 15
+
+...and this one a failure.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, None)
+    >>> transaction.commit()
+    >>> j.addCallbacks(success, failure) # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+    >>> res = j() # doctest: +ELLIPSIS
+    failure. [Failure instance: Traceback: exceptions.TypeError...]
+
+you can also add multiple callbacks.
+
+    >>> def also_success(val):
+    ...     print "also a success!", val
+    ...
+    >>> def also_failure(f):
+    ...     print "also a failure.", f
+    ...
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 3)
+    >>> transaction.commit()
+    >>> j.addCallbacks(success) # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+    >>> j.addCallbacks(also_success) # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+    >>> res = j()
+    success! 15
+    also a success! 15
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, None)
+    >>> transaction.commit()
+    >>> j.addCallbacks(failure=failure) # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+    >>> j.addCallbacks(failure=also_failure) # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+    >>> res = j() # doctest: +ELLIPSIS
+    failure. [Failure instance: Traceback: exceptions.TypeError...]
+    also a failure. [Failure instance: Traceback: exceptions.TypeError...]
+
+Chaining Callbacks
+------------------
+
+Sometimes it's desirable to have a chain of callables, so that one callable
+effects the input of another.  The returned job from addCallables can
+be used for that purpose.  Effectively, the logic for addCallables is this:
+
+    def success_or_failure(success, failure, res):
+        if zc.async.interfaces.IFailure.providedBy(res):
+            if failure is not None:
+                res = failure(res)
+        elif success is not None:
+            res = success(res)
+        return res
+
+    class Job(...):
+        ...
+        def addCallbacks(self, success=None, failure=None):
+            if success is None and failure is None:
+                return
+            res = Job(success_or_failure, success, failure)
+            self.callbacks.append(res)
+            return res
+
+Here's a simple chain, then.  We multiply 5 * 3, then that result by 4, then
+print the result in the ``success`` function.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 3)
+    >>> transaction.commit()
+    >>> j.addCallbacks(zc.async.job.Job(multiply, 4)
+    ...               ).addCallbacks(success) # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+    >>> res = j()
+    success! 60
+
+A less artificial use case is to handle errors (like try...except) or do
+cleanup (like try...finally).  Here's an example of handling errors.
+
+    >>> def handle_failure(f):
+    ...     return 0
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, None)
+    >>> transaction.commit()
+    >>> j.addCallbacks(
+    ...     failure=handle_failure).addCallbacks(success) # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+    >>> res = j()
+    success! 0
+
+    >>> isinstance(j.result, twisted.python.failure.Failure)
+    True
+
+Callbacks on Completed Job
+--------------------------
+
+When you add a callback to a job that has been completed, it is performed
+immediately.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> transaction.commit()
+    >>> res = j()
+    >>> j.result
+    10
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
+    >>> j_callback = j.addCallbacks(zc.async.job.Job(multiply, 3))
+    >>> j_callback.result
+    30
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
+
+Chaining Jobs
+-------------
+
+It's also possible to achieve a somewhat similar pattern by using a
+job as a success or failure callable, and then add callbacks to the
+second job.  This differs from the other approach in that you are only
+adding callbacks to one side, success or failure, not the effective
+combined result; and errors are nested in arguments.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 3)
+    >>> transaction.commit()
+    >>> j_callback = j.addCallbacks(success)
+    >>> j2 = zc.async.job.Job(multiply, 4)
+    >>> j_callback_2 = j.addCallbacks(j2)
+    >>> j_callback_3 = j2.addCallbacks(also_success)
+    >>> res = j()
+    success! 15
+    also a success! 60
+
+Failing
+-------
+
+Speaking again of failures, it's worth discussing two other aspects of
+failing.  One is that jobs offer an explicit way to fail a call.  It
+can be called when the job has a NEW, PENDING, ASSIGNED or ACTIVE status. 
+The primary use cases for this method are to cancel a job that is
+overdue to start, and to cancel a job that was in progress by a
+worker thread in a dispatcher when the dispatcher died (more on that below).
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> transaction.commit()
+    >>> j.fail()
+    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    zc.async.interfaces.AbortedError:
+
+``fail`` calls all failure callbacks with the failure.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> j_callback = j.addCallbacks(failure=failure)
+    >>> transaction.commit()
+    >>> res = j.fail() # doctest: +ELLIPSIS
+    failure. [Failure instance: Traceback...zc.async.interfaces.AbortedError...]
+
+As seen above, it fails with zc.async.interfaces.AbortedError by default.
+You can also pass in a different error.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> transaction.commit()
+    >>> j.fail(RuntimeError('failed'))
+    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    exceptions.RuntimeError: failed
+
+As mentioned, if a dispatcher dies when working on an active task, the
+active task should be aborted using ``fail``, so the method also works if
+a job has the ACTIVE status.  We'll reach under the covers to show this.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> transaction.commit()
+    >>> j.fail()
+    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    zc.async.interfaces.AbortedError:
+
+It won't work for failing tasks in COMPLETED or CALLBACKS status.
+
+    >>> j.fail()
+    Traceback (most recent call last):
+    ...
+    BadStatusError: can only call fail on a job with NEW, PENDING, ASSIGNED, or ACTIVE status
+    >>> j._status = zc.async.interfaces.CALLBACKS
+    >>> j.fail()
+    Traceback (most recent call last):
+    ...
+    BadStatusError: can only call fail on a job with NEW, PENDING, ASSIGNED, or ACTIVE status
+
+Using ``resumeCallbacks``
+-------------------------
+
+So ``fail`` is the proper way to handle an active job that was being
+worked on by on eof a dead dispatcher's worker thread, but how does one
+handle a job that was in the CALLBACKS status?  The answer is to use
+resumeCallbacks.  Any job that is still pending will be called; any
+job that is active will be failed; any job that is in the middle
+of calling its own callbacks will have its ``resumeCallbacks`` called; and
+any job that is completed will be ignored.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> j._result = 10
+    >>> j._status = zc.async.interfaces.CALLBACKS
+    >>> completed_j = zc.async.job.Job(multiply, 3)
+    >>> callbacks_j = zc.async.job.Job(multiply, 4)
+    >>> callbacks_j._result = 40
+    >>> callbacks_j._status = zc.async.interfaces.CALLBACKS
+    >>> sub_callbacks_j = callbacks_j.addCallbacks(
+    ...     zc.async.job.Job(multiply, 2))
+    >>> active_j = zc.async.job.Job(multiply, 5)
+    >>> active_j._status = zc.async.interfaces.ACTIVE
+    >>> pending_j = zc.async.job.Job(multiply, 6)
+    >>> for _j in completed_j, callbacks_j, active_j, pending_j:
+    ...     j.callbacks.put(_j)
+    ...
+    >>> transaction.commit()
+    >>> res = completed_j(10)
+    >>> j.resumeCallbacks()
+    >>> sub_callbacks_j.result
+    80
+    >>> sub_callbacks_j.status == zc.async.interfaces.COMPLETED
+    True
+    >>> print active_j.result.getTraceback()
+    ... # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    zc.async.interfaces.AbortedError:
+    >>> active_j.status == zc.async.interfaces.COMPLETED
+    True
+    >>> pending_j.result
+    60
+    >>> pending_j.status == zc.async.interfaces.COMPLETED
+    True
+
+Introspecting and Mutating Arguments
+------------------------------------
+
+Job arguments can be introspected and mutated.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 3)
+    >>> transaction.commit()
+    >>> j.args
+    [5, 3]
+    >>> j.kwargs
+    {}
+    >>> j.kwargs['third'] = 2
+    >>> j()
+    30
+
+This can allow wrapped callables to have a reference to the job
+itself.
+
+    >>> def show(v):
+    ...     print v
+    ...
+    >>> j = root['j'] = zc.async.job.Job(show)
+    >>> transaction.commit()
+    >>> j.args.append(j)
+    >>> res = j() # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+
+A class method on Job, ``bind``, can simplify this.  It puts the job as
+the first argument to the callable, as if the callable were bound as a method
+on the job.
+
+    >>> j = root['j'] = zc.async.job.Job.bind(show)
+    >>> transaction.commit()
+    >>> res = j() # doctest: +ELLIPSIS
+    <zc.async.job.Job (oid ...>
+
+Result and Status
+-----------------
+
+Jobs know about their status, and after a successful call also know
+their result, whether it is a Failure or another value.  Possible
+statuses are the constants in zc.async.interfaces named NEW, PENDING,
+ASSIGNED, ACTIVE, CALLBACKS, and COMPLETED.
+
+Without the rest of zc.async, the status values are simply NEW, ACTIVE,
+CALLBACKS, and COMPLETED.
+
+    >>> def showStatus(job, *ignore):
+    ...     status = job.status
+    ...     for nm in ('NEW', 'PENDING', 'ASSIGNED', 'ACTIVE', 'CALLBACKS',
+    ...                'COMPLETED'):
+    ...         val = getattr(zc.async.interfaces, nm)
+    ...         if status == val:
+    ...             print nm
+    ...
+    >>> j = root['j'] = zc.async.job.Job.bind(showStatus)
+    >>> transaction.commit()
+    >>> j_callback = j.addCallbacks(zc.async.job.Job(showStatus, j))
+
+    >>> showStatus(j)
+    NEW
+    >>> j.result # None
+    >>> res = j()
+    ACTIVE
+    CALLBACKS
+    >>> showStatus(j)
+    COMPLETED
+
+Setting the ``parent`` attribute to a queue changes the status to PENDING,
+and setting it to an agent changes the status to ASSIGNED.  In this case,
+the common status flow should be as follows: NEW -> PENDING -> ASSIGNED ->
+ACTIVE -> CALLBACKS -> COMPLETED.  Here's the same example above, along with
+setting the ``parent`` to change the status.
+
+    >>> j = root['j'] = zc.async.job.Job.bind(showStatus)
+    >>> transaction.commit()
+    >>> j_callback = j.addCallbacks(zc.async.job.Job(showStatus, j))
+
+    >>> showStatus(j)
+    NEW
+
+    >>> print j.queue
+    None
+    >>> print j.agent
+    None
+    >>> import zc.async.interfaces
+    >>> import zope.interface
+    >>> import zc.async.utils
+    >>> import datetime
+    >>> import pytz
+    >>> class StubQueue:
+    ...     zope.interface.implements(zc.async.interfaces.IQueue)
+    ...
+    >>> class StubDispatcherAgents:
+    ...     zope.interface.implements(zc.async.interfaces.IDispatcherAgents)
+    ...
+    >>> class StubAgent:
+    ...     zope.interface.implements(zc.async.interfaces.IAgent)
+    ...     def jobCompleted(self, job):
+    ...         job.key = zc.async.utils.dt_to_long(
+    ...             datetime.datetime.now(pytz.UTC))
+    ...
+    >>> queue = StubQueue()
+    >>> dispatcheragents = StubDispatcherAgents()
+    >>> agent = StubAgent()
+    >>> agent.parent = dispatcheragents
+    >>> dispatcheragents.parent = queue
+    >>> j.parent = queue
+    >>> j.queue is queue
+    True
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> j.parent = agent
+    >>> j.queue is queue
+    True
+    >>> j.agent is agent
+    True
+    >>> j.status == zc.async.interfaces.ASSIGNED
+    True
+
+    >>> j.result # None
+    >>> res = j()
+    ACTIVE
+    CALLBACKS
+    >>> showStatus(j)
+    COMPLETED
+
+A job may only be called when the status is NEW or ASSIGNED: calling a
+partial again raises a BadStatusError.
+
+    >>> j()
+    Traceback (most recent call last):
+    ...
+    BadStatusError: can only call a job with NEW or ASSIGNED status
+
+Other similar restrictions include the following:
+
+- A job may not call itself [#call_self]_.
+
+- Also, a job's direct callback may not call the job
+  [#callback_self]_.
+
+More Job Introspection
+----------------------
+
+We've already shown that it is possible to introspect status, result,
+args, and kwargs.  Two other aspects of the basic job functionality are
+introspectable: callable and callbacks.
+
+The callable is the callable (function or method of a picklable object) that
+the job will call.  You can change it while the job is in a pending
+status.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 2)
+    >>> j.callable is multiply
+    True
+    >>> j.callable = root['demo'].increase
+    >>> j.callable == root['demo'].increase
+    True
+    >>> transaction.commit()
+    >>> root['demo'].counter
+    2
+    >>> res = j()
+    >>> root['demo'].counter
+    4
+
+The callbacks are a queue of the callbacks added by addCallbacks (or the
+currently experimental and underdocumented addCallback).  Currently the
+code may allow for direct mutation of the callbacks, but it is strongly
+suggested that you do not mutate the callbacks, especially not adding them
+except through addCallbacks or addCallback.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 2, 8)
+    >>> len(j.callbacks)
+    0
+    >>> j_callback = j.addCallbacks(zc.async.job.Job(multiply, 5))
+    >>> len(j.callbacks)
+    1
+
+When you use ``addCallbacks``, the job you get back has a callable with
+the success and failure jobs you passed in as arguments.  Moreover, the
+job you get back already has a callback, for safety reasons.  If a
+dispatcher dies while the job is in progress, active argument jobs
+should be cleaned up and will not be cleaned up automatically with the
+logic in ``resumeCallbacks`` (by design: this may not be desired behavior
+in all cases).  Therefore we add a callback to the main callback that
+does this job.
+
+    >>> j.callbacks[0] is j_callback
+    True
+    >>> len(j_callback.callbacks)
+    1
+
+``addCallback`` does not have this characteristic (you are responsible for any
+internal jobs, therefore).
+
+    >>> j_callback2 = zc.async.job.Job(multiply, 9)
+    >>> j_callback2 is j.addCallback(j_callback2)
+    True
+
+To continue with our example of introspecting the job...
+
+    >>> len(j.callbacks)
+    2
+    >>> j.callbacks[1] is j_callback2
+    True
+    >>> transaction.commit()
+    >>> res = j()
+    >>> j.result
+    16
+    >>> j_callback.result
+    80
+    >>> j_callback2.result
+    144
+    >>> len(j.callbacks)
+    2
+    >>> j.callbacks[0] is j_callback
+    True
+    >>> j.callbacks[1] is j_callback2
+    True
+
+The ``parent`` attribute should hold the immediate parent of a job. This
+means that a pending job will be within a queue; an assigned and active
+non-callback partial will be within an agent's queue (which is within a
+IDispatcherAgents collection, which is within a queue); and a callback
+will be within another job (which may be intermediate to the top
+level job, in which case parent of the intermediate job is
+the top level).  Here's an example.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 3, 5)
+    >>> j_callback = zc.async.job.Job(multiply, 2)
+    >>> j_callback2 = j.addCallbacks(j_callback)
+    >>> j_callback.parent is j_callback2
+    True
+    >>> j_callback2.parent is j
+    True
+    >>> transaction.abort()
+
+=========
+Footnotes
+=========
+
+.. [#set_up] We'll actually create the state that the text needs here.
+    One thing to notice is that the ``zc.async.configure.base`` registers
+    the Job class as an adapter from functions and methods.
+
+    >>> from ZODB.tests.util import DB
+    >>> db = DB()
+    >>> conn = db.open()
+    >>> root = conn.root()
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+
+.. [#verify] Verify interface
+
+    >>> from zope.interface.verify import verifyObject
+    >>> verifyObject(zc.async.interfaces.IJob, j)
+    True
+    
+    Note that status and result are readonly.
+    
+    >>> j.status = 1
+    Traceback (most recent call last):
+    ...
+    AttributeError: can't set attribute
+    >>> j.result = 1
+    Traceback (most recent call last):
+    ...
+    AttributeError: can't set attribute
+
+.. [#no_live_frames] Failures have two particularly dangerous bits: the
+    traceback and the stack.  We use the __getstate__ code on Failures
+    to clean them up.  This makes the traceback (``tb``) None...
+    
+    >>> j.result.tb # None
+    
+    ...and it makes all of the values in the stack--the locals and
+    globals-- into strings.  The stack is a list of lists, in which each
+    internal list represents a frame, and contains five elements: the
+    code name (``f_code.co_name``), the code file (``f_code.co_filename``),
+    the line number (``f_lineno``), an items list of the locals, and an
+    items list for the globals.  All of the values in the items list
+    would normally be objects, but are now strings.
+    
+    >>> for (codename, filename, lineno, local_i, global_i) in j.result.stack:
+    ...     for k, v in local_i:
+    ...         assert isinstance(v, basestring), 'bad local %s' % (v,)
+    ...     for k, v in global_i:
+    ...         assert isinstance(v, basestring), 'bad global %s' % (v,)
+    ...
+    
+    Here's a reasonable question.  The Twisted Failure code has a
+    __getstate__ that cleans up the failure, and that's even what we are
+    using to sanitize the failure.  If the failure is attached to a
+    job and stored in the ZODB, it is going to be cleaned up anyway.
+    Why explicitly clean up the failure even before it is pickled?
+
+    The answer might be classified as paranoia.  Just in case the failure
+    is kept around in memory longer--by being put on a deferred, or somehow
+    otherwise passed around--we want to eliminate any references to objects
+    in the connection as soon as possible.
+
+    Unfortunately, the __getstate__ code in the Twisted Failure can cause
+    some interaction problems for code that has a __repr__ with side effects--
+    like xmlrpclib, unfortunately.  The ``zc.twist`` package has a monkeypatch
+    for that particular problem, thanks to Florent Guillaume at Nuxeo, but
+    others may be discovered.
+
+.. [#explicit_failure_example] As the main text describes, if a call raises
+    an exception, the job will abort the transaction; but if it
+    returns a failure explicitly, the call is responsible for making any
+    desired changes to the transaction (such as aborting) before the
+    job calls commit.  Compare.  Here is a call that raises an
+    exception, and rolls back changes.
+    
+    (Note that we are passing arguments to the job, a topic that has
+    not yet been discussed in the text when this footnote is given: read
+    on a bit in the main text to see the details, if it seems surprising
+    or confusing.)
+
+    >>> def callAndRaise(ob):
+    ...     ob.increase()
+    ...     print ob.counter
+    ...     raise RuntimeError
+    ...
+    >>> j = root['raise_exception_example'] = zc.async.job.Job(
+    ...     callAndRaise, root['demo'])
+    >>> transaction.commit()
+    >>> root['demo'].counter
+    1
+    >>> res = j() # shows the result of the print in ``callAndRaise`` above.
+    2
+    >>> root['demo'].counter # it was rolled back
+    1
+    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    exceptions.RuntimeError:
+
+    Here is a call that returns a failure, and does not abort, even though
+    the job result looks very similar.
+
+    >>> import twisted.python.failure
+    >>> def returnExplicitFailure(ob):
+    ...     ob.increase()
+    ...     try:
+    ...         raise RuntimeError
+    ...     except RuntimeError:
+    ...         # we could have just made and returned a failure without the
+    ...         # try/except, but this is intended to make crystal clear that
+    ...         # exceptions are irrelevant if you catch them and return a
+    ...         # failure
+    ...         return twisted.python.failure.Failure()
+    ...
+    >>> j = root['explicit_failure_example'] = zc.async.job.Job(
+    ...     returnExplicitFailure, root['demo'])
+    >>> transaction.commit()
+    >>> res = j()
+    >>> root['demo'].counter # it was not rolled back automatically
+    2
+    >>> j.result
+    <zc.twist.Failure exceptions.RuntimeError>
+    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    exceptions.RuntimeError:
+
+.. [#call_self] Here's a job trying to call itself.
+
+    >>> def call(obj, *ignore):
+    ...     return obj()
+    ...
+    >>> j = root['j'] = zc.async.job.Job.bind(call)
+    >>> transaction.commit()
+    >>> res = j()
+    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    zc.async.interfaces.BadStatusError: can only call a job with NEW or ASSIGNED status
+
+.. [#callback_self] Here's a job's callback trying to call the job.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 3, 4)
+    >>> j_callback = j.addCallbacks(
+    ...     zc.async.job.Job(call, j)).addCallbacks(failure=failure)
+    >>> transaction.commit()
+    >>> res = j() # doctest: +ELLIPSIS
+    failure. [Failure instance: Traceback: zc.async.interfaces.BadStatusError...]
+    >>> j.result # the main job still ran to completion
+    12

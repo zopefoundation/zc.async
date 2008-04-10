@@ -1,66 +1,57 @@
 import os
-import shutil
 import unittest
 
-from zope.testing import doctest, module
+from zope.testing import doctest, module, loggingsupport
 import zope.component
 import zope.component.testing
 import zope.component.eventtesting
-import zc.async.partial
-import zc.async.subscribers
-
-def modSetUp(test):
-    zope.component.testing.setUp(test)
-    module.setUp(test, 'zc.async.doctest_test')
-
-def modTearDown(test):
-    module.tearDown(test)
-    zope.component.testing.tearDown(test)
+import zc.async.interfaces
+import zc.async.testing
 
 def uuidSetUp(test):
-    test.globs['old_instance_home'] = os.environ.get("INSTANCE_HOME")
-    os.environ['INSTANCE_HOME'] = os.path.join(os.path.dirname(
-        zc.async.interfaces.__file__), '_test_tmp')
-    os.mkdir(os.environ['INSTANCE_HOME'])
-    os.mkdir(os.path.join(os.environ['INSTANCE_HOME'], 'etc'))
+    import zc.async.interfaces
+    os.environ['ZC_ASYNC_UUID'] = os.path.join(os.path.dirname(
+        zc.async.interfaces.__file__), 'uuid.txt')
+    import zc.async.instanceuuid
+    uuid = zc.async.instanceuuid.getUUID()
+    if uuid != zc.async.instanceuuid.UUID: # test run changed it...
+        zc.async.instanceuuid.UUID = uuid
 
 def uuidTearDown(test):
-    shutil.rmtree(os.environ['INSTANCE_HOME'])
-    if test.globs['old_instance_home'] is None:
-        del os.environ['INSTANCE_HOME']
-    else:
-        os.environ['INSTANCE_HOME'] = test.globs['old_instance_home']
-    del test.globs['old_instance_home']
+    os.remove(os.environ['ZC_ASYNC_UUID'])
 
-def readmeSetUp(test):
-    modSetUp(test)
+def modSetUp(test):
     uuidSetUp(test)
+    zope.component.testing.setUp(test)
+    module.setUp(test, 'zc.async.doctest_test')
     zope.component.eventtesting.setUp(test)
-    test.globs['installerAndNotifier'] = (
-        zc.async.subscribers.basicInstallerAndNotifier)
-    from zc.async import instanceuuid
-    instanceuuid.UUID = instanceuuid.getUUID()
-    zope.component.provideUtility(instanceuuid.UUID, name='instance')
+    test.globs['event_logs'] = loggingsupport.InstalledHandler(
+        'zc.async.events')
+    test.globs['trace_logs'] = loggingsupport.InstalledHandler(
+        'zc.async.trace')
 
-def altReadmeSetUp(test):
-    modSetUp(test)
-    uuidSetUp(test)
-    zope.component.eventtesting.setUp(test)
-    test.globs['installerAndNotifier'] = (
-        zc.async.subscribers.installerAndNotifier)
-    from zc.async import instanceuuid
-    instanceuuid.UUID = instanceuuid.getUUID()
-    zope.component.provideUtility(instanceuuid.UUID, name='instance')
-
-def readmeTearDown(test):
-    r = test.globs.get('faux')
-    if r:
-        for when, eventname, callable in r.triggers:
-            if eventname == 'shutdown': # test didn't run to completion
-                # let's clean up
-                callable()
+def modTearDown(test):
+    import transaction
+    transaction.abort()
+    import zc.async.dispatcher
+    zc.async.dispatcher.clear()
     uuidTearDown(test)
-    modTearDown(test)
+    zc.async.testing.tearDownDatetime()
+    module.tearDown(test)
+    zope.component.testing.tearDown(test)
+    import signal
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    if 'storage' in test.globs:
+        test.globs['db'].close()
+        test.globs['storage'].close()
+        test.globs['storage'].cleanup()
+    if 'async_storage' in test.globs:
+        test.globs['async_db'].close()
+        test.globs['async_storage'].close()
+        test.globs['async_storage'].cleanup()
+    for logs in (test.globs['event_logs'], test.globs['trace_logs']):
+        logs.clear()
+        logs.uninstall()
 
 def test_instanceuuid():
     """This module provides access to a UUID that is intended to uniquely
@@ -105,23 +96,41 @@ def test_instanceuuid():
     would have done that...though maybe that's not unfortunate :-) )
 
     """
+def test_long_to_dt():
+    """The utils module provides two methods to convert a date to a long
+    and back again.  Dates in the future get smaller and smaller, so
+    dates are arranged from newest to oldest in a BTree.  It leaves an
+    extra 4 bits at the bottom.  It can convert all possible datetimes.
+    
+    >>> from zc.async.utils import long_to_dt, dt_to_long
+    >>> import datetime
+    >>> now = datetime.datetime.now()
+    >>> isinstance(dt_to_long(now), long)
+    True
+    >>> now == long_to_dt(dt_to_long(now))
+    True
+    >>> now == long_to_dt(dt_to_long(now)+15)
+    True
+    >>> datetime.datetime.max == long_to_dt(dt_to_long(datetime.datetime.max))
+    True
+    >>> CE = datetime.datetime(1,1,1)
+    >>> CE == long_to_dt(dt_to_long(CE))
+    True
+    """
 
 def test_suite():
     return unittest.TestSuite((
         doctest.DocTestSuite(setUp=uuidSetUp, tearDown=uuidTearDown),
         doctest.DocFileSuite(
-            'partial.txt',
-            'partials_and_transactions.txt',
-            'datamanager.txt',
+            'job.txt',
+            'jobs_and_transactions.txt',
+            'queue.txt',
+            'agent.txt',
+            'dispatcher.txt',
+            'subscribers.txt',
+            'README.txt',
+            'README_2.txt',
             setUp=modSetUp, tearDown=modTearDown,
-            optionflags=doctest.INTERPRET_FOOTNOTES),
-        doctest.DocFileSuite(
-            'README.txt',
-            setUp=readmeSetUp, tearDown=readmeTearDown,
-            optionflags=doctest.INTERPRET_FOOTNOTES),
-        doctest.DocFileSuite(
-            'README.txt',
-            setUp=altReadmeSetUp, tearDown=readmeTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),
         ))
 

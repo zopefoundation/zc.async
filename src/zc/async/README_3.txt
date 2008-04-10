@@ -1,0 +1,302 @@
+=========================
+Configuration with Zope 3
+=========================
+
+Our last main section can be the shortest yet, both because we've already
+introduced all of the main concepts, and because we will be leveraging
+conveniences to automate much of the configuration shown in the section
+discussing configuration without Zope 3.
+
+If you want to set up a client alone, without a dispatcher, include
+configure.zcml, make sure you share the database in which the queues will be
+held, and make sure that either the
+zope.app.keyreference.persistent.connectionOfPersistent adapter is registered,
+or zc.twist.connection.
+
+For a client/server combination, use zcml that is something like the
+basic_dispatcher_policy.zcml, make sure you have access to the database with
+the queues, configure logging and monitoring as desired, configure the
+``ZC_ASYNC_UUID`` environmental variable in zdaemon.conf if you are in
+production, and start up! Getting started is really pretty easy. You can even
+start a dispatcher-only version by not starting any servers in zcml.
+
+We'll look at this by making a zope.conf-alike and a site.zcml-alike.  We'll
+need a place to put some files, so we'll use a temporary directory.  This, and
+the comments in the files that we set up, are the primary differences between
+our examples and a real set up.
+
+So, without further ado, here is the text of our zope.conf-alike, and of our
+site.zcml-alike [#get_vals]_.  We'll be using two databases for this example,
+as you might want for a site with a fair amount of zc.async usage.
+
+    >>> zope_conf = """
+    ... site-definition %(site_zcml_file)s
+    ...
+    ... <zodb main>
+    ...   <filestorage>
+    ...     create true
+    ...     path %(main_storage_path)s
+    ...   </filestorage>
+    ... </zodb>
+    ... 
+    ... <zodb async>
+    ...   <filestorage>
+    ...     create true
+    ...     path %(async_storage_path)s
+    ...   </filestorage>
+    ... </zodb>
+    ... 
+    ... <product-config zc.z3monitor>
+    ...   port %(monitor_port)s
+    ... </product-config>
+    ... 
+    ... <logger>
+    ...   level debug
+    ...   name zc.async
+    ...   propagate no
+    ... 
+    ...   <logfile>
+    ...     path %(async_event_log)s
+    ...   </logfile>
+    ... </logger>
+    ... 
+    ... <logger>
+    ...   level debug
+    ...   name zc.async.trace
+    ...   propagate no
+    ... 
+    ...   <logfile>
+    ...     path %(async_trace_log)s
+    ...   </logfile>
+    ... </logger>
+    ... 
+    ... <eventlog>
+    ...   <logfile>
+    ...     formatter zope.exceptions.log.Formatter
+    ...     path STDOUT
+    ...   </logfile>
+    ...   <logfile>
+    ...     formatter zope.exceptions.log.Formatter
+    ...     path %(event_log)s
+    ...   </logfile>
+    ... </eventlog>
+    ... """ % {'site_zcml_file': site_zcml_file,
+    ...        'main_storage_path': os.path.join(dir, 'main.fs'),
+    ...        'async_storage_path': os.path.join(dir, 'async.fs'),
+    ...        'monitor_port': monitor_port,
+    ...        'event_log': os.path.join(dir, 'z3.log'),
+    ...        'async_event_log': os.path.join(dir, 'async.log'),
+    ...        'async_trace_log': os.path.join(dir, 'async_trace.log'),}
+    ... 
+
+In a non-trivial production system of you will also probably want to replace
+the two file storages with two <zeoclient> stanzas.
+
+Also note that an open monitor port should be behind a firewall, of course.
+
+We'll assume that zdaemon.conf has been set up to put ZC_ASYNC_UUID in the
+proper place too.  It would have looked something like this in the
+zdaemon.conf::
+
+    <environment>
+      ZC_ASYNC_UUID /path/to/uuid.txt
+    </environment>
+
+(Other tools, such as supervisor, also can work, of course; their spellings are
+different and are "left as an exercise to the reader" at the moment.)
+
+We'll do that by hand:
+
+    >>> os.environ['ZC_ASYNC_UUID'] = os.path.join(dir, 'uuid.txt')
+
+Now let's define our site-zcml-alike.
+
+    >>> site_zcml = """
+    ... <configure xmlns='http://namespaces.zope.org/zope'
+    ...            xmlns:meta="http://namespaces.zope.org/meta"
+    ...            >
+    ... <include package="zope.component" file="meta.zcml" />
+    ... <include package="zope.component" />
+    ... <include package="zc.z3monitor" />
+    ... <include package="zc.async" file="multidb_dispatcher_policy.zcml" />
+    ...
+    ... <!-- this is usually handled in Zope applications by the
+    ...      zope.app.keyreference.persistent.connectionOfPersistent adapter -->
+    ... <adapter factory="zc.twist.connection" />
+    ... </configure>
+    ... """
+
+Now we're done.
+
+If you want to change policy, change "multidb_dispatcher_policy.zcml" to
+"dispatcher.zcml" in the example above and register your replacement bits for
+the policy in "multidb_dispatcher_policy.zcml".  You'll see that most of that
+comes from code in subscribers.py, which can be adjusted easily.
+
+If we process these files, and wait for a poll, we've got a working
+set up [#process]_.
+
+    >>> import zc.async.dispatcher
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> import pprint
+    >>> pprint.pprint(get_poll(0))
+    {'': {'main': {'active jobs': [],
+                   'error': None,
+                   'len': 0,
+                   'new jobs': [],
+                   'size': 3}}}
+    >>> bool(dispatcher.activated)
+    True
+
+We can ask for a job to be performed, and get the result.
+
+    >>> conn = db.open()
+    >>> root = conn.root()
+    >>> import zc.async.interfaces
+    >>> queue = zc.async.interfaces.IQueue(root)
+    >>> import operator
+    >>> import zc.async.job
+    >>> job = queue.put(zc.async.job.Job(operator.mul, 21, 2))
+    >>> import transaction
+    >>> transaction.commit()
+    >>> wait_for_result(job)
+    42
+
+We can connect to the monitor server with telnet.
+
+    >>> import telnetlib
+    >>> tn = telnetlib.Telnet('127.0.0.1', monitor_port)
+    >>> tn.write('async status\n') # immediately disconnects
+    >>> print tn.read_all() # doctest: +ELLIPSIS
+    {
+        "poll interval": {
+            "seconds": ...
+        }, 
+        "status": "RUNNING", 
+        "time since last poll": {
+            "seconds": ...
+        }, 
+        "uptime": {
+            "seconds": ...
+        }, 
+        "uuid": "..."
+    }
+    <BLANKLINE>
+
+Now we'll "shut down" with a CTRL-C, or SIGINT, and clean up.
+
+    >>> import signal
+    >>> if getattr(os, 'getpid', None) is not None: # UNIXEN, not Windows
+    ...     pid = os.getpid()
+    ...     try:
+    ...         os.kill(pid, signal.SIGINT)
+    ...     except KeyboardInterrupt:
+    ...         if dispatcher.activated:
+    ...             assert False, 'dispatcher did not deactivate'
+    ...     else:
+    ...         print "failed to send SIGINT, or something"
+    ... else:
+    ...     dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+    ...     for i in range(30):
+    ...         if not dispatcher.activated:
+    ...             break
+    ...         time.sleep(0.1)
+    ...     else:
+    ...         assert False, 'dispatcher did not deactivate'
+    ...
+    >>> import transaction
+    >>> t = transaction.begin() # sync
+    >>> import zope.component
+    >>> import zc.async.interfaces
+    >>> uuid = zope.component.getUtility(zc.async.interfaces.IUUID)
+    >>> da = queue.dispatchers[uuid]
+    >>> bool(da.activated)
+    False
+
+    >>> db.close()
+    >>> db.databases['async'].close()
+    >>> import shutil
+    >>> shutil.rmtree(dir)
+
+Hopefully zc.async will be an easy-to-configure, easy-to-use, and useful tool
+for you! Good luck!
+
+.. ......... ..
+.. Footnotes ..
+.. ......... ..
+
+.. [#get_vals]
+
+    >>> import errno, os, random, socket, tempfile
+    >>> dir = tempfile.mkdtemp()
+    >>> site_zcml_file = os.path.join(dir, 'site.zcml')
+
+    >>> s = socket.socket()
+    >>> for i in range(20):
+    ...     monitor_port = random.randint(20000, 49151)
+    ...     try:
+    ...         s.bind(('127.0.0.1', monitor_port))
+    ...     except socket.error, e:
+    ...         if e.args[0] == errno.EADDRINUSE:
+    ...             pass
+    ...         else:
+    ...             raise
+    ...     else:
+    ...         s.close()
+    ...         break
+    ... else:
+    ...     assert False, 'could not find available port'
+    ...     monitor_port = None
+    ...
+
+.. [#process]
+
+    >>> zope_conf_file = os.path.join(dir, 'zope.conf')
+    >>> f = open(zope_conf_file, 'w')
+    >>> f.write(zope_conf)
+    >>> f.close()
+    >>> f = open(site_zcml_file, 'w')
+    >>> f.write(site_zcml)
+    >>> f.close()
+
+    >>> import zdaemon.zdoptions
+    >>> import zope.app.appsetup
+    >>> options = zdaemon.zdoptions.ZDOptions()
+    >>> options.schemadir = os.path.join(
+    ...     os.path.dirname(os.path.abspath(zope.app.appsetup.__file__)),
+    ...     'schema')
+    >>> options.realize(['-C', zope_conf_file])
+    >>> config = options.configroot
+
+    >>> import zope.app.appsetup.product
+    >>> zope.app.appsetup.product.setProductConfigurations(
+    ...     config.product_config)
+    >>> ignore = zope.app.appsetup.config(config.site_definition)
+    >>> import zope.app.appsetup.appsetup
+    >>> db = zope.app.appsetup.appsetup.multi_database(config.databases)[0][0]
+
+    >>> import zope.event
+    >>> import zc.async.interfaces
+    >>> zope.event.notify(zc.async.interfaces.DatabaseOpened(db))
+
+    >>> import time
+    >>> def get_poll(count=None): # just a helper used later, not processing
+    ...     if count is None:
+    ...         count = len(dispatcher.polls)
+    ...     for i in range(30):
+    ...         if len(dispatcher.polls) > count:
+    ...             return dispatcher.polls.first()
+    ...         time.sleep(0.1)
+    ...     else:
+    ...         assert False, 'no poll!'
+    ... 
+
+    >>> def wait_for_result(job): # just a helper used later, not processing
+    ...     for i in range(30):
+    ...         t = transaction.begin()
+    ...         if job.status == zc.async.interfaces.COMPLETED:
+    ...             return job.result
+    ...         time.sleep(0.5)
+    ...     else:
+    ...         assert False, 'job never completed'
+    ...
