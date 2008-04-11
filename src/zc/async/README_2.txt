@@ -508,7 +508,10 @@ you need.  Be sure to auto-rotate the trace logs.
 The package supports monitoring using zc.z3monitor, but using this package
 includes more Zope 3 dependencies, so it is not included here. If you would
 like to use it, see monitor.txt in the package and our next section:
-`Configuration with Zope 3`_.
+`Configuration with Zope 3`_. Otherwise, if you want to roll your own
+monitoring, glance at monitor.py--you'll see that most of the heavy lifting for
+the monitor support is done in the dispatcher, so it should be pretty easy to
+hook up the basic data another way.
 
     >>> reactor.stop()
 

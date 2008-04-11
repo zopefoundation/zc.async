@@ -20,6 +20,11 @@ the queues, configure logging and monitoring as desired, configure the
 production, and start up! Getting started is really pretty easy. You can even
 start a dispatcher-only version by not starting any servers in zcml.
 
+In comparison to the non-Zope 3 usage, an important difference in your setup.py
+is that, if you want the full set up described below, including zc.z3monitor,
+you'll need to specify "zc.async [z3]" as the desired package in your
+``install_requires``, as opposed to just "zc.async" [#extras_require]_.
+
 We'll look at this by making a zope.conf-alike and a site.zcml-alike.  We'll
 need a place to put some files, so we'll use a temporary directory.  This, and
 the comments in the files that we set up, are the primary differences between
@@ -224,6 +229,13 @@ for you! Good luck!
 .. ......... ..
 .. Footnotes ..
 .. ......... ..
+
+.. [#extras_require] The "[z3]" is an "extra", defined in zc.async's setup.py
+    in ``extras_require``. It pulls along zc.z3monitor and simplejson in
+    addition to the packages described in the `Configuration without Zope 3`_
+    section. Unfortunately, zc.z3monitor depends on zope.app.appsetup, which as
+    of this writing ends up depending indirectly on many, many packages, some
+    as far flung as zope.app.rotterdam.
 
 .. [#get_vals]
 

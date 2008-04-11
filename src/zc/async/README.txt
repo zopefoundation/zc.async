@@ -164,7 +164,7 @@ conveniences.  For instance, the Zope 3 configuration described below
 makes it possible to get the primary queue with an adaptation call like
 ``zc.async.interfaces.IQueue(a_persistent_object_with_db_connection)``.
 
-But failing that, queues are always exected to be in a zc.async.queue.Queues
+But failing that, queues are always expected to be in a zc.async.queue.Queues
 mapping found off the ZODB root in a key defined by the constant
 zc.async.interfaces.KEY.
 
