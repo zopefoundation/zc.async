@@ -72,7 +72,7 @@ called at a certain time.
 
 The ``put`` call will return a zc.async.job.Job object.  This object represents
 both the callable and its deferred result.  It has information about the job
-requested, and the current state of the job, and result of performing the job.
+requested, the current state of the job, and the result of performing the job.
 
 An example spelling for registering a job might be ``self.pending_result =
 queue.put(self.performSpider)``.  The returned object can be stored and polled
