@@ -11,10 +11,10 @@ Introduction
 Goals
 =====
 
-The zc.async package provides a way to schedule jobs, particularly
-those working within the context of the ZODB, to be performed
-out-of-band from your current thread.  The job might be done in another
-thread or another process.  Here are some example core use cases.
+The zc.async package provides a way to schedule jobs to be performed
+out-of-band from your current thread.  The job might be done in another thread
+or another process, possibly on another machine.  Here are some example core
+use cases.
 
 - You want to let users do something that requires a lot of system
   resources from your application, such as creating a large PDF.  Naively
@@ -28,23 +28,20 @@ thread or another process.  Here are some example core use cases.
   System resources might not be a problem, but, again, if something goes
   wrong, several requests could make your application unresponsive.
 
-- Perhaps because of excessive conflict errors, you want to serialize work
+- Perhaps because of resource contention, you want to serialize work
   that can be done asynchronously, such as updating a single data structure
   like a catalog index.
 
 - You want to decompose and parallelize a single job across many machines so
   it can be finished faster.
 
-- You have an application job in the ZODB that you discover is taking
-  longer than users can handle, even after you optimize it.  You want a
-  quick fix to move the work out-of-band.
+- You have an application job that you discover is taking longer than users can
+  handle, even after you optimize it.  You want a quick fix to move the work
+  out-of-band.
 
 Many of these core use cases involve end-users being able to start potentially
-expensive processes, on demand. Basic scheduled tasks are also provided by this
+expensive processes, on demand.  Basic scheduled tasks are also provided by this
 package, though recurrence must be something you arrange.
-
-Multiple processes can claim and perform jobs.  Jobs can be (manually)
-decomposed for serial or parallel processing of the component parts.
 
 History
 =======
@@ -52,7 +49,9 @@ History
 This is a second-generation design.  The first generation was `zasync`,
 a mission-critical and successful Zope 2 product in use for a number of
 high-volume Zope 2 installations.  [#history]_ It's worthwhile noting
-that zc.async has absolutely no backwards comapatibility with zasync.
+that zc.async has absolutely no backwards compatibility with zasync and
+zc.async does not require Zope (although it can be used in conjuction with it,
+details below).
 
 Design Overview
 ===============
@@ -61,31 +60,32 @@ Design Overview
 Overview: Usage
 ---------------
 
-Looking at the design from the perspective of regular usage, your code
-obtains a ``queue``, which is a place to queue jobs to be performed
-asynchronously.  Your application calls ``put`` on the queue to register
-a job.  The job must be a pickleable callable: a global function, a
-callable persistent object, a method of a persistent object, or a
-special zc.async.job.Job object, discussed later.  The job by default is
-regsitered to be performed as soon as possible, but can be registered to
-be called at a certain time.
+Looking at the design from the perspective of regular usage, your code obtains
+a ``queue``, which is a place to register jobs to be performed asynchronously.
 
-The ``put`` call will return a zc.async.job.Job object.  This
-object represents both the callable and its deferred result.  It has
-information about the job requested, and the state and result of
-performing the job.  An example spelling for registering a job might be
-``self.pending_result = queue.put(self.performSpider)``.  The returned
-object can be simply persisted and polled to see when the job
-is complete; or it can be configured to do additional work when it
-completes.
+Your application calls ``put`` on the queue to register a job.  The job must be
+a pickleable, callable object; a global function, a callable persistent object,
+a method of a persistent object, or a special zc.async.job.Job object
+(discussed later) are all examples of suitable objects.  The job by default is
+registered to be performed as soon as possible, but can be registered to be
+called at a certain time.
+
+The ``put`` call will return a zc.async.job.Job object.  This object represents
+both the callable and its deferred result.  It has information about the job
+requested, and the current state of the job, and result of performing the job.
+
+An example spelling for registering a job might be ``self.pending_result =
+queue.put(self.performSpider)``.  The returned object can be stored and polled
+to see when the job is complete; or the job can be configured to do additional
+work when it completes (such as storing the result in a data structure).
 
 -------------------
 Overview: Mechanism
 -------------------
 
-Multiple processes, typically spread across multiple machines, can use
-ZEO to connect to the queue and claim and perform work.  As with other
-collections of processes that share a database with ZEO, these processes
+Multiple processes, typically spread across multiple machines, can
+connect to the queue and claim and perform work.  As with other
+collections of processes that share pickled objects, these processes
 generally should share the same software (though some variations on this
 constraint should be possible).
 
@@ -149,11 +149,10 @@ we begin our detailed discussion with regular usage, assuming configuration
 has already happened.  Subsequent sections discuss configuring zc.async
 with and without Zope 3.
 
-So, let's assume we have a queue installed into a ZODB, with hidden
-dispatchers, reactors and agents all waiting to fulfill jobs placed into
-the queue.  We start with a connection object, ``conn``, and some
-convenience functions introduced along the way that help us simulate
-time passing and work being done [#usageSetUp]_.
+So, let's assume we have a queue with dispatchers, reactors and agents all
+waiting to fulfill jobs placed into the queue.  We start with a connection
+object, ``conn``, and some convenience functions introduced along the way that
+help us simulate time passing and work being done [#usageSetUp]_.
 
 -------------------
 Obtaining the queue
@@ -298,7 +297,7 @@ Overview
 The result of a call to `put` returns an IJob.  The
 job represents the pending result.  This object has a lot of
 functionality that's explored in other documents in this package, and
-demonstrated a bit below, but here's a summary.  
+demonstrated a bit below, but here's a summary.
 
 - You can introspect, and even modify, the call and its
   arguments.
@@ -351,11 +350,11 @@ Closures
 What's more, you can pass a Job to the `put` call.  This means that you
 aren't constrained to simply having simple non-argument calls performed
 asynchronously, but you can pass a job with a call, arguments, and
-keyword arguments--effectively, a kind of closure.  Here's a quick example. 
+keyword arguments--effectively, a kind of closure.  Here's a quick example.
 We'll use the demo object, and its increase method, that we introduced
 above, but this time we'll include some arguments [#job]_.
 
-With placeful arguments:
+With positional arguments:
 
     >>> t = transaction.begin()
     >>> job = queue.put(
@@ -366,7 +365,7 @@ With placeful arguments:
     >>> root['demo'].counter
     6
 
-With keyword arguments:
+With keyword arguments (``value``):
 
     >>> job = queue.put(
     ...     zc.async.job.Job(root['demo'].increase, value=10))
@@ -482,7 +481,7 @@ available off of zc.async.local.
     by default the current job, *in another connection*.  This makes it
     possible to send messages about progress or for coordination while in the
     middle of other work.
-    
+
     As a simple rule, only send immutable objects like strings or
     numbers as values [#setLiveAnnotation]_.
 
@@ -490,8 +489,8 @@ available off of zc.async.local.
     The ``getLiveAnnotation`` tells the agent to get an annotation for a job,
     by default the current job, *from another connection*.  This makes it
     possible to send messages about progress or for coordination while in the
-    middle of other work.  
-    
+    middle of other work.
+
     As a simple rule, only ask for annotation values that will be
     immutable objects like strings or numbers [#getLiveAnnotation]_.
 
@@ -595,7 +594,7 @@ creation to accomplish this, which is supported.
     True
 
 On the other hand, for our serial jobs, we'll do something that would fail
-if it were parallel.  We'll rely on ``quota_names``.  
+if it were parallel.  We'll rely on ``quota_names``.
 
 Quotas verge on configuration, which is not what this section is about,
 because they must be configured on the queue.  However, they also affect
@@ -860,7 +859,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
       * Improve scalability of asynchronous workers.
 
         The 1.x line was initially designed for a single asynchronous
-        worker, which could be put on another machine thanks to ZEO. 
+        worker, which could be put on another machine thanks to ZEO.
         Tarek Ziad of Nuxeo wrote zasyncdispatcher, which allowed
         multiple asynchronous workers to accept work, allowing multiple
         processes and multiple machines to divide and conquer. It worked
@@ -963,7 +962,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     a partial. Here are the necessary registrations.
 
     The dispatcher will look for a UUID utility, so we also need one of these.
-    
+
     The ``zc.async.configure.base`` function performs all of these
     registrations. If you are working with zc.async without ZCML you might want
     to use it or ``zc.async.configure.minimal`` as a convenience.
@@ -980,7 +979,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
     >>> import zc.async.testing
     >>> reactor = zc.async.testing.Reactor()
-    >>> reactor.start() # this mokeypatches datetime.datetime.now 
+    >>> reactor.start() # this mokeypatches datetime.datetime.now
 
     We need to instantiate the dispatcher with a reactor and a DB.  We
     have the reactor, so here is the DB.  We use a FileStorage rather
@@ -990,8 +989,8 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> import ZODB.FileStorage
     >>> storage = ZODB.FileStorage.FileStorage(
     ...     'zc_async.fs', create=True)
-    >>> from ZODB.DB import DB 
-    >>> db = DB(storage) 
+    >>> from ZODB.DB import DB
+    >>> db = DB(storage)
     >>> conn = db.open()
     >>> root = conn.root()
 
@@ -1056,8 +1055,8 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 .. [#commit_for_multidatabase] We commit before we do the next step as a
     good practice, in case the queue is from a different database than
     the root.  See the configuration sections for a discussion about
-    why putting the queue in another database might be a good idea. 
-    
+    why putting the queue in another database might be a good idea.
+
     Rather than committing the transaction,
     ``root._p_jar.add(root['demo'])`` would also accomplish the same
     thing from a multi-database perspective, without a commit.  It was
@@ -1073,7 +1072,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> transaction.commit()
     >>> wait_for(job)
     imagine this sent a message to another machine
-    
+
     It's worth noting that this situation consitutes a small exception
     in the handling of scheduled calls.  Scheduled calls usually get
     preference when jobs are handed out over normal non-scheduled "as soon as
@@ -1130,7 +1129,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
      'unknown': 0}
 
     We can also see the active job with ``getActiveJobIds``
-    
+
     >>> job_ids = dispatcher.getActiveJobIds()
     >>> len(job_ids)
     1
@@ -1168,14 +1167,14 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
     Although, wait a second--the 'statistics end', the 'started', and the
     'successful' values have changed!  Why?
-    
+
     To keep memory from rolling out of control, the dispatcher by default
     only keeps 10 to 12.5 minutes worth of poll information in memory.  For
     the rest, keep logs and look at them (...and rotate them!).
 
     The ``getActiveJobIds`` list shows the new task--which is completed, but
     not as of the last poll, so it's still in the list.
-    
+
     >>> job_ids = dispatcher.getActiveJobIds()
     >>> len(job_ids)
     1
@@ -1201,7 +1200,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     serial because of a quota, no other worker should be trying to work on
     those jobs.
 
-.. [#stop_usage_reactor] 
+.. [#stop_usage_reactor]
 
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
     {'failed': 2,
