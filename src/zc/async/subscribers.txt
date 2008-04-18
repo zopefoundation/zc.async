@@ -96,6 +96,20 @@ in all queues, with a default FIFO chooser.
     >>> zc.async.subscribers.agent_installer.size
     3
 
+When an IQueues or IQueue is installed, an event is fired that provides the
+object being added, the container it is added to, and the name under which it
+is added.  Let's add a subscriber that shows us these events:
+
+    >>> def show_object_added(event):
+    ...     if zc.async.interfaces.IObjectAdded.providedBy(event):
+    ...         print "----"
+    ...         print event.object.__class__, "object"
+    ...         print "added to", event.parent.__class__
+    ...         print "with name", repr(event.name)
+
+    >>> import zope.event
+    >>> zope.event.subscribers.append(show_object_added)
+
 Now we can install the subscribers and give it a try.  As we said above,
 normally the database opened event only fires once; this is just for purpose of
 demonstration.  We unregister the previous handler so nothing gets confused.
@@ -108,6 +122,14 @@ demonstration.  We unregister the previous handler so nothing gets confused.
     >>> zope.component.provideHandler(
     ...     zc.async.subscribers.agent_installer)
     >>> zope.event.notify(zc.async.interfaces.DatabaseOpened(db))
+    ----
+    <class 'zc.async.queue.Queues'> object
+    added to <class 'persistent.mapping.PersistentMapping'>
+    with name 'zc.async'
+    ----
+    <class 'zc.async.queue.Queue'> object
+    added to <class 'zc.async.queue.Queues'>
+    with name ''
 
 Now if we look in the database, we'll find a queues collection in another
 database, with a queue, with a dispatcher, with an agent.
@@ -165,6 +187,10 @@ how it deactivates the dispatcher's agents collection in the ZODB.
     >>> t = transaction.begin() # sync
     >>> bool(da.activated)
     False
+
+Let's clean up the subscriber we added:
+
+    >>> zope.event.subscribers.remove(show_object_added)
 
 .. ......... ..
 .. Footnotes ..

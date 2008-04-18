@@ -1,3 +1,10 @@
+1.1 (unreleased)
+================
+
+Fired events when the IQueues and IQueue objects are installed by the
+QueueInstaller.
+
+
 1.0 (2008-04-09)
 ================
 

@@ -3,6 +3,7 @@ import signal
 import transaction
 import twisted.internet.selectreactor
 import zope.component
+import zope.event
 import zc.twist
 
 import zc.async.interfaces
@@ -40,13 +41,18 @@ class QueueInstaller(object):
                     else:
                         queues = zc.async.queue.Queues()
                     root[zc.async.interfaces.KEY] = queues
+                    zope.event.notify(zc.async.interfaces.ObjectAdded(
+                        queues, root, zc.async.interfaces.KEY))
                     tm.commit()
                     zc.async.utils.log.info('queues collection added')
                 else:
                     queues = root[zc.async.interfaces.KEY]
                 for queue_name in self.queues:
                     if queue_name not in queues:
-                        queues[queue_name] = self.factory(conn, queue_name)
+                        queue = self.factory(conn, queue_name)
+                        queues[queue_name] = queue
+                        zope.event.notify(zc.async.interfaces.ObjectAdded(
+                            queue, queues, queue_name))
                         tm.commit()
                         zc.async.utils.log.info('queue %r added', queue_name)
             except:
