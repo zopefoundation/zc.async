@@ -37,6 +37,7 @@ setup(
         # seems to still build ok.
         'zope.bforest>=1.1.1',
         'zope.component',
+        'zope.event',
         'zope.i18nmessageid',
         'zope.interface',
         'zope.testing',
