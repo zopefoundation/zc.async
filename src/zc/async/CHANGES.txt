@@ -1,8 +1,14 @@
 1.1 (unreleased)
 ================
 
-Fired events when the IQueues and IQueue objects are installed by the
-QueueInstaller.
+- Fired events when the IQueues and IQueue objects are installed by the
+  QueueInstaller (thanks to Fred Drake).
+
+- Dispatchers make agent threads keep their connections, so each connection's
+  object cache use is optimized if the agent regularly requests jobs with
+  the same objects.
+
+- README improved (thanks to Benji York and Sebastian Ware).
 
 
 1.0 (2008-04-09)

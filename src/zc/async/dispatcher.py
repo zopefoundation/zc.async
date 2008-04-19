@@ -115,19 +115,23 @@ class AgentThreadPool(object):
 
     def perform_thread(self):
         local.dispatcher = self.dispatcher
+        conn = self.dispatcher.db.open()
         try:
             job = self.queue.get()
             while job is not None:
-                db, identifier, info = job
+                identifier, dbname, info = job
                 info['thread'] = thread.get_ident()
                 info['started'] = datetime.datetime.utcnow()
                 zc.async.utils.tracelog.info(
                     'starting in thread %d: %r',
                     info['thread'], info['call'])
-                conn = db.open()
                 try:
                     transaction.begin()
-                    job = conn.get(identifier)
+                    if dbname is None:
+                        local_conn = conn
+                    else:
+                        local_conn = conn.get_connection(dbname)
+                    job = local_conn.get(identifier)
                     local.job = job
                     try:
                         job() # this does the committing and retrying, largely
@@ -152,7 +156,6 @@ class AgentThreadPool(object):
                 finally:
                     local.job = None
                     transaction.abort()
-                    conn.close()
                 if info['failed']:
                     log = zc.async.utils.tracelog.error
                 else:
@@ -164,6 +167,7 @@ class AgentThreadPool(object):
                     info['thread'], info['result'])
                 job = self.queue.get()
         finally:
+            conn.close()
             if self.dispatcher.activated:
                 # this may cause some bouncing, but we don't ever want to end
                 # up with fewer than needed.
@@ -404,7 +408,7 @@ class Dispatcher(object):
                             self.jobs[jobid] = info
                             job_info.append(jobid)
                             pool.queue.put(
-                                (job._p_jar.db(), job._p_oid, info))
+                                (job._p_oid, dbname, info))
                             job = self._getJob(agent)
                 queue.dispatchers.ping(self.UUID)
                 self._commit('trying to commit ping')
