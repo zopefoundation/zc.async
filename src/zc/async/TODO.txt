@@ -1,12 +1,6 @@
 For future versions:
 
 - Write the z3monitor tests.
-- add a job.copy method that can be used to copy a completed task into a new
-  one
-- try to affiliate connections with agents.  Actually...maybe all that's
-  required there is to not get a new connection for each job, but keep it open.
-  Threads are already affiliated with agents. Affiliation might might be good
-  if an agent is targeting specific jobs that keep touching the same objects.
 - queues should be pluggable like agent with filter
 - show how to broadcast, maybe add conveniences
 - show how to use with collapsing jobs (hint to future self: use external queue
