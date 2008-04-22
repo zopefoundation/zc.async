@@ -529,6 +529,8 @@ any job that is completed will be ignored.
     >>> pending_j.status == zc.async.interfaces.COMPLETED
     True
 
+[#aborted_active_callback_log]_
+
 Introspecting and Mutating Arguments
 ------------------------------------
 
@@ -908,7 +910,7 @@ Footnotes
     callback <zc.async.job.Job (oid ..., db 'unnamed')
     ``zc.async.job.success_or_failure(zc.async.job.Job (oid ..., db 'unnamed'),
       zc.async.job.Job (oid ..., db 'unnamed'))``>
-    to job <zc.async.job.Job (oid ..., db 'unnamed')
+    to <zc.async.job.Job (oid ..., db 'unnamed')
     ``zc.async.doctest_test.multiply(5, 3)``> succeeded with result:
     None
 
@@ -926,7 +928,7 @@ Footnotes
     callback <zc.async.job.Job (oid ..., db 'unnamed')
     ``zc.async.job.success_or_failure(zc.async.job.Job (oid ..., db 'unnamed'),
       zc.async.job.Job (oid ..., db 'unnamed'))``>
-    to job <zc.async.job.Job (oid ..., db 'unnamed')
+    to <zc.async.job.Job (oid ..., db 'unnamed')
     ``zc.async.doctest_test.multiply(..., None)``> succeeded with result:
     None
 
@@ -959,6 +961,18 @@ Footnotes
     exceptions.TypeError: multiply() takes at least 2 arguments (1 given)
     *--- End of Failure #... ---
     <BLANKLINE>
+
+.. [#aborted_active_callback_log] The fact that the pseudo-aborted "active"
+    job failed is logged.
+
+    >>> for r in reversed(trace_logs.records):
+    ...     if r.levelname == 'ERROR':
+    ...         break
+    ... else:
+    ...     assert False, 'could not find log'
+    ...
+    >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    failed aborted callback <...Job...``zc.async.doctest_test.multiply(5)``> to <...Job...>
 
 .. [#call_self] Here's a job trying to call itself.
 

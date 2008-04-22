@@ -346,33 +346,24 @@ class Job(zc.async.utils.Base):
         while 1:
             for j in callbacks:
                 if j._status == zc.async.interfaces.NEW:
-                    zc.async.utils.tracelog.info(
-                        'starting callback to %r: %r', self, j)
+                    zc.async.utils.tracelog.debug(
+                        'starting callback %r to %r', j, self)
                     j(self.result)
                     if isinstance(j.result, twisted.python.failure.Failure):
                         zc.async.utils.tracelog.error(
-                            'callback %r to job %r failed with traceback:\n%s',
+                            'callback %r to %r failed with traceback:\n%s',
                             j, self, j.result.getTraceback(
                                 elideFrameworkCode=True, detail='verbose'))
                     else:
                         zc.async.utils.tracelog.info(
-                            'callback %r to job %r succeeded with result:\n%s',
+                            'callback %r to %r succeeded with result:\n%s',
                             j, self, j.result)
                 elif j._status == zc.async.interfaces.ACTIVE:
-                    zc.async.utils.tracelog.info(
-                        'failing aborted callback to %r: %r', self, j)
+                    zc.async.utils.tracelog.debug(
+                        'failing aborted callback %r to %r', j, self)
                     j.fail()
-                    if isinstance(j.result, twisted.python.failure.Failure):
-                        zc.async.utils.tracelog.error(
-                            'aborted callback %r to job %r failed with '
-                            'traceback:\n%s',
-                            j, self, j.result.getTraceback(
-                                elideFrameworkCode=True, detail='verbose'))
-                    else:
-                        zc.async.utils.tracelog.info(
-                            'aborted callback %r to job %r succeeded with '
-                            'result:\n%s',
-                            j, self, j.result)
+                    zc.async.utils.tracelog.error(
+                        'failed aborted callback %r to %r', j, self)
                 elif j._status == zc.async.interfaces.CALLBACKS:
                     j.resumeCallbacks()
                 # TODO: this shouldn't raise anything we want to catch, right?
