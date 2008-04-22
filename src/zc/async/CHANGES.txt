@@ -10,6 +10,8 @@
 
 - README improved (thanks to Benji York and Sebastian Ware).
 
+- Callbacks are logged at start and finish in the trace log, including
+  verbose tracebacks if the callback generated a failure.
 
 1.0 (2008-04-09)
 ================

@@ -296,7 +296,7 @@ simultaneously.  This one causes a success...
     >>> res = j()
     success! 15
 
-...and this one a failure.
+[#callback_log]_ ...and this one a failure.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, None)
     >>> transaction.commit()
@@ -305,7 +305,7 @@ simultaneously.  This one causes a success...
     >>> res = j() # doctest: +ELLIPSIS
     failure. [Failure instance: Traceback: exceptions.TypeError...]
 
-you can also add multiple callbacks.
+[#errback_log]_ You can also add multiple callbacks.
 
     >>> def also_success(val):
     ...     print "also a success!", val
@@ -895,6 +895,70 @@ Footnotes
     Traceback (most recent call last):
     ...
     exceptions.RuntimeError:
+
+.. [#callback_log] The callbacks are logged
+
+    >>> for r in reversed(trace_logs.records):
+    ...     if r.levelname == 'INFO':
+    ...         break
+    ... else:
+    ...     assert False, 'could not find log'
+    ...
+    >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    callback <zc.async.job.Job (oid ..., db 'unnamed')
+    ``zc.async.job.success_or_failure(zc.async.job.Job (oid ..., db 'unnamed'),
+      zc.async.job.Job (oid ..., db 'unnamed'))``>
+    to job <zc.async.job.Job (oid ..., db 'unnamed')
+    ``zc.async.doctest_test.multiply(5, 3)``> succeeded with result:
+    None
+
+
+.. [#errback_log] If the callback receives a failure, but does not fail itself,
+    the log is still just at an "info" level.
+
+    >>> for r in reversed(trace_logs.records):
+    ...     if r.levelname == 'INFO':
+    ...         break
+    ... else:
+    ...     assert False, 'could not find log'
+    ...
+    >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    callback <zc.async.job.Job (oid ..., db 'unnamed')
+    ``zc.async.job.success_or_failure(zc.async.job.Job (oid ..., db 'unnamed'),
+      zc.async.job.Job (oid ..., db 'unnamed'))``>
+    to job <zc.async.job.Job (oid ..., db 'unnamed')
+    ``zc.async.doctest_test.multiply(..., None)``> succeeded with result:
+    None
+
+    However, the callbacks that fail themselves are logged at the "error" level
+    and include a detailed traceback.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 4)
+    >>> transaction.commit()
+    >>> cb = j.addCallback(zc.async.job.Job(multiply)) # will miss one argument
+    >>> j() # doctest: +ELLIPSIS
+    20
+
+    >>> for r in reversed(trace_logs.records):
+    ...     if r.levelname == 'ERROR':
+    ...         break
+    ... else:
+    ...     assert False, 'could not find log'
+    ...
+    >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    callback <...Job...``zc.async.doctest_test.multiply()``> ... failed with traceback:
+    *--- Failure #... (pickled) ---
+    .../zc/async/job.py:...
+     [ Locals...
+      res : 'None...
+     ( Globals...
+    .../zc/async/job.py:...
+     [ Locals...
+      effective_args : '[20]...
+     ( Globals...
+    exceptions.TypeError: multiply() takes at least 2 arguments (1 given)
+    *--- End of Failure #... ---
+    <BLANKLINE>
 
 .. [#call_self] Here's a job trying to call itself.
 

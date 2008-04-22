@@ -346,9 +346,33 @@ class Job(zc.async.utils.Base):
         while 1:
             for j in callbacks:
                 if j._status == zc.async.interfaces.NEW:
+                    zc.async.utils.tracelog.info(
+                        'starting callback to %r: %r', self, j)
                     j(self.result)
+                    if isinstance(j.result, twisted.python.failure.Failure):
+                        zc.async.utils.tracelog.error(
+                            'callback %r to job %r failed with traceback:\n%s',
+                            j, self, j.result.getTraceback(
+                                elideFrameworkCode=True, detail='verbose'))
+                    else:
+                        zc.async.utils.tracelog.info(
+                            'callback %r to job %r succeeded with result:\n%s',
+                            j, self, j.result)
                 elif j._status == zc.async.interfaces.ACTIVE:
+                    zc.async.utils.tracelog.info(
+                        'failing aborted callback to %r: %r', self, j)
                     j.fail()
+                    if isinstance(j.result, twisted.python.failure.Failure):
+                        zc.async.utils.tracelog.error(
+                            'aborted callback %r to job %r failed with '
+                            'traceback:\n%s',
+                            j, self, j.result.getTraceback(
+                                elideFrameworkCode=True, detail='verbose'))
+                    else:
+                        zc.async.utils.tracelog.info(
+                            'aborted callback %r to job %r succeeded with '
+                            'result:\n%s',
+                            j, self, j.result)
                 elif j._status == zc.async.interfaces.CALLBACKS:
                     j.resumeCallbacks()
                 # TODO: this shouldn't raise anything we want to catch, right?
@@ -356,7 +380,7 @@ class Job(zc.async.utils.Base):
                 # cleaning up dead jobs should look something like the above.
             tm.commit()
             tm.begin() # syncs
-            # it's possible that someone added some callbacks run until
+            # it's possible that someone added some callbacks, so run until
             # we're exhausted.
             length += len(callbacks)
             callbacks = list(self.callbacks)[length:]

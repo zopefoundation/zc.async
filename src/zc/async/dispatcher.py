@@ -157,14 +157,13 @@ class AgentThreadPool(object):
                     local.job = None
                     transaction.abort()
                 if info['failed']:
-                    log = zc.async.utils.tracelog.error
+                    zc.async.utils.tracelog.error(
+                        '%s failed in thread %d with traceback:\n%s',
+                        info['call'], info['thread'], info['result'])
                 else:
-                    log = zc.async.utils.tracelog.info
-                log(
-                    '%s %s in thread %d with result:\n%s',
-                    info['call'],
-                    info['failed'] and 'failed' or 'succeeded',
-                    info['thread'], info['result'])
+                    zc.async.utils.tracelog.info(
+                        '%s succeeded in thread %d with result:\n%s',
+                        info['call'], info['thread'], info['result'])
                 job = self.queue.get()
         finally:
             conn.close()
