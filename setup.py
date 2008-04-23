@@ -5,7 +5,8 @@ from setuptools import setup, find_packages
 long_description = (
     open('src/zc/async/README.txt').read() + "\n" +
     open('src/zc/async/README_2.txt').read() + "\n" +
-    open('src/zc/async/README_3.txt').read() +
+    open('src/zc/async/README_3.txt').read() + "\n" +
+    open('src/zc/async/README_3b.txt').read() +
     "\n\n=======\nChanges\n=======\n\n" +
     open('src/zc/async/CHANGES.txt').read() + "\n")
 

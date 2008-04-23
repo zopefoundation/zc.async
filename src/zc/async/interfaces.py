@@ -313,6 +313,15 @@ class IQueue(zc.queue.interfaces.IQueue):
         queue on the `assignerUUID`.
         """
 
+    def pull(index=0):
+        """Remove and return a job, by default from the front of the queue.
+
+        Raise IndexError if index does not exist.
+        
+        This is the blessed way to remove an unclaimed job from the queue so
+        that dispatchers will not try to perform it.
+        """
+
     def claim(filter=None, default=None):
         """returns first due job that is available for the given filter,
         removing it from the queue as appropriate; or None, if none are

@@ -35,6 +35,13 @@ the first footnote.)
     >>> get_poll(0)
     {}
 
+The function also stashed the thread on the dispatcher, so we can write tests
+that can grab it easily.
+
+    >>> import threading
+    >>> isinstance(dispatcher.thread, threading.Thread)
+    True
+
 The function also installs some signal handlers to optimize shutdown.  We'll
 look at them soon.  For now, let's install some queues.
 

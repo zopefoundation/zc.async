@@ -57,6 +57,9 @@ class Local(threading.local):
     def getJob(self):
         return self.job
 
+    def getQueue(self):
+        return self.job.queue
+
     def getDispatcher(self):
         return self.dispatcher
 
@@ -123,7 +126,7 @@ class AgentThreadPool(object):
                 info['thread'] = thread.get_ident()
                 info['started'] = datetime.datetime.utcnow()
                 zc.async.utils.tracelog.info(
-                    'starting in thread %d: %r',
+                    'starting in thread %d: %s',
                     info['thread'], info['call'])
                 try:
                     transaction.begin()
@@ -138,13 +141,35 @@ class AgentThreadPool(object):
                     except ZODB.POSException.TransactionError:
                         transaction.abort()
                         while 1:
+                            job.fail()
                             try:
-                                job.fail()
                                 transaction.commit()
                             except ZODB.POSException.TransactionError:
                                 transaction.abort() # retry forever (!)
                             else:
                                 break
+                    except zc.async.interfaces.BadStatusError:
+                        transaction.abort()
+                        zc.async.utils.log.error( # notice, not tracelog
+                            'job already completed?', exc_info=True)
+                        if job.status == zc.async.interfaces.CALLBACKS:
+                            job.resumeCallbacks() # moves the job off the agent
+                        else:
+                            while 1:
+                                status = job.status
+                                if status == zc.async.interfaces.COMPLETED:
+                                    if zc.async.interfaces.IAgent.providedBy(
+                                        job.parent):
+                                        job.parent.jobCompleted(job)
+                                        # moves the job off the agent
+                                else:
+                                    job.fail() # moves the job off the agent
+                                try:
+                                    transaction.commit()
+                                except ZODB.POSException.TransactionError:
+                                    transaction.abort() # retry forever (!)
+                                else:
+                                    break
                     # should come before 'completed' for threading dance
                     if isinstance(job.result, twisted.python.failure.Failure):
                         info['failed'] = True
@@ -156,14 +181,9 @@ class AgentThreadPool(object):
                 finally:
                     local.job = None
                     transaction.abort()
-                if info['failed']:
-                    zc.async.utils.tracelog.error(
-                        '%s failed in thread %d with traceback:\n%s',
-                        info['call'], info['thread'], info['result'])
-                else:
-                    zc.async.utils.tracelog.info(
-                        '%s succeeded in thread %d with result:\n%s',
-                        info['call'], info['thread'], info['result'])
+                zc.async.utils.tracelog.info(
+                    'completed in thread %d: %s',
+                    info['thread'], info['call'])
                 job = self.queue.get()
         finally:
             conn.close()
@@ -219,6 +239,8 @@ class Dispatcher(object):
 
     activated = False
     conn = None
+    thread = None # this is just a placeholder that other code can use the
+    # way that zc.async.subscribers.ThreadedDispatcherInstaller.__call__ does.
 
     def __init__(self, db, reactor, poll_interval=5, uuid=None):
         if uuid is None:

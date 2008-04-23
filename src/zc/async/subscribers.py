@@ -81,7 +81,12 @@ class ThreadedDispatcherInstaller(object):
         def start():
             dispatcher.activate()
             reactor.run(installSignalHandlers=0)
-        thread = threading.Thread(target=start)
+        # we stash the thread object on the dispatcher so functional tests
+        # can do the following at the end of a test:
+        # dispatcher = zc.async.dispatcher.get()
+        # dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+        # dispatcher.thread.join(3)
+        dispatcher.thread = thread = threading.Thread(target=start)
         thread.setDaemon(True)
         thread.start()
     

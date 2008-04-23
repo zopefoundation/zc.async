@@ -248,21 +248,33 @@ That's cool.  We have a poll object that has a record of this too.
 
 We also have some log entries.
 
-    >>> info = debug = None
+    >>> info1 = info2 = info3 = debug = None
     >>> for r in reversed(trace_logs.records):
-    ...     if info is None and r.levelname == 'INFO':
-    ...         info = r
-    ...     elif debug is None and r.levelname == 'DEBUG':
+    ...     if r.levelname == 'INFO':
+    ...         if info3 is None:
+    ...             info3 = r
+    ...         elif info2 is None:
+    ...             info2 = r
+    ...         elif info1 is None:
+    ...             info1 = r
+    ...     elif r.levelname == 'DEBUG' and debug is None:
     ...         debug = r
-    ...     elif info is not None and debug is not None:
+    ...     if (info1 is not None and info2 is not None and
+    ...         info3 is not None and debug is not None):
     ...         break
     ... else:
     ...     assert False, 'could not find'
     ...
-    >>> print info.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    >>> print info1.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    starting in thread ...: <zc.async.job.Job (oid ..., db 'unnamed')
+                             ``<built-in function mul>(14, 3)``>
+    >>> print info2.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``<built-in function mul>(14, 3)``> succeeded in thread ... with result:
+     ``<built-in function mul>(14, 3)``> succeeded with result:
     42
+    >>> print info3.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    completed in thread ...: <zc.async.job.Job (oid ..., db 'unnamed')
+                             ``<built-in function mul>(14, 3)``>
 
     >>> print debug.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     poll ...:
@@ -307,21 +319,57 @@ persistent object, affecting a persistent object.
     >>> length()
     4
 
-``zc.async.local`` also allows some fun tricks.  Your method can access the
-job--for instance, to access the queue and put another job in, or access
-annotations on the job, as of the last database sync for the thread's
-connection (at transaction boundaries).
+If the queue hands out a job that has already been completed somehow, the
+dispatcher will be OK with it, logging the problem to the main event log
+and moving on.
+
+    >>> badjob = queue.put(zc.async.job.Job(operator.mul, 21, 2))
+    >>> badjob.fail()
+    >>> badjob.status == zc.async.interfaces.COMPLETED
+    True
+    >>> flagjob = queue.put(zc.async.job.Job(operator.mul, 21, 2))
+    >>> transaction.commit()
+    >>> wait_for_result(flagjob)
+    42
+    >>> for r in reversed(event_logs.records):
+    ...     if r.levelname == 'ERROR':
+    ...         break
+    ... else:
+    ...     assert False, 'did not find log'
+    ...
+    >>> print r.getMessage()
+    job already completed?
+    >>> import traceback, sys
+    >>> traceback.print_exception(*(r.exc_info + (None, sys.stdout)))
+    ... # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    BadStatusError: can only call a job with NEW or ASSIGNED status
+
+Importantly, the job is also moved off of the agent.
+
+    >>> badjob.parent # doctest: +ELLIPSIS
+    <zc.async.agent.Agent object at 0x...>
+    >>> len(badjob.parent)
+    0
+
+``zc.async.local`` also allows some fun tricks.  Your callable can access the
+queue, perhaps to put another job in.
 
     >>> import zc.async
     >>> def hand_off():
-    ...     job = zc.async.local.getJob()
-    ...     return job.queue.put(zc.async.job.Job(operator.mul, 21, 2))
+    ...     queue = zc.async.local.getQueue()
+    ...     return queue.put(zc.async.job.Job(operator.mul, 21, 2))
     ...
     >>> job3 = queue.put(hand_off)
     >>> transaction.commit()
 
     >>> wait_for_result(job3)
     42
+
+You can also access the job--for instance, to access annotations on the job, as
+of the last database sync for the thread's connection (at transaction
+boundaries).  This function is ``zc.async.local.getJob()``, and is seen below.
 
 It can also get and set job annotations *live, in another connection*. 
 This allows you to send messages about job progress, or get live
@@ -356,17 +404,17 @@ current health of the dispatcher. Use the log if you want more long-term
 analysis.
 
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
-    {'failed': 1,
+    {'failed': 2,
      'longest active': None,
      'longest failed': ('\x00...', 'unnamed'),
      'longest successful': ('\x00...', 'unnamed'),
      'shortest active': None,
      'shortest failed': ('\x00...', 'unnamed'),
      'shortest successful': ('\x00...', 'unnamed'),
-     'started': 6,
+     'started': 8,
      'statistics end': datetime.datetime(...),
      'statistics start': datetime.datetime(...),
-     'successful': 5,
+     'successful': 6,
      'unknown': 0}
 
 We can get a report on the reactor's status.
@@ -476,7 +524,7 @@ The db's pool size has returned to the original value.
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``<built-in function mul>(14, None)``> failed in thread ... with traceback:
+     ``<built-in function mul>(14, None)``> failed with traceback:
     *--- Failure #... (pickled) ---
     .../zc/async/job.py:...: _call_with_retry(...)
      [ Locals ]...

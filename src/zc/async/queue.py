@@ -319,9 +319,9 @@ class Queue(zc.async.utils.Base):
             return default
         uuid = None
         for pop, ix, job in self._iter():
-            res = None
             if job.begin_after > now:
                 break
+            res = None
             quotas = []
             if (job.begin_after + job.begin_by) < now:
                 res = zc.async.interfaces.IJob(

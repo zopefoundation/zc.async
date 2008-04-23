@@ -17,6 +17,11 @@ def setUp(test):
     f.close()
     zc.async.instanceuuid.UUID = zc.async.instanceuuid.getUUID()
 
+def tearDown(test):
+    import zc.async.dispatcher
+    zc.async.dispatcher.pop()
+    zope.component.testing.tearDown(test)
+
 def test_suite():
     return unittest.TestSuite((
         doctest.DocFileSuite(
@@ -25,8 +30,9 @@ def test_suite():
             optionflags=doctest.INTERPRET_FOOTNOTES),
         doctest.DocFileSuite(
             'README_3.txt',
+            'README_3b.txt',
             setUp=zope.component.testing.setUp,
-            tearDown=zope.component.testing.tearDown,
+            tearDown=tearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),
         ))
 

@@ -185,9 +185,9 @@ string).
     ['']
     >>> queue = queues['']
 
----------
-queue.put
----------
+-------------
+``queue.put``
+-------------
 
 Now we want to actually get some work done.  The simplest case is simple
 to perform: pass a persistable callable to the queue's ``put`` method and
@@ -244,12 +244,29 @@ methods of persistent objects can be used. This rules out, for instance,
 lambdas and other functions created dynamically. As we'll see below, the job
 instance can help us out there somewhat by offering closure-like features.
 
+--------------
+``queue.pull``
+--------------
+
+If you put a job into a queue and it hasn't been claimed yet and you want to
+cancel the job, ``pull`` it from the queue.
+
+    >>> len(queue)
+    0
+    >>> job = queue.put(send_message)
+    >>> len(queue)
+    1
+    >>> job is queue.pull()
+    True
+    >>> len(queue)
+    0
+
 ---------------
 Scheduled Calls
 ---------------
 
-You can also pass a datetime.datetime to schedule a call.  A datetime
-without a timezone is considered to be in the UTC timezone.
+When using ``put``, you can also pass a datetime.datetime to schedule a call. A
+datetime without a timezone is considered to be in the UTC timezone.
 
     >>> t = transaction.begin()
     >>> import datetime
@@ -281,10 +298,10 @@ been set to run as soon as possible [#already_passed]_...unless the job
 has already timed out, in which case the job fails with an
 abort [#already_passed_timed_out]_.
 
-The queue's `put` method is the essential API.  Other methods are used
-to introspect, but are not needed for basic usage.
+The queue's ``put`` method is the essential API. ``pull`` is used rarely. Other
+methods are used to introspect, but are not needed for basic usage.
 
-But what is that result of the `put` call in the examples above?  A
+But what is that result of the ``put`` call in the examples above?  A
 job?  What do you do with that?
 
 Jobs

@@ -898,7 +898,25 @@ Footnotes
     ...
     exceptions.RuntimeError:
 
-.. [#callback_log] The callbacks are logged
+.. [#callback_log] The callbacks are logged.
+
+    >>> for r in reversed(trace_logs.records):
+    ...     if r.levelname == 'DEBUG':
+    ...         break
+    ... else:
+    ...     assert False, 'could not find log'
+    ...
+    >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    starting callback
+     <...Job (oid ..., db 'unnamed')
+      ``...completeStartedJobArguments(...Job (oid ..., db 'unnamed'))``>
+    to
+     <...Job (oid ..., db 'unnamed')
+      ``...success_or_failure(...Job (oid ..., db 'unnamed'),
+                              ...Job (oid ..., db 'unnamed'))``>
+
+
+    As with all job calls, the results are logged.
 
     >>> for r in reversed(trace_logs.records):
     ...     if r.levelname == 'INFO':
@@ -907,16 +925,15 @@ Footnotes
     ...     assert False, 'could not find log'
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    callback <zc.async.job.Job (oid ..., db 'unnamed')
-    ``zc.async.job.success_or_failure(zc.async.job.Job (oid ..., db 'unnamed'),
-      zc.async.job.Job (oid ..., db 'unnamed'))``>
-    to <zc.async.job.Job (oid ..., db 'unnamed')
-    ``zc.async.doctest_test.multiply(5, 3)``> succeeded with result:
+    <zc.async.job.Job (oid ..., db 'unnamed')
+     ``zc.async.job.completeStartedJobArguments(zc.async.job.Job
+                                                (oid ..., db 'unnamed'))``>
+    succeeded with result:
     None
 
-
-.. [#errback_log] If the callback receives a failure, but does not fail itself,
-    the log is still just at an "info" level.
+.. [#errback_log] As with all job calls, the results are logged. If the
+    callback receives a failure, but does not fail itself, the log is still
+    just at an "info" level.
 
     >>> for r in reversed(trace_logs.records):
     ...     if r.levelname == 'INFO':
@@ -925,15 +942,14 @@ Footnotes
     ...     assert False, 'could not find log'
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    callback <zc.async.job.Job (oid ..., db 'unnamed')
-    ``zc.async.job.success_or_failure(zc.async.job.Job (oid ..., db 'unnamed'),
-      zc.async.job.Job (oid ..., db 'unnamed'))``>
-    to <zc.async.job.Job (oid ..., db 'unnamed')
-    ``zc.async.doctest_test.multiply(..., None)``> succeeded with result:
+    <zc.async.job.Job (oid 114, db 'unnamed')
+     ``zc.async.job.completeStartedJobArguments(zc.async.job.Job
+                                                (oid 109, db 'unnamed'))``>
+    succeeded with result:
     None
 
-    However, the callbacks that fail themselves are logged at the "error" level
-    and include a detailed traceback.
+    However, the callbacks that fail themselves are logged (again, as all jobs
+    are) at the "error" level and include a detailed traceback.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 4)
     >>> transaction.commit()
@@ -948,7 +964,7 @@ Footnotes
     ...     assert False, 'could not find log'
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    callback <...Job...``zc.async.doctest_test.multiply()``> ... failed with traceback:
+    <...Job...``zc.async.doctest_test.multiply()``> failed with traceback:
     *--- Failure #... (pickled) ---
     .../zc/async/job.py:...
      [ Locals...
@@ -966,13 +982,14 @@ Footnotes
     job failed is logged.
 
     >>> for r in reversed(trace_logs.records):
-    ...     if r.levelname == 'ERROR':
+    ...     if r.levelname == 'DEBUG' and r.getMessage().startswith('failing'):
     ...         break
     ... else:
     ...     assert False, 'could not find log'
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    failed aborted callback <...Job...``zc.async.doctest_test.multiply(5)``> to <...Job...>
+    failing aborted callback
+    <...Job...``zc.async.doctest_test.multiply(5)``> to <...Job...>
 
 .. [#call_self] Here's a job trying to call itself.
 

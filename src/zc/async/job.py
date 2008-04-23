@@ -318,10 +318,22 @@ class Job(zc.async.utils.Base):
     def _complete(self, res, tm):
         if isinstance(res, twisted.python.failure.Failure):
             res = zc.twist.sanitize(res)
+            failure = True
+        else:
+            failure = False
         self._result = res
         self._status = zc.async.interfaces.CALLBACKS
         self._active_end = datetime.datetime.now(pytz.UTC)
         tm.commit()
+        if failure:
+            zc.async.utils.tracelog.error(
+                '%r failed with traceback:\n%s',
+                self,
+                res.getTraceback(elideFrameworkCode=True, detail='verbose'))
+        else:
+            zc.async.utils.tracelog.info(
+                '%r succeeded with result:\n%r',
+                self, res)
         return res
 
     def fail(self, e=None):
@@ -349,21 +361,10 @@ class Job(zc.async.utils.Base):
                     zc.async.utils.tracelog.debug(
                         'starting callback %r to %r', j, self)
                     j(self.result)
-                    if isinstance(j.result, twisted.python.failure.Failure):
-                        zc.async.utils.tracelog.error(
-                            'callback %r to %r failed with traceback:\n%s',
-                            j, self, j.result.getTraceback(
-                                elideFrameworkCode=True, detail='verbose'))
-                    else:
-                        zc.async.utils.tracelog.info(
-                            'callback %r to %r succeeded with result:\n%s',
-                            j, self, j.result)
                 elif j._status == zc.async.interfaces.ACTIVE:
                     zc.async.utils.tracelog.debug(
                         'failing aborted callback %r to %r', j, self)
                     j.fail()
-                    zc.async.utils.tracelog.error(
-                        'failed aborted callback %r to %r', j, self)
                 elif j._status == zc.async.interfaces.CALLBACKS:
                     j.resumeCallbacks()
                 # TODO: this shouldn't raise anything we want to catch, right?

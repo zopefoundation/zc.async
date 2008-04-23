@@ -7,11 +7,19 @@ introduced all of the main concepts, and because we will be leveraging
 conveniences to automate much of the configuration shown in the section
 discussing configuration without Zope 3.
 
-If you want to set up a client alone, without a dispatcher, include
-configure.zcml, make sure you share the database in which the queues will be
-held, and make sure that either the
-zope.app.keyreference.persistent.connectionOfPersistent adapter is registered,
-or zc.twist.connection.
+Client Set Up
+=============
+
+If you want to set up a client alone, without a dispatcher, include the egg in
+your setup.py, include the configure.zcml in your applications zcml, make sure
+you share the database in which the queues will be held, and make sure that
+either the zope.app.keyreference.persistent.connectionOfPersistent adapter is
+registered, or zc.twist.connection.
+
+That should be it.
+
+Client/Server Set Up
+====================
 
 For a client/server combination, use zcml that is something like the
 basic_dispatcher_policy.zcml, make sure you have access to the database with
@@ -30,9 +38,21 @@ need a place to put some files, so we'll use a temporary directory.  This, and
 the comments in the files that we set up, are the primary differences between
 our examples and a real set up.
 
+We'll do this in two versions.  The first version uses a single database, as
+you might do to get started quickly, or for a small site.  The second version
+has one database for the main application, and one database for the async data,
+as will be more appropriate for typical production usage.
+
+-----------------------------
+Shared Single Database Set Up
+-----------------------------
+
+As described above, using a shared single database will probably be the
+quickest way to get started.  Large-scale production usage will probably prefer
+to use the `Two Database Set Up`_ described later.
+
 So, without further ado, here is the text of our zope.conf-alike, and of our
-site.zcml-alike [#get_vals]_.  We'll be using two databases for this example,
-as you might want for a site with a fair amount of zc.async usage.
+site.zcml-alike [#get_vals]_.
 
     >>> zope_conf = """
     ... site-definition %(site_zcml_file)s
@@ -41,13 +61,6 @@ as you might want for a site with a fair amount of zc.async usage.
     ...   <filestorage>
     ...     create true
     ...     path %(main_storage_path)s
-    ...   </filestorage>
-    ... </zodb>
-    ... 
-    ... <zodb async>
-    ...   <filestorage>
-    ...     create true
-    ...     path %(async_storage_path)s
     ...   </filestorage>
     ... </zodb>
     ... 
@@ -95,7 +108,7 @@ as you might want for a site with a fair amount of zc.async usage.
     ... 
 
 In a non-trivial production system of you will also probably want to replace
-the two file storages with two <zeoclient> stanzas.
+the file storage with a <zeoclient> stanza.
 
 Also note that an open monitor port should be behind a firewall, of course.
 
@@ -123,7 +136,7 @@ Now let's define our site-zcml-alike.
     ... <include package="zope.component" file="meta.zcml" />
     ... <include package="zope.component" />
     ... <include package="zc.z3monitor" />
-    ... <include package="zc.async" file="multidb_dispatcher_policy.zcml" />
+    ... <include package="zc.async" file="basic_dispatcher_policy.zcml" />
     ...
     ... <!-- this is usually handled in Zope applications by the
     ...      zope.app.keyreference.persistent.connectionOfPersistent adapter -->
@@ -132,11 +145,6 @@ Now let's define our site-zcml-alike.
     ... """
 
 Now we're done.
-
-If you want to change policy, change "multidb_dispatcher_policy.zcml" to
-"dispatcher.zcml" in the example above and register your replacement bits for
-the policy in "multidb_dispatcher_policy.zcml".  You'll see that most of that
-comes from code in subscribers.py, which can be adjusted easily.
 
 If we process these files, and wait for a poll, we've got a working
 set up [#process]_.
@@ -219,12 +227,10 @@ Now we'll "shut down" with a CTRL-C, or SIGINT, and clean up.
     False
 
     >>> db.close()
-    >>> db.databases['async'].close()
     >>> import shutil
     >>> shutil.rmtree(dir)
 
-Hopefully zc.async will be an easy-to-configure, easy-to-use, and useful tool
-for you! Good luck!
+These instructions are very similar to the `Two Database Set Up`_.
 
 .. ......... ..
 .. Footnotes ..
