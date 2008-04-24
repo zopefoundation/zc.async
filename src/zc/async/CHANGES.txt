@@ -1,4 +1,4 @@
-1.1 (unreleased)
+1.1 (2008-04-24)
 ================
 
 - Fired events when the IQueues and IQueue objects are installed by the
@@ -36,6 +36,10 @@
   then pushed the former README_3 examples into README_3b.
 
 - Put ZPL everywhere I was supposed to.
+
+- Moved a number of helpful testing functions out of footnotes and into
+  zc.async.testing, both so that zc.async tests don't have to redefine them
+  and client packages can reuse them.
 
 1.0 (2008-04-09)
 ================
