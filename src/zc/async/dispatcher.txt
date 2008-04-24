@@ -95,10 +95,10 @@ the connection pool for the db by 1, to include the dispatcher's poll.
     >>> thread.start()
 
 The dispatcher should be starting up now.  Let's wait for it to activate.
-We're using a test convenience, get_poll, defined in the footnotes
-[#get_poll]_.
+We're using a test convenience, get_poll, defined in zc.async.testing.
 
-    >>> poll = get_poll(0)
+    >>> from zc.async.testing import get_poll
+    >>> poll = get_poll(dispatcher, 0)
     >>> poll == {}
     True
     >>> initial <= poll.utc_timestamp <= datetime.datetime.utcnow()
@@ -121,7 +121,7 @@ expected to be in the zc.async.interfaces.KEY key of the database root.
 
 Now the next poll will register and activate the dispatcher in the queue.
 
-    >>> poll = get_poll()
+    >>> poll = get_poll(dispatcher)
 
 This accomplished the following things.
 
@@ -201,7 +201,7 @@ the default configuration that it is willing to perform any job.
 The next poll will include the fact that it asked the 'main' agent for
 a job.
 
-    >>> poll = get_poll()
+    >>> poll = get_poll(dispatcher)
     >>> import pprint
     >>> pprint.pprint(dict(poll))
     {'': {'main': {'active jobs': [],
@@ -217,8 +217,7 @@ agent.
     11
 
 We can actually get it to perform some jobs now.  Here's a silly simple
-one.  We use a test convenience, wait_for_result, defined in the footnotes
-[#wait_for_result]_.
+one.  We use a test convenience, wait_for_result, defined in zc.async.testing.
 
     >>> import operator
     >>> job1 = queue.put(
@@ -227,6 +226,7 @@ one.  We use a test convenience, wait_for_result, defined in the footnotes
     None
     >>> transaction.commit()
 
+    >>> from zc.async.testing import wait_for_result
     >>> wait_for_result(job1)
     42
 
@@ -378,8 +378,8 @@ instance.
 
 An important caveat about this is that the annotations, whether a get or
 a set, must not be persistent objects, or contain them directly or indirectly.
-We use a new test convenience , wait_for_annotation, defined in the footnotes
-[#wait_for_annotation]_.
+We use a new test convenience , wait_for_annotation, defined in the
+zc.async.testing.
 
     >>> def annotation_func():
     ...     zc.async.local.setLiveAnnotation('hello', 'from thread!')
@@ -390,7 +390,8 @@ We use a new test convenience , wait_for_annotation, defined in the footnotes
     ...
     >>> job4 = queue.put(annotation_func)
     >>> transaction.commit()
-    
+
+    >>> from zc.async.testing import wait_for_annotation
     >>> wait_for_annotation(job4, 'hello')
     'from thread!'
     >>> job4.annotations['reply'] = 'HIYA'
@@ -458,33 +459,6 @@ The db's pool size has returned to the original value.
     >>> import zc.async.configure
     >>> zc.async.configure.base()
 
-.. [#get_poll]
-
-    >>> import time
-    >>> def get_poll(count = None):
-    ...     if count is None:
-    ...         count = len(dispatcher.polls)
-    ...     for i in range(30):
-    ...         if len(dispatcher.polls) > count:
-    ...             return dispatcher.polls.first()
-    ...         time.sleep(0.1)
-    ...     else:
-    ...         assert False, 'no poll!'
-    ... 
-
-.. [#wait_for_result]
-
-    >>> import zc.async.interfaces
-    >>> def wait_for_result(job):
-    ...     for i in range(30):
-    ...         t = transaction.begin()
-    ...         if job.status == zc.async.interfaces.COMPLETED:
-    ...             return job.result
-    ...         time.sleep(0.1)
-    ...     else:
-    ...         assert False, 'job never completed'
-    ...
-
 .. [#getPollInfo] The dispatcher has a ``getPollInfo`` method that lets you
     find this poll information also.
     
@@ -535,15 +509,3 @@ The db's pool size has returned to the original value.
     exceptions.TypeError: unsupported operand type(s) for *: 'int' and 'NoneType'
     *--- End of Failure #... ---
     <BLANKLINE>
-
-.. [#wait_for_annotation]
-
-    >>> def wait_for_annotation(job, name):
-    ...     for i in range(30):
-    ...         t = transaction.begin()
-    ...         if name in job.annotations:
-    ...             return job.annotations[name]
-    ...         time.sleep(0.1)
-    ...     else:
-    ...         assert False, 'TIMEOUT'
-    ...

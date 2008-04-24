@@ -316,24 +316,6 @@ The ``poll`` command uses patterns we've seen above.
     >>> queue.dispatchers[dispatcher.UUID]['main'] = agent
     >>> transaction.commit()
 
-    >>> import time
-    >>> def wait_for(*jobs, **kwargs):
-    ...     reactor.time_flies(dispatcher.poll_interval) # starts thread
-    ...     # now we wait for the thread
-    ...     for i in range(kwargs.get('attempts', 10)):
-    ...         while reactor.time_passes():
-    ...             pass
-    ...         transaction.begin()
-    ...         for j in jobs:
-    ...             if j.status != zc.async.interfaces.COMPLETED:
-    ...                 break
-    ...         else:
-    ...             break
-    ...         time.sleep(0.1)
-    ...     else:
-    ...         print 'TIME OUT'
-    ...
-
 .. [#z3monitor_setup] This part actually sets up the monitoring.
 
     >>> import zc.ngi.testing

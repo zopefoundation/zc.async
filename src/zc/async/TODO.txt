@@ -5,6 +5,16 @@ For future versions:
 - show how to broadcast, maybe add conveniences
 - show how to use with collapsing jobs (hint to future self: use external queue
   to put in work, and have job(s) just pull what they can see from queue)
+- write tips and tricks
+  * avoid long transactions if possible.  really avoid long transactions
+    involving frequently written objects.  Discuss ramifications and
+    strategies.
+  * in zope.app.testing.functional tests, zc.async doesn't do well being
+    started in a layer's setup because then it is associated with the
+    wrapped layer DB, and the test is associated with the DemoStorage wrapper,
+    so that the test can see what zc.async does, but zc.async can't see what
+    the test does.  The current workaround is to start the dispatcher in the
+    test or the test set up (but, again, *not* The layer set up).
 
 For some other package, maybe:
 

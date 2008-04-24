@@ -13,9 +13,12 @@
 ##############################################################################
 import threading
 import bisect
+import time
 import datetime
 
 import pytz
+import transaction
+import zc.async.interfaces
 
 
 _now = None
@@ -116,14 +119,6 @@ class Reactor(object):
 
     # end reactor methods
 
-    def _get_next(self, end):
-        self._lock.acquire()
-        try:
-            if self.calls and self.calls[0][0] <= end:
-                return self.calls.pop(0)
-        finally:
-            self._lock.release()
-
     def start(self):
         setUpDatetime()
         self.started = True
@@ -133,6 +128,16 @@ class Reactor(object):
             callable(*args, **kwargs)
         self.started = False
         tearDownDatetime()
+
+    # these are for tests
+
+    def _get_next(self, end):
+        self._lock.acquire()
+        try:
+            if self.calls and self.calls[0][0] <= end:
+                return self.calls.pop(0)
+        finally:
+            self._lock.release()
 
     def time_flies(self, seconds):
         if not self.started:
@@ -158,3 +163,51 @@ class Reactor(object):
             callable(*args, **kw)
             return True
         return False
+
+    def wait_for(self, *jobs, **kwargs):
+        poll_interval = kwargs.get('poll_interval', 5)
+        self.time_flies(poll_interval) # starts thread
+        # now we wait for the thread
+        for i in range(kwargs.get('attempts', 10)):
+            while self.time_passes():
+                pass
+            transaction.begin()
+            for j in jobs:
+                if j.status != zc.async.interfaces.COMPLETED:
+                    break
+            else:
+                break
+            time.sleep(0.1)
+        else:
+            print 'TIME OUT'
+
+# helper functions convenient for tests
+
+def get_poll(dispatcher, count=None):
+    if count is None:
+        count = len(dispatcher.polls)
+    for i in range(60):
+        if len(dispatcher.polls) > count:
+            return dispatcher.polls.first()
+        time.sleep(0.1)
+    else:
+        assert False, 'no poll!'
+
+def wait_for_result(job):
+    for i in range(60):
+        t = transaction.begin()
+        if job.status == zc.async.interfaces.COMPLETED:
+            return job.result
+        time.sleep(0.1)
+    else:
+        assert False, 'job never completed'
+
+
+def wait_for_annotation(job, name):
+    for i in range(60):
+        t = transaction.begin()
+        if name in job.annotations:
+            return job.annotations[name]
+        time.sleep(0.1)
+    else:
+        assert False, 'annotation never found'

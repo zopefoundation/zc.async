@@ -39,7 +39,7 @@ working set up [#process_multi]_.
     >>> import zc.async.dispatcher
     >>> dispatcher = zc.async.dispatcher.get()
     >>> import pprint
-    >>> pprint.pprint(get_poll(0))
+    >>> pprint.pprint(get_poll(dispatcher, 0))
     {'': {'main': {'active jobs': [],
                    'error': None,
                    'len': 0,
@@ -198,27 +198,7 @@ for you! Good luck! [#shutdown]_
     >>> import zc.async.interfaces
     >>> zope.event.notify(zc.async.interfaces.DatabaseOpened(db))
 
-    >>> import time
-    >>> def get_poll(count=None): # just a helper used later, not processing
-    ...     if count is None:
-    ...         count = len(dispatcher.polls)
-    ...     for i in range(30):
-    ...         if len(dispatcher.polls) > count:
-    ...             return dispatcher.polls.first()
-    ...         time.sleep(0.1)
-    ...     else:
-    ...         assert False, 'no poll!'
-    ... 
-
-    >>> def wait_for_result(job): # just a helper used later, not processing
-    ...     for i in range(30):
-    ...         t = transaction.begin()
-    ...         if job.status == zc.async.interfaces.COMPLETED:
-    ...             return job.result
-    ...         time.sleep(0.5)
-    ...     else:
-    ...         assert False, 'job never completed'
-    ...
+    >>> from zc.async.testing import get_poll, wait_for_result
 
 .. [#shutdown]
 
@@ -226,14 +206,6 @@ for you! Good luck! [#shutdown]_
     >>> dispatcher = zc.async.dispatcher.get()
     >>> dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
     >>> dispatcher.thread.join(3)
-
-    >>> t = transaction.begin() # sync
-    >>> import zope.component
-    >>> import zc.async.interfaces
-    >>> uuid = zope.component.getUtility(zc.async.interfaces.IUUID)
-    >>> da = queue.dispatchers[uuid]
-    >>> bool(da.activated)
-    False
 
     >>> db.close()
     >>> db.databases['async'].close()

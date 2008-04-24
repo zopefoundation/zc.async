@@ -403,10 +403,10 @@ Now we can start the reactor and the dispatcher in a thread.
     >>> thread.start()
 
 The dispatcher should be starting up now.  Let's wait for it to activate.
-We're using a test convenience, get_poll, defined in the footnotes
-[#get_poll]_.
+We're using a test convenience, get_poll, defined in the testing module.
 
-    >>> poll = get_poll(0)
+    >>> from zc.async.testing import get_poll
+    >>> poll = get_poll(dispatcher, 0)
 
 We're off!  The events have been fired for registering and activating the
 dispatcher.  Therefore, our subscriber to add our agent has fired.
@@ -715,33 +715,13 @@ hook up the basic data another way.
     >>> quota.filled
     False
 
-.. [#get_poll]
-
-    >>> import time
-    >>> def get_poll(count = None):
-    ...     if count is None:
-    ...         count = len(dispatcher.polls)
-    ...     for i in range(30):
-    ...         if len(dispatcher.polls) > count:
-    ...             return dispatcher.polls.first()
-    ...         time.sleep(0.1)
-    ...     else:
-    ...         assert False, 'no poll!'
-    ... 
-
 .. [#stop_config_reactor] We don't want the live dispatcher for our demos,
     actually.  See dispatcher.txt to see the live dispatcher actually in use.
+    So, here we'll stop the "real" reactor and switch to a testing one.
 
     >>> reactor.callFromThread(reactor.stop)
-    >>> for i in range(30):
-    ...     if not dispatcher.activated:
-    ...         break
-    ...     time.sleep(0.1)
-    ... else:
-    ...     assert False, 'dispatcher did not deactivate'
-    ...
-
-    Now, we'll restart with an explicit reactor.
+    >>> thread.join(3)
+    >>> assert not dispatcher.activated, 'dispatcher did not deactivate'
     
     >>> import zc.async.testing
     >>> reactor = zc.async.testing.Reactor()

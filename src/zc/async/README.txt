@@ -205,10 +205,10 @@ a module global, for instance.
 
 The ``put`` returned a job.  Now we need to wait for the job to be
 performed.  We would normally do this by really waiting.  For our
-examples, we will use a helper function called ``wait_for`` to wait for
-the job to be completed [#wait_for]_.
+examples, we will use a helper method on the testing reactor to ``wait_for``
+the job to be completed.
 
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     imagine this sent a message to another machine
 
 We also could have used the method of a persistent object.  Here's another
@@ -233,7 +233,7 @@ Now we can put the ``demo.increase`` method in the queue.
     >>> job = queue.put(root['demo'].increase)
     >>> transaction.commit()
 
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> root['demo'].counter
     1
 
@@ -279,16 +279,16 @@ datetime without a timezone is considered to be in the UTC timezone.
     >>> job.begin_after
     datetime.datetime(2006, 8, 10, 15, 56, tzinfo=<UTC>)
     >>> transaction.commit()
-    >>> wait_for(job, attempts=2) # +5 virtual seconds
+    >>> reactor.wait_for(job, attempts=2) # +5 virtual seconds
     TIME OUT
-    >>> wait_for(job, attempts=2) # +5 virtual seconds
+    >>> reactor.wait_for(job, attempts=2) # +5 virtual seconds
     TIME OUT
     >>> datetime.datetime.now(pytz.UTC)
     datetime.datetime(2006, 8, 10, 15, 44, 43, 211, tzinfo=<UTC>)
 
     >>> zc.async.testing.set_now(datetime.datetime(
     ...     2006, 8, 10, 15, 56, tzinfo=pytz.UTC))
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     imagine this sent a message to another machine
     >>> datetime.datetime.now(pytz.UTC) >= job.begin_after
     True
@@ -353,7 +353,7 @@ call?  Look at the job.result after the call is COMPLETED.
     >>> job.status == zc.async.interfaces.PENDING
     True
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> t = transaction.begin()
     >>> job.result
     '200 OK'
@@ -377,7 +377,7 @@ With positional arguments:
     >>> job = queue.put(
     ...     zc.async.job.Job(root['demo'].increase, 5))
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> t = transaction.begin()
     >>> root['demo'].counter
     6
@@ -387,7 +387,7 @@ With keyword arguments (``value``):
     >>> job = queue.put(
     ...     zc.async.job.Job(root['demo'].increase, value=10))
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> t = transaction.begin()
     >>> root['demo'].counter
     16
@@ -405,7 +405,7 @@ What happens if a call raises an exception?  The return value is a Failure.
     ...
     >>> job = queue.put(I_am_a_bad_bad_function)
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> t = transaction.begin()
     >>> job.result
     <zc.twist.Failure exceptions.NameError>
@@ -443,7 +443,7 @@ Here's a simple example of reacting to a success.
     >>> job = queue.put(imaginaryNetworkCall)
     >>> callback = job.addCallback(I_scribble_on_strings)
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> job.result
     '200 OK'
     >>> callback.result
@@ -460,7 +460,7 @@ a subsequent callback.
     >>> callback1 = job.addCallbacks(failure=I_handle_NameErrors)
     >>> callback2 = callback1.addCallback(I_scribble_on_strings)
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> job.result
     <zc.twist.Failure exceptions.NameError>
     >>> callback1.result
@@ -544,6 +544,7 @@ an annotation, then waits for our flag to finish.
     ...
     >>> job = queue.put(annotateStatus)
     >>> transaction.commit()
+    >>> import time
     >>> def wait_for_annotation(job, key):
     ...     reactor.time_flies(dispatcher.poll_interval) # starts thread
     ...     for i in range(10):
@@ -567,7 +568,7 @@ an annotation, then waits for our flag to finish.
 
     >>> job.annotations['zc.async.test.flag'] = True
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> job.result
     42
 
@@ -602,7 +603,7 @@ creation to accomplish this, which is supported.
     >>> job1.args.append(job2)
     >>> job2.args.append(job1)
     >>> transaction.commit()
-    >>> wait_for(job1, job2)
+    >>> reactor.wait_for(job1, job2)
     >>> job1.status == zc.async.interfaces.COMPLETED
     True
     >>> job2.status == zc.async.interfaces.COMPLETED
@@ -655,8 +656,8 @@ Now we can see the two jobs being performed serially.
     True
     >>> job2.annotations['zc.async.test.flag'] = False
     >>> transaction.commit()
-    >>> wait_for(job1)
-    >>> wait_for(job2)
+    >>> reactor.wait_for(job1)
+    >>> reactor.wait_for(job2)
     >>> print job1.result
     None
     >>> print job2.result
@@ -702,9 +703,9 @@ First, consider a serialized example.  This simple pattern is one approach.
     ...
     >>> job = queue.put(first_job)
     >>> transaction.commit()
-    >>> wait_for(job, attempts=3)
+    >>> reactor.wait_for(job, attempts=3)
     TIME OUT
-    >>> wait_for(job, attempts=3)
+    >>> reactor.wait_for(job, attempts=3)
     >>> job.result
     42
 
@@ -778,13 +779,13 @@ Now we'll put this in and let it cook.
 
     >>> job = queue.put(main_job)
     >>> transaction.commit()
-    >>> wait_for(job, attempts=3)
+    >>> reactor.wait_for(job, attempts=3)
     TIME OUT
-    >>> wait_for(job, attempts=3)
+    >>> reactor.wait_for(job, attempts=3)
     TIME OUT
-    >>> wait_for(job, attempts=3)
+    >>> reactor.wait_for(job, attempts=3)
     TIME OUT
-    >>> wait_for(job, attempts=3)
+    >>> reactor.wait_for(job, attempts=3)
     >>> job.result
     42
 
@@ -819,7 +820,7 @@ making network calls using Twisted or zc.ngi, for instance.
     ...
     >>> job = queue.put(delegator)
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> job.result
     '200 OK'
 
@@ -1048,27 +1049,6 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     3
     >>> transaction.commit()
 
-.. [#wait_for] This is our helper function.  It relies on the test fixtures
-    set up in the previous footnote.
-
-    >>> import time
-    >>> def wait_for(*jobs, **kwargs):
-    ...     reactor.time_flies(dispatcher.poll_interval) # starts thread
-    ...     # now we wait for the thread
-    ...     for i in range(kwargs.get('attempts', 10)):
-    ...         while reactor.time_passes():
-    ...             pass
-    ...         transaction.begin()
-    ...         for j in jobs:
-    ...             if j.status != zc.async.interfaces.COMPLETED:
-    ...                 break
-    ...         else:
-    ...             break
-    ...         time.sleep(0.1)
-    ...     else:
-    ...         print 'TIME OUT'
-    ...
-
 .. [#commit_for_multidatabase] We commit before we do the next step as a
     good practice, in case the queue is from a different database than
     the root.  See the configuration sections for a discussion about
@@ -1087,7 +1067,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> job = queue.put(
     ...     send_message, datetime.datetime(2006, 8, 10, 15, tzinfo=pytz.UTC))
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     imagine this sent a message to another machine
 
     It's worth noting that this situation consitutes a small exception
@@ -1103,7 +1083,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> job = queue.put(
     ...     send_message, datetime.datetime(2006, 7, 21, 12, tzinfo=pytz.UTC))
     >>> transaction.commit()
-    >>> wait_for(job)
+    >>> reactor.wait_for(job)
     >>> job.result
     <zc.twist.Failure zc.async.interfaces.AbortedError>
     >>> import sys
