@@ -48,7 +48,7 @@ History
 
 This is a second-generation design.  The first generation was `zasync`,
 a mission-critical and successful Zope 2 product in use for a number of
-high-volume Zope 2 installations.  [#history]_ It's worthwhile noting
+high-volume Zope 2 installations.  [#async_history]_ It's worthwhile noting
 that zc.async has absolutely no backwards compatibility with zasync and
 zc.async does not require Zope (although it can be used in conjuction with it,
 details below).
@@ -835,7 +835,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 .. Footnotes ..
 .. ......... ..
 
-.. [#history] The first generation, zasync, had the following goals:
+.. [#async_history] The first generation, zasync, had the following goals:
 
     - be scalable, so that another process or machine could do the
       asynchronous work;
