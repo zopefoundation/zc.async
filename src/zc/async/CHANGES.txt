@@ -35,6 +35,8 @@
 - Added a section showing how the basic_dispatcher_policy.zcml worked, which
   then pushed the former README_3 examples into README_3b.
 
+- Put ZPL everywhere I was supposed to.
+
 1.0 (2008-04-09)
 ================
 
