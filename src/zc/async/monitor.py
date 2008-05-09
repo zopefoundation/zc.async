@@ -90,7 +90,7 @@ def job(OID, database=None, uuid=None):
     if uuid is not None:
         uuid = uuid.UUID(uuid)
     return encoder.encode(
-        zc.async.dispatcher.get(uuid).getJobInfo(OID, database))
+        zc.async.dispatcher.get(uuid).getJobInfo(long(OID), database))
 
 _find = re.compile(r'\d+[DHMS]').findall
 def _dt(s):
@@ -152,7 +152,6 @@ def jobstats(at=None, before=None, since=None, queue=None, agent=None,
         async jobstats queue: agent:main since:1H
         (results filtered to queue named '' and agent named 'main' from now
          till one hour ago)"""
-    # TODO: parse since and before to datetimes
     if uuid is not None:
         uuid = uuid.UUID(uuid)
     return encoder.encode(

@@ -493,6 +493,11 @@ available off of zc.async.local.
     a connection off of ``_p_jar``, to get the queue into which the job
     was put, or other uses.
 
+``zc.async.local.getQueue()``
+    The ``getQueue`` function can be used to examine the queue, to put another
+    task into the queue, or other uses. It is sugar for
+    ``zc.async.local.getJob().queue``.
+
 ``zc.async.local.setLiveAnnotation(name, value, job=None)``
     The ``setLiveAnnotation`` tells the agent to set an annotation on a job,
     by default the current job, *in another connection*.  This makes it
@@ -530,9 +535,9 @@ available off of zc.async.local.
     be used to analyze its non-persistent poll data structure, for instance
     (described later in configuration discussions).
 
-Let's give the first three a whirl.  We will write a function that
-examines the job's state while it is being called, and sets the state in
-an annotation, then waits for our flag to finish.
+Let's give three of those a whirl. We will write a function that examines the
+job's state while it is being called, and sets the state in an annotation, then
+waits for our flag to finish.
 
     >>> def annotateStatus():
     ...     zc.async.local.setLiveAnnotation(
@@ -1113,12 +1118,12 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> import pprint
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
     {'failed': 2,
-     'longest active': ('\x00...', 'unnamed'),
-     'longest failed': ('\x00...', 'unnamed'),
-     'longest successful': ('\x00...', 'unnamed'),
-     'shortest active': ('\x00\...', 'unnamed'),
-     'shortest failed': ('\x00\...', 'unnamed'),
-     'shortest successful': ('\x00...', 'unnamed'),
+     'longest active': (..., 'unnamed'),
+     'longest failed': (..., 'unnamed'),
+     'longest successful': (..., 'unnamed'),
+     'shortest active': (..., 'unnamed'),
+     'shortest failed': (..., 'unnamed'),
+     'shortest successful': (..., 'unnamed'),
      'started': 12,
      'statistics end': datetime.datetime(2006, 8, 10, 15, 44, 22, 211),
      'statistics start': datetime.datetime(2006, 8, 10, 15, 56, 47, 211),
@@ -1151,11 +1156,11 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
     {'failed': 2,
      'longest active': None,
-     'longest failed': ('\x00...', 'unnamed'),
-     'longest successful': ('\x00...', 'unnamed'),
+     'longest failed': (..., 'unnamed'),
+     'longest successful': (..., 'unnamed'),
      'shortest active': None,
-     'shortest failed': ('\x00\...', 'unnamed'),
-     'shortest successful': ('\x00...', 'unnamed'),
+     'shortest failed': (..., 'unnamed'),
+     'shortest successful': (..., 'unnamed'),
      'started': 10,
      'statistics end': datetime.datetime(2006, 8, 10, 15, 46, 52, 211),
      'statistics start': datetime.datetime(2006, 8, 10, 15, 56, 52, 211),
@@ -1169,12 +1174,10 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     only keeps 10 to 12.5 minutes worth of poll information in memory.  For
     the rest, keep logs and look at them (...and rotate them!).
 
-    The ``getActiveJobIds`` list shows the new task--which is completed, but
-    not as of the last poll, so it's still in the list.
+    The ``getActiveJobIds`` list is empty now.
 
-    >>> job_ids = dispatcher.getActiveJobIds()
-    >>> len(job_ids)
-    1
+    >>> dispatcher.getActiveJobIds()
+    []
     >>> info = dispatcher.getJobInfo(*job_ids[0])
     >>> pprint.pprint(info) # doctest: +ELLIPSIS
     {'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``zc.async.doctest_test.annotateStatus()``>",
@@ -1202,11 +1205,11 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
     {'failed': 2,
      'longest active': None,
-     'longest failed': ('\x00...', 'unnamed'),
-     'longest successful': ('\x00...', 'unnamed'),
+     'longest failed': (..., 'unnamed'),
+     'longest successful': (..., 'unnamed'),
      'shortest active': None,
-     'shortest failed': ('\x00\...', 'unnamed'),
-     'shortest successful': ('\x00...', 'unnamed'),
+     'shortest failed': (..., 'unnamed'),
+     'shortest successful': (..., 'unnamed'),
      'started': 22,
      'statistics end': datetime.datetime(2006, 8, 10, 15, 46, 52, 211),
      'statistics start': datetime.datetime(2006, 8, 10, 15, 57, 47, 211),

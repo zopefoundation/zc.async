@@ -21,6 +21,7 @@ import threading
 import twisted.python.failure
 import twisted.internet.defer
 import ZODB.POSException
+import ZODB.utils
 import BTrees
 import transaction
 import transaction.interfaces
@@ -385,7 +386,7 @@ class Dispatcher(object):
                 for name, agent in da.items():
                     job_info = []
                     active_jobs = [
-                        (job._p_oid,
+                        (ZODB.utils.u64(job._p_oid),
                          getattr(job._p_jar.db(), 'database_name', None))
                          for job in agent]
                     agent_info = queue_info[name] = {
@@ -438,7 +439,7 @@ class Dispatcher(object):
                             started_jobs.append(info)
                             dbname = getattr(
                                 job._p_jar.db(), 'database_name', None)
-                            jobid = (job._p_oid, dbname)
+                            jobid = (ZODB.utils.u64(job._p_oid), dbname)
                             self.jobs[jobid] = info
                             job_info.append(jobid)
                             pool.queue.put(
@@ -593,7 +594,7 @@ class Dispatcher(object):
         if database_name is None:
             # these will raise ValueErrors for unknown oids.  We'll let 'em.
             minKey = self.jobs.minKey((oid,))
-            maxKey = self.jobs.maxKey((oid,))
+            maxKey = self.jobs.maxKey((oid+1,))
             if minKey != maxKey:
                 raise ValueError('ambiguous database name')
             else:
@@ -611,13 +612,13 @@ class Dispatcher(object):
             old = []
             unknown = []
             for info in _iter_info(poll, queue, agent):
-                res.extend(info['new jobs'])
-                for job_id in info['active jobs']:
-                    job_info = self.jobs.get(job_id)
-                    if job_info is None:
-                        unknown.append(job_id)
-                    else:
-                        bisect.insort(old, (job_info['poll id'], job_id))
+                for jobs in (info['new jobs'], info['active jobs']):
+                    for job_id in jobs:
+                        job_info = self.jobs.get(job_id)
+                        if job_info is None:
+                            unknown.append(job_id)
+                        elif not job_info['completed']:
+                            bisect.insort(old, (job_info['poll id'], job_id))
             res.extend(i[1] for i in old)
             res.extend(unknown)
         return res

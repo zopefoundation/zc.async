@@ -281,6 +281,394 @@ The ``poll`` command uses patterns we've seen above.
     ] 
     -> CLOSE
 
+Now that you've seen the basics, we will add some jobs and look at some of the
+statistics.
+
+    >>> def send_message():
+    ...     print "imagine this sent a message to another machine"
+    >>> job = queue.put(send_message)
+    >>> import transaction
+    >>> transaction.commit()
+
+    >>> reactor.wait_for(job)
+    imagine this sent a message to another machine
+
+Here are the revised stats.
+
+    >>> connection.test_input('async jobstats\n')
+    {
+        "failed": 0, 
+        "longest active": null, 
+        "longest failed": null, 
+        "longest successful": [
+            30, 
+            "unnamed"
+        ], 
+        "shortest active": null, 
+        "shortest failed": null, 
+        "shortest successful": [
+            30, 
+            "unnamed"
+        ], 
+        "started": 1, 
+        "statistics end": "2006-08-10T15:44:22.000211Z", 
+        "statistics start": "2006-08-10T15:44:27.000211Z", 
+        "successful": 1, 
+        "unknown": 0
+    } 
+    -> CLOSE
+
+[Notice we are actually showing the oids of the jobs.  For test purposes, this
+relies on implementation details of the MappingStorage, but it is currently
+practically stable, and lets us see precisely how these stats work and how to
+interpret the information]
+
+The longest successful job (the only job!) has *unpacked* oid 30, in the
+unnamed database. We can get to it using the connection and ZODB.utils.p64.
+
+    >>> import ZODB.utils
+    >>> queue._p_jar.get(ZODB.utils.p64(30)) is job
+    True
+
+So what are the details about that job?  We have not used the ``job`` command
+before because we didn't have a job to look at.
+
+    >>> connection.test_input('async job 30\n') # doctest: +ELLIPSIS
+    {
+        "call": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.send_message()``>", 
+        "completed": "2006-08-10T15:44:...Z", 
+        "failed": false, 
+        "poll id": 6420106068024891087, 
+        "quota names": [], 
+        "result": "None", 
+        "started": "2006-08-10T15:44:...Z", 
+        "thread": ...
+    } 
+    -> CLOSE
+
+Here's the most recent poll.
+
+    >>> connection.test_input('async poll\n') # doctest: +ELLIPSIS
+    {
+        "key": 6420106068024891087, 
+        "results": {
+            "": {
+                "main": {
+                    "active jobs": [], 
+                    "error": null, 
+                    "len": 0, 
+                    "new jobs": [
+                        [
+                            30, 
+                            "unnamed"
+                        ]
+                    ], 
+                    "size": 3
+                }
+            }
+        }, 
+        "time": "2006-08-10T15:44:...Z"
+    } 
+    -> CLOSE
+
+Now let's look at the dispatcher with a job in progress.
+
+    >>> import threading
+    >>> lock = threading.Lock()
+    >>> lock.acquire()
+    True
+    >>> def wait_for_me():
+    ...     lock.acquire()
+    ...     print 'OK, done'
+    ...
+    >>> job = queue.put(wait_for_me)
+    >>> transaction.commit()
+    >>> reactor.wait_for(job)
+    TIME OUT
+
+    >>> _ = transaction.begin()
+    >>> job.status == zc.async.interfaces.ACTIVE
+    True
+
+Now we can use the ``jobs`` command to look at the active jobs.
+
+    >>> connection.test_input('async jobs\n')
+    [
+        [
+            36, 
+            "unnamed"
+        ]
+    ] 
+    -> CLOSE
+
+Here's the information for that job.
+
+    >>> connection.test_input('async job 36\n') # doctest: +ELLIPSIS
+    {
+        "call": "<zc.async.job.Job (oid 36, db 'unnamed') ``zc.async.doctest_test.wait_for_me()``>", 
+        "completed": null, 
+        "failed": false, 
+        "poll id": 6420106067941005007, 
+        "quota names": [], 
+        "result": null, 
+        "started": "2006-08-10T15:44:...Z", 
+        "thread": ...
+    } 
+    -> CLOSE
+
+Here are the revised stats.
+
+    >>> connection.test_input('async jobstats\n') # doctest: +ELLIPSIS
+    {
+        "failed": 0, 
+        "longest active": [
+            36, 
+            "unnamed"
+        ], 
+        "longest failed": null, 
+        "longest successful": [
+            30, 
+            "unnamed"
+        ], 
+        "shortest active": [
+            36, 
+            "unnamed"
+        ], 
+        "shortest failed": null, 
+        "shortest successful": [
+            30, 
+            "unnamed"
+        ], 
+        "started": 2, 
+        "statistics end": "2006-08-10T15:44:...Z", 
+        "statistics start": "2006-08-10T15:44:...Z", 
+        "successful": 1, 
+        "unknown": 0
+    } 
+    -> CLOSE
+
+Here's our poll.
+
+    >>> connection.test_input('async poll\n') # doctest: +ELLIPSIS
+    {
+        "key": 6420106067941005007, 
+        "results": {
+            "": {
+                "main": {
+                    "active jobs": [], 
+                    "error": null, 
+                    "len": 0, 
+                    "new jobs": [
+                        [
+                            36, 
+                            "unnamed"
+                        ]
+                    ], 
+                    "size": 3
+                }
+            }
+        }, 
+        "time": "2006-08-10T15:44:...Z"
+    } 
+    -> CLOSE
+
+Let's wait again.
+
+    >>> reactor.wait_for(job)
+    TIME OUT
+
+    >>> _ = transaction.begin()
+    >>> job.status == zc.async.interfaces.ACTIVE
+    True
+
+Here's ``jobs`` and ``jobstats`` again.
+
+    >>> connection.test_input('async jobs\n')
+    [
+        [
+            36, 
+            "unnamed"
+        ]
+    ] 
+    -> CLOSE
+
+    >>> connection.test_input('async jobstats\n') # doctest: +ELLIPSIS
+    {
+        "failed": 0, 
+        "longest active": [
+            36, 
+            "unnamed"
+        ], 
+        "longest failed": null, 
+        "longest successful": [
+            30, 
+            "unnamed"
+        ], 
+        "shortest active": [
+            36, 
+            "unnamed"
+        ], 
+        "shortest failed": null, 
+        "shortest successful": [
+            30, 
+            "unnamed"
+        ], 
+        "started": 2, 
+        "statistics end": "2006-08-10T15:44:...Z", 
+        "statistics start": "2006-08-10T15:44:...Z", 
+        "successful": 1, 
+        "unknown": 0
+    } 
+    -> CLOSE
+
+Here's the most recent poll.
+
+    >>> connection.test_input('async poll\n') # doctest: +ELLIPSIS
+    {
+        "key": 6420106067857118927, 
+        "results": {
+            "": {
+                "main": {
+                    "active jobs": [
+                        [
+                            36, 
+                            "unnamed"
+                        ]
+                    ], 
+                    "error": null, 
+                    "len": 1, 
+                    "new jobs": [], 
+                    "size": 3
+                }
+            }
+        }, 
+        "time": "2006-08-10T15:44:...Z"
+    } 
+    -> CLOSE
+
+We do have a few polls now.  Here they are from most recent to oldest.
+
+    >>> connection.test_input('async polls\n') # doctest: +ELLIPSIS
+    [
+        {
+            "key": 6420106067857118927, 
+            "results": {
+                "": {
+                    "main": {
+                        "active jobs": [
+                            [
+                                36, 
+                                "unnamed"
+                            ]
+                        ], 
+                        "error": null, 
+                        "len": 1, 
+                        "new jobs": [], 
+                        "size": 3
+                    }
+                }
+            }, 
+            "time": "2006-08-10T15:44:...Z"
+        }, 
+        {
+            "key": 6420106067941005007, 
+            "results": {
+                "": {
+                    "main": {
+                        "active jobs": [], 
+                        "error": null, 
+                        "len": 0, 
+                        "new jobs": [
+                            [
+                                36, 
+                                "unnamed"
+                            ]
+                        ], 
+                        "size": 3
+                    }
+                }
+            }, 
+            "time": "2006-08-10T15:44:...Z"
+        }, 
+        {
+            "key": 6420106068024891087, 
+            "results": {
+                "": {
+                    "main": {
+                        "active jobs": [], 
+                        "error": null, 
+                        "len": 0, 
+                        "new jobs": [
+                            [
+                                30, 
+                                "unnamed"
+                            ]
+                        ], 
+                        "size": 3
+                    }
+                }
+            }, 
+            "time": "2006-08-10T15:44:...Z"
+        }
+    ] 
+    -> CLOSE
+
+Now we'll let the job complete.
+
+    >>> lock.release()
+    >>> reactor.wait_for(job)
+    OK, done
+
+The job is done according to the ``job`` command also.
+
+    >>> connection.test_input('async job 36\n') # doctest: +ELLIPSIS
+    {
+        "call": "<zc.async.job.Job (oid 36, db 'unnamed') ``zc.async.doctest_test.wait_for_me()``>", 
+        "completed": "2006-08-10T15:44:...Z", 
+        "failed": false, 
+        "poll id": 6420106067941005007, 
+        "quota names": [], 
+        "result": "None", 
+        "started": "2006-08-10T15:44:...Z", 
+        "thread": ...
+    } 
+    -> CLOSE
+
+No more active jobs.
+
+    >>> connection.test_input('async jobs\n')
+    [] 
+    -> CLOSE
+
+Here are the revised stats.
+
+    >>> connection.test_input('async jobstats\n') # doctest: +ELLIPSIS
+    {
+        "failed": 0, 
+        "longest active": null, 
+        "longest failed": null, 
+        "longest successful": [
+            36, 
+            "unnamed"
+        ], 
+        "shortest active": null, 
+        "shortest failed": null, 
+        "shortest successful": [
+            30, 
+            "unnamed"
+        ], 
+        "started": 2, 
+        "statistics end": "2006-08-10T15:44:...Z", 
+        "statistics start": "2006-08-10T15:44:...Z", 
+        "successful": 2, 
+        "unknown": 0
+    } 
+    -> CLOSE
+
+    >>> reactor.stop()
+    >>> import time
+    >>> time.sleep(1)
+
 .. [#setUp] See the discussion in other documentation to explain this code.
 
     >>> import ZODB.FileStorage

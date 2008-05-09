@@ -243,7 +243,7 @@ That's cool.  We have a poll object that has a record of this too.
     {'': {'main': {'active jobs': [],
                    'error': None,
                    'len': 0,
-                   'new jobs': [('\x00...', 'unnamed')],
+                   'new jobs': [(..., 'unnamed')],
                    'size': 3}}}
 
 We also have some log entries.
@@ -281,7 +281,7 @@ We also have some log entries.
       {'':
         {'main':
           {'active jobs': [], 'error': None,
-           'new jobs': [('\x...', 'unnamed')], 'len': 0, 'size': 3}}}
+           'new jobs': [(..., 'unnamed')], 'len': 0, 'size': 3}}}
     
 
 [#getPollInfo]_ Notice our ``new jobs`` from the poll and the log has a value
@@ -407,11 +407,11 @@ analysis.
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
     {'failed': 2,
      'longest active': None,
-     'longest failed': ('\x00...', 'unnamed'),
-     'longest successful': ('\x00...', 'unnamed'),
+     'longest failed': (..., 'unnamed'),
+     'longest successful': (..., 'unnamed'),
      'shortest active': None,
-     'shortest failed': ('\x00...', 'unnamed'),
-     'shortest successful': ('\x00...', 'unnamed'),
+     'shortest failed': (..., 'unnamed'),
+     'shortest successful': (..., 'unnamed'),
      'started': 8,
      'statistics end': datetime.datetime(...),
      'statistics start': datetime.datetime(...),

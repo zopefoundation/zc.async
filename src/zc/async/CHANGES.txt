@@ -1,3 +1,23 @@
+1.2 (unreleased)
+================
+
+- more README tweaks.
+
+- converted all reports from the dispatcher, including the monitor output,
+  to use "unpacked" integer oids.  This addresses a problem that simplejson
+  was having in trying to interpret the packed string blobs as unicode, and
+  then making zc.ngi fall over.
+
+- added several more tests for the monitor code.
+
+- made the ``async jobs`` monitor command be "up to the minute".  Before, it
+  included all of the new and active jobs from the previous poll; now, it
+  also filters out those that have since completed.
+
+- The ``async job`` command was broken, as revealed by a new monitor test.
+  Fixed, which also means we need a new version of zope.bforest (1.2) for a new
+  feature there.
+
 1.1 (2008-04-24)
 ================
 
