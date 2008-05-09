@@ -143,6 +143,7 @@ def test_suite():
             'subscribers.txt',
             'README.txt',
             'README_2.txt',
+            'catastrophes.txt',
             setUp=modSetUp, tearDown=modTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),
         ))

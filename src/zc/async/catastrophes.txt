@@ -1,0 +1,205 @@
+Catastrophes
+============
+
+Sometimes bad things happen in the course of processing tasks.  You might have
+a MemoryError while processing your main job, or some other failure might
+happen.  That's bad enough.  Of course, you can register some callbacks to
+handle the error, to do what you need to recover.
+
+But then what if the callback itself fails? Perhaps the situation that caused
+the main job to fail with a MemoryError will let the callback start, but not
+complete.  Then when a sibling dispatcher handles the incomplete job, the
+callback will fail.
+
+You, the user, do have some responsibilities. Callbacks should be very fast and
+light. If you want to do something that takes a long time, or might take a long
+time, have your callback put a new job in a queue for the long job. The
+callback itself should then complete, quickly out of the way. 
+
+However, zc.async also has important responsibilities.
+
+This document examines catastrophes like the ones outlined above, to show how
+zc.async handles them, and how you can configure zc.async for these situations.
+Other documents in zc.async, such as the "Dead Dispatchers" section of
+queue.txt, look at this with some isolation and stubs; this document uses a
+complete zc.async set up to examine the system holistically [#setUp]_.
+
+These are the scenarios we'll contemplate:
+
+- The system has a single dispatcher. The dispatcher is working on a job with a
+  callback. The dispatcher dies, and then restarts, cleaning up.
+
+- The system has two dispatchers. One dispatcher is working on a job with a
+  callback, and then dies. The other dispatcher cleans up.
+
+- The system has a single dispatcher.  The dispatcher is working on a job, and
+  successfully completes it.  The callback begins, and then fails.
+
+- The system has a single dispatcher.  The dispatcher is working on a job, and
+  successfully completes it.  The callback begins, and then the dispatcher
+  dies.
+
+- The system has a single dispatcher.  The database goes away, and then comes
+  back.
+
+-------------------------------------------------
+Dispatcher Dies Gracefully While Performing a Job
+-------------------------------------------------
+
+First let's consider how a failed job with a callback or two is handled when
+the dispatcher dies.
+
+Here we start a job.
+
+    >>> import zope.component
+    >>> import threading
+    >>> import transaction
+    >>> import zc.async.interfaces
+    >>> import zc.async.testing
+    >>> import zc.async.dispatcher
+
+    >>> queue = root[zc.async.interfaces.KEY]['']
+    >>> lock = threading.Lock()
+    >>> lock.acquire()
+    True
+    >>> def wait_for_me():
+    ...     lock.acquire()
+    ...     lock.release() # so we can use the same lock again later
+    ...     raise SystemExit() # this will cause the worker thread to exit
+    ...
+    >>> def handle_error(result):
+    ...     return '...I handled the error...'
+    ...
+    >>> job = queue.put(wait_for_me)
+    >>> callback_job = job.addCallbacks(failure=handle_error)
+    >>> transaction.commit()
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> poll = zc.async.testing.get_poll(dispatcher)
+    >>> wait_for_start(job)
+
+In this scenario, ``wait_for_me`` is a job that will "unexpectedly" be lost
+while the dispatcher stops working.  ``handle_error`` is the hypothetical
+handler that should be called if the ``wait_for_me`` job fails.
+
+The job has started. Now, the dispatcher suddenly dies without the thread
+performing ``wait_for_me`` getting a chance to finish. For our first example,
+let's give the dispatcher a graceful exit. The dispatcher gets a chance to
+clean up its dispatcher agents, and job.fail() goes into the queue.
+
+    >>> dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+    >>> wait_to_deactivate(dispatcher)
+    >>> _ = transaction.begin()
+    >>> job.status == zc.async.interfaces.ACTIVE
+    True
+    >>> len(queue)
+    1
+    >>> fail_job = queue[0]
+    >>> fail_job
+    <zc.async.job.Job (oid 51, db 'unnamed') ``zc.async.job.Job (oid 30, db 'unnamed') :fail()``>
+    >>> queue[0].callable
+    <bound method Job.fail of <zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.wait_for_me()``>>
+
+Now when the process starts back up again, our callback will be performed.
+
+    >>> old_dispatcher = dispatcher
+    >>> zc.async.dispatcher.clear()
+    >>> zc.async.subscribers.ThreadedDispatcherInstaller(
+    ...         poll_interval=0.5)(zc.async.interfaces.DatabaseOpened(db))
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> zc.async.testing.wait_for_result(fail_job)
+    >>> job.status == zc.async.interfaces.COMPLETED
+    True
+    >>> job.result
+    <zc.twist.Failure zc.async.interfaces.AbortedError>
+    >>> callback_job.status == zc.async.interfaces.COMPLETED
+    True
+    >>> callback_job.result
+    '...I handled the error...'
+
+So, our callback had a chance to do whatever it thought appropriate--in this
+case, simply returning a string--once the dispatcher got back online
+[#cleanup1]_.
+
+--------------------------------------------------------------
+Dispatcher Dies "Hard" While Performing a Job, Sibling Resumes
+--------------------------------------------------------------
+
+--------------
+Callback Fails
+--------------
+
+-------------------------------
+Dispatcher Dies During Callback
+-------------------------------
+
+------------------------------
+Database Disappears For Awhile
+------------------------------
+
+---------------------------------------------
+Other Catastrophes, And Your Responsibilities
+---------------------------------------------
+
+There are some catastrophes from which there are no easy fixes like these.  For
+instance, imagine you have communicated with an external system, and gotten a
+reply that you have successfully made a transaction there, but then the
+dispatcher dies, or the database disappears, before you have a chance to redo.
+
+[#last_cleanup]_
+
+.. ......... ..
+.. Footnotes ..
+.. ......... ..
+
+.. [#setUp]
+
+    >>> import ZODB.FileStorage
+    >>> storage = ZODB.FileStorage.FileStorage(
+    ...     'main.fs', create=True)
+    >>> from ZODB.DB import DB 
+    >>> db = DB(storage) 
+    >>> conn = db.open()
+    >>> root = conn.root()
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+    >>> import zc.async.subscribers
+    >>> import zope.component
+    >>> zope.component.provideHandler(zc.async.subscribers.queue_installer)
+    >>> zope.component.provideHandler(
+    ...     zc.async.subscribers.ThreadedDispatcherInstaller(
+    ...         poll_interval=0.5))
+    >>> zope.component.provideHandler(zc.async.subscribers.agent_installer)
+    >>> import zope.event
+    >>> import zc.async.interfaces
+    >>> zope.event.notify(zc.async.interfaces.DatabaseOpened(db))
+    >>> import transaction
+    >>> _ = transaction.begin()
+
+    >>> import time
+    >>> def wait_for_start(job):
+    ...     for i in range(60):
+    ...         t = transaction.begin()
+    ...         if job.status == zc.async.interfaces.ACTIVE:
+    ...             break
+    ...         time.sleep(0.1)
+    ...     else:
+    ...         assert False, 'job never started'
+
+    >>> def wait_to_deactivate(dispatcher):
+    ...     for i in range(60):
+    ...         if dispatcher.activated == False:
+    ...             break
+    ...         time.sleep(0.1)
+    ...     else:
+    ...         assert False, 'dispatcher never deactivated'
+
+.. [#cleanup1]
+
+    >>> lock.release()
+    >>> old_dispatcher.thread.join(3)
+    >>> old_dispatcher.dead_pools[0].threads[0].join(3)
+
+.. [#last_cleanup]
+
+    >>> dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+    >>> dispatcher.thread.join(3)

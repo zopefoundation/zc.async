@@ -240,6 +240,8 @@ class Job(zc.async.utils.Base):
             self._callable_name = value.__name__
         else:
             self._callable_root, self._callable_name = value, None
+        if zc.async.interfaces.IJob.providedBy(self._callable_root):
+            self._callable_root.parent = self
 
     def addCallbacks(self, success=None, failure=None):
         if success is not None or failure is not None:

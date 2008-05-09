@@ -6,7 +6,10 @@
 - converted all reports from the dispatcher, including the monitor output,
   to use "unpacked" integer oids.  This addresses a problem that simplejson
   was having in trying to interpret the packed string blobs as unicode, and
-  then making zc.ngi fall over.
+  then making zc.ngi fall over.  To get the object, then, you'll need to
+  use ``ZODB.utils.p64``, like this:
+  ``connection.get(ZODB.utils.p64(INTEGER_OID))``, where ``INTEGER_OID``
+  indicates the integer oid of the object you want to examine.
 
 - added several more tests for the monitor code.
 
@@ -17,6 +20,15 @@
 - The ``async job`` command was broken, as revealed by a new monitor test.
   Fixed, which also means we need a new version of zope.bforest (1.2) for a new
   feature there.
+
+- made the log for finding an activated agent report the pertinent queue's oid
+  as an unpacked integer, rather than the packed string blob.  As mentioned
+  above, use ``ZODB.utils.p64`` to convert back to an oid that the ZODB will
+  recognize.
+
+- Bugfix: in failing a job, the job thought it was in agent, and the ``fail``
+  call failed.  This is not tested by the first example in new doctest
+  ``catastrophes.txt``.
 
 1.1 (2008-04-24)
 ================

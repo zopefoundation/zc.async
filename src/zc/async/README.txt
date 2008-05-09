@@ -784,13 +784,14 @@ Now we'll put this in and let it cook.
 
     >>> job = queue.put(main_job)
     >>> transaction.commit()
-    >>> reactor.wait_for(job, attempts=3)
-    TIME OUT
-    >>> reactor.wait_for(job, attempts=3)
-    TIME OUT
-    >>> reactor.wait_for(job, attempts=3)
-    TIME OUT
-    >>> reactor.wait_for(job, attempts=3)
+    >>> for i in range(10):
+    ...     reactor.wait_for(job, attempts=3)
+    ...     if job.status == zc.async.interfaces.COMPLETED:
+    ...         break
+    ... else:
+    ...     assert False, 'never completed'
+    ... # doctest: +ELLIPSIS
+    TIME OUT...
     >>> job.result
     42
 
@@ -1212,7 +1213,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
      'shortest successful': (..., 'unnamed'),
      'started': 22,
      'statistics end': datetime.datetime(2006, 8, 10, 15, 46, 52, 211),
-     'statistics start': datetime.datetime(2006, 8, 10, 15, 57, 47, 211),
+     'statistics start': datetime.datetime(2006, 8, 10, 15, ...),
      'successful': 20,
      'unknown': 0}
     >>> reactor.stop()

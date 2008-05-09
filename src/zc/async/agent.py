@@ -48,7 +48,7 @@ class Agent(zc.async.utils.Base):
         if self.parent is not None:
             return self.parent.parent
 
-    for nm in ('__len__', '__iter__', '__getitem__', '__nonzero__', 'pull'):
+    for nm in ('__len__', '__iter__', '__getitem__', '__nonzero__'):
         locals()[nm] = zc.async.utils.simpleWrapper(nm)
 
     def index(self, item):
@@ -58,10 +58,15 @@ class Agent(zc.async.utils.Base):
         raise ValueError("%r not in %s" % (item, self.__class__.__name__))
 
     def remove(self, item):
-        del self[self.index(item)]
+        self.pull(self.index(item))
 
     def __delitem__(self, ix):
-        self._data.pull(ix)
+        self.pull(ix)
+
+    def pull(self, index=0):
+        res = self._data.pull(index)
+        res.parent = None
+        return res
 
     def claimJob(self):
         if len(self._data) < self.size:

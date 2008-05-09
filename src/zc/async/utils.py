@@ -140,7 +140,8 @@ class Periodic(persistent.Persistent):
         while key in self._data:
             key -= 1
         self._data[key] = item
-        item.parent = self.__parent__ # the agent
+        assert self.__parent__ is not None
+        item.parent = self.__parent__
         item.key = key
 
     def iter(self, start=None, stop=None):
