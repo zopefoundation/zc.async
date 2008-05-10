@@ -80,9 +80,13 @@ multidb_queue_installer = QueueInstaller(db_name='async')
 class ThreadedDispatcherInstaller(object):
     def __init__(self,
                  poll_interval=5,
-                 reactor_factory=twisted.internet.selectreactor.SelectReactor):
+                 reactor_factory=twisted.internet.selectreactor.SelectReactor,
+                 uuid=None): # optional uuid is really just for tests; see
+                             # catastrophes.txt, for instance, which runs
+                             # two dispatchers simultaneously.
         self.poll_interval = poll_interval
         self.reactor_factory = reactor_factory
+        self.uuid = uuid
         # This IDatabaseOpenedEvent will be from zope.app.appsetup if that
         # package is around
         zope.component.adapter(zc.async.interfaces.IDatabaseOpenedEvent)(self)
@@ -90,7 +94,8 @@ class ThreadedDispatcherInstaller(object):
     def __call__(self, ev):
         reactor = self.reactor_factory()
         dispatcher = zc.async.dispatcher.Dispatcher(
-            ev.database, reactor, poll_interval=self.poll_interval)
+            ev.database, reactor, poll_interval=self.poll_interval,
+            uuid=self.uuid)
         def start():
             dispatcher.activate()
             reactor.run(installSignalHandlers=0)

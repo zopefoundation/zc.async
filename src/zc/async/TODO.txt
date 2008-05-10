@@ -4,11 +4,13 @@ Bugs and improvements:
 
 - need CRITICAL logs for callbacks
 
-- when database went away
+- when database went away, and then came back, async didn't come back.
+
+- be even more pessimistic about memory for saved polls and job info in
+  dispatcher.
 
 For future versions:
 
-- Write the z3monitor tests.
 - queues should be pluggable like agent with filter
 - show how to broadcast, maybe add conveniences
 - show how to use with collapsing jobs (hint to future self: use external queue
@@ -16,7 +18,8 @@ For future versions:
 - write tips and tricks
   * avoid long transactions if possible.  really avoid long transactions
     involving frequently written objects.  Discuss ramifications and
-    strategies.
+    strategies, such as doing big work in one job, then in callback schedule
+    actually writing the data into the hotspot.
   * in zope.app.testing.functional tests, zc.async doesn't do well being
     started in a layer's setup because then it is associated with the
     wrapped layer DB, and the test is associated with the DemoStorage wrapper,

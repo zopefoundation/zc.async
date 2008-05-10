@@ -26,8 +26,8 @@
   above, use ``ZODB.utils.p64`` to convert back to an oid that the ZODB will
   recognize.
 
-- Bugfix: in failing a job, the job thought it was in agent, and the ``fail``
-  call failed.  This is not tested by the first example in new doctest
+- Bugfix: in failing a job, the job thought it was in its old agent, and the
+  ``fail`` call failed. This is now tested by the first example in new doctest
   ``catastrophes.txt``.
 
 1.1 (2008-04-24)

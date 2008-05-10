@@ -183,18 +183,18 @@ class Reactor(object):
 
 # helper functions convenient for tests
 
-def get_poll(dispatcher, count=None):
+def get_poll(dispatcher, count=None, seconds=6):
     if count is None:
         count = len(dispatcher.polls)
-    for i in range(60):
+    for i in range(seconds * 10):
         if len(dispatcher.polls) > count:
             return dispatcher.polls.first()
         time.sleep(0.1)
     else:
         assert False, 'no poll!'
 
-def wait_for_result(job):
-    for i in range(60):
+def wait_for_result(job, seconds=6):
+    for i in range(seconds * 10):
         t = transaction.begin()
         if job.status == zc.async.interfaces.COMPLETED:
             return job.result
