@@ -1,6 +1,6 @@
 ##############################################################################
 #
-# Copyright (c) 2004 Zope Corporation and Contributors.
+# Copyright (c) 2006-2008 Zope Corporation and Contributors.
 # All Rights Reserved.
 #
 # This software is subject to the provisions of the Zope Public License,
@@ -10,7 +10,7 @@
 # WARRANTIES OF TITLE, MERCHANTABILITY, AGAINST INFRINGEMENT, AND FITNESS
 # FOR A PARTICULAR PURPOSE.
 #
-##############################################################################  
+##############################################################################
 
 """I18N support for the site package.
 

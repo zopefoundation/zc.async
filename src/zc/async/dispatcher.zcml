@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configure xmlns="http://namespaces.zope.org/zope">
+    <include file="configure.zcml" />
+    <utility component=".monitor.async"
+             provides="zc.z3monitor.interfaces.IZ3MonitorPlugin" name="async" />
+    <!-- maybe could divide up queue_installer so queues collection is added
+         here? -->
+</configure>

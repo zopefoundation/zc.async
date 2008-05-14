@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configure xmlns="http://namespaces.zope.org/zope">
+    <include file="dispatcher.zcml" />
+    <subscriber handler=".subscribers.multidb_queue_installer" />
+    <subscriber handler=".subscribers.threaded_dispatcher_installer" />
+    <subscriber handler=".subscribers.agent_installer" />
+    <adapter factory="zc.async.queue.getDefaultQueue" />
+</configure>

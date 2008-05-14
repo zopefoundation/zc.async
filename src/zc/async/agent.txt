@@ -1,0 +1,140 @@
+Agents choose and keep track of jobs for a dispatcher.  It is a
+component in the zc.async design that is intended to be pluggable.
+
+Arguably the most interesting method to control is ``claimJob``.  It is 
+responsible for getting the next job from the queue.
+
+The default implementation in zc.async.agent allows you to pass in a callable
+that, given the agent, claims and returns the desired job.  The default
+callable simply asks for the next job.
+
+Let's take a quick look at how the agent works.  Let's imagine we have a
+queue with a dispatcher with an agent [#setUp]_.
+
+The agent is initially empty.
+
+    >>> len(agent)
+    0
+    >>> bool(agent)
+    False
+    >>> list(agent)
+    []
+
+Dispatchers ask the agent to claim jobs.  Initially there are no jobs to
+claim.
+
+    >>> print agent.claimJob()
+    None
+    >>> list(agent)
+    []
+
+We can add some jobs to claim.
+
+    >>> def mock_work():
+    ...     return 42
+    ...
+    >>> job1 = queue.put(mock_work)
+    >>> job2 = queue.put(mock_work)
+    >>> job3 = queue.put(mock_work)
+    >>> job4 = queue.put(mock_work)
+    >>> job5 = queue.put(mock_work)
+
+It will only claim as many active jobs as its size.
+
+    >>> agent.size
+    3
+    >>> job1 is agent.claimJob()
+    True
+    >>> job2 is agent.claimJob()
+    True
+    >>> job3 is agent.claimJob()
+    True
+    >>> print agent.claimJob()
+    None
+    >>> len(agent)
+    3
+    >>> list(agent) == [job1, job2, job3]
+    True
+    >>> job1.parent is agent
+    True
+    >>> job2.parent is agent
+    True
+    >>> job3.parent is agent
+    True
+
+When a job informs its agent that it is done, the agent moves the job to
+the ``completed`` collection [#test_completed]_.
+
+    >>> len(agent.completed)
+    0
+    >>> job2()
+    42
+    >>> list(agent) == [job1, job3]
+    True
+    >>> len(agent)
+    2
+    >>> len(agent.completed)
+    1
+    >>> list(agent.completed) == [job2]
+    True
+    >>> job2.parent is agent
+    True
+
+The completed collection rotates, by default, to get old jobs rotated out in
+about a week.
+
+Now we can claim another job.
+
+    >>> job4 is agent.claimJob()
+    True
+    >>> print agent.claimJob()
+    None
+    >>> list(agent) == [job1, job3, job4]
+    True
+    >>> len(agent)
+    3
+
+This particular agent invites you to provide a function to choose jobs.
+The default one simply chooses the first available job in the queue.
+
+.. [#setUp] First we'll get a database and the necessary registrations.
+
+    >>> from ZODB.tests.util import DB
+    >>> db = DB()
+    >>> conn = db.open()
+    >>> root = conn.root()
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+
+    Now we need a queue.
+
+    >>> import zc.async.queue
+    >>> import zc.async.interfaces
+    >>> container = root[zc.async.interfaces.KEY] = zc.async.queue.Queues()
+    >>> queue = container[''] = zc.async.queue.Queue()
+    >>> import transaction
+    >>> transaction.commit()
+
+    Now we need an activated dispatcher agents collection.
+    
+    >>> import zc.async.instanceuuid
+    >>> queue.dispatchers.register(zc.async.instanceuuid.UUID)
+    >>> da = queue.dispatchers[zc.async.instanceuuid.UUID]
+    >>> da.activate()
+
+    And now we need an agent.
+    
+    >>> import zc.async.agent
+    >>> agent = da['main'] = zc.async.agent.Agent()
+    >>> agent.name
+    'main'
+    >>> agent.parent is da
+    True
+
+.. [#test_completed]
+
+    >>> import zope.interface.verify
+    >>> zope.interface.verify.verifyObject(
+    ...     zc.async.interfaces.ICompletedCollection,
+    ...     agent.completed)
+    True

@@ -1,0 +1,67 @@
+1.1.1 (2008-05-14)
+==================
+
+- more README tweaks.
+
+- converted all reports from the dispatcher, including the monitor output,
+  to use "unpacked" integer oids.  This addresses a problem that simplejson
+  was having in trying to interpret the packed string blobs as unicode, and
+  then making zc.ngi fall over.
+
+- added several more tests for the monitor code.
+
+- made the ``async jobs`` monitor command be "up to the minute".  Before, it
+  included all of the new and active jobs from the previous poll; now, it
+  also filters out those that have since completed.
+
+- The ``async job`` command was broken, as revealed by a new monitor test.
+  Fixed, which also means we need a new version of zope.bforest (1.2) for a new
+  feature there.
+
+1.1 (2008-04-24)
+================
+
+- Fired events when the IQueues and IQueue objects are installed by the
+  QueueInstaller (thanks to Fred Drake).
+
+- Dispatchers make agent threads keep their connections, so each connection's
+  object cache use is optimized if the agent regularly requests jobs with
+  the same objects.
+
+- README improved (thanks to Benji York and Sebastian Ware).
+
+- Callbacks are logged at start in the trace log.
+
+- All job results (including callbacks) are logged, including verbose
+  tracebacks if the callback generated a failure.
+
+- Had the ThreadedDispatcherInstaller subscriber stash the thread on the
+  dispatcher, so you can shut down tests like this:
+  
+  >>> import zc.async.dispatcher
+  >>> dispatcher = zc.async.dispatcher.get()
+  >>> dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+  >>> dispatcher.thread.join(3)
+
+- Added ``getQueue`` to zc.async.local as a convenience (it does what you
+  could already do: ``zc.async.local.getJob().queue``).
+
+- Clarified that ``IQueue.pull`` is the approved way of removing scheduled jobs
+  from a queue in interfaces and README.
+
+- reports in the logs of a job's success or failure come before callbacks are
+  started.
+
+- Added a section showing how the basic_dispatcher_policy.zcml worked, which
+  then pushed the former README_3 examples into README_3b.
+
+- Put ZPL everywhere I was supposed to.
+
+- Moved a number of helpful testing functions out of footnotes and into
+  zc.async.testing, both so that zc.async tests don't have to redefine them
+  and client packages can reuse them.
+
+1.0 (2008-04-09)
+================
+
+Initial release.

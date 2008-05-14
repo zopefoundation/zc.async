@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configure xmlns="http://namespaces.zope.org/zope">
+    <utility component=".instanceuuid.UUID" />
+    <adapter factory="zc.twist.transactionManager" />
+    <adapter factory="zc.twist.transactionManager"
+             for="ZODB.interfaces.IConnection" />
+    <!-- this is usually handled in Zope applications by the
+         zope.app.keyreference.persistent.connectionOfPersistent adapter
+    <adapter factory="zc.twist.connection" /> -->
+    <adapter factory="zc.async.job.Job"
+             for="types.FunctionType"
+             provides="zc.async.interfaces.IJob" />
+    <adapter factory="zc.async.job.Job"
+             for="types.MethodType"
+             provides="zc.async.interfaces.IJob" />
+    <adapter factory="zc.async.job.Job"
+             for="zc.twist.METHOD_WRAPPER_TYPE"
+             provides="zc.async.interfaces.IJob" />
+</configure>
