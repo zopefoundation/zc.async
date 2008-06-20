@@ -13,7 +13,9 @@
 ##############################################################################
 import threading
 import bisect
-import time
+from time import sleep as time_sleep # this import style is intentional, so
+# that test monkeypatching of time.sleep does not affect the usage in this
+# module
 import datetime
 
 import pytz
@@ -51,6 +53,9 @@ class _datetime(old_datetime):
         raw = super(_datetime, self).__repr__()
         return "datetime.datetime%s" % (
             raw[raw.index('('):],)
+    def __add__(self, other):
+        return _datetime(
+            *super(_datetime,self).__add__(other).__reduce__()[1])
     def __reduce__(self):
         return (argh, super(_datetime, self).__reduce__()[1])
 def argh(*args, **kwargs):
@@ -103,7 +108,7 @@ class Reactor(object):
         assert _when == 'before' and _event == 'shutdown', (
             'unsupported trigger')
         self.triggers.append((_when, _event, _callable, args, kwargs))
-    
+
     def callInThread(self, _callable, *args, **kw):
         # very naive should be fine...
         thread = threading.Thread(target=_callable, args=args, kwargs=kw)
@@ -177,7 +182,7 @@ class Reactor(object):
                     break
             else:
                 break
-            time.sleep(0.1)
+            time_sleep(0.1)
         else:
             print 'TIME OUT'
 
@@ -189,7 +194,7 @@ def get_poll(dispatcher, count=None, seconds=6):
     for i in range(seconds * 10):
         if len(dispatcher.polls) > count:
             return dispatcher.polls.first()
-        time.sleep(0.1)
+        time_sleep(0.1)
     else:
         assert False, 'no poll!'
 
@@ -198,7 +203,7 @@ def wait_for_result(job, seconds=6):
         t = transaction.begin()
         if job.status == zc.async.interfaces.COMPLETED:
             return job.result
-        time.sleep(0.1)
+        time_sleep(0.1)
     else:
         assert False, 'job never completed'
 
@@ -208,6 +213,6 @@ def wait_for_annotation(job, name):
         t = transaction.begin()
         if name in job.annotations:
             return job.annotations[name]
-        time.sleep(0.1)
+        time_sleep(0.1)
     else:
         assert False, 'annotation never found'

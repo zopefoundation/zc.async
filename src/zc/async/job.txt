@@ -2,33 +2,33 @@
 Jobs
 ====
 
-What if you want to persist a reference to the method of a persistent
-object--you can't persist that normally in the ZODB, but that can be
-very useful, especially to store asynchronous calls.  What if you want
-to act on the result of an asynchronous call that may be called later?
-The zc.async package offers an approach that combines ideas of a partial
-and that of Twisted deferred code: ``zc.async.job.Job``.  
+What if you want to persist a reference to the method of a persistent object?
+You can't persist that normally in the ZODB, but that can be very useful,
+especially to store asynchronous calls. What if you want to act on the result
+of an asynchronous call that may be called later?
 
-To use it, simply wrap the callable--a method of a persistent object or
-a callable persistent object or a global function--in the job.  You can
-include ordered and keyword arguments to the job, which may be
-persistent objects or simply pickleable objects.
+The zc.async package offers an approach that combines ideas of a partial and
+that of a Twisted deferred: ``zc.async.job.Job``. It has code that is specific
+to zc.async, so it is not truly a general-purpose persistent partial, but this
+file shows the Job largely stand-alone.
 
-Unlike a partial but like a Twisted deferred, the result of the wrapped
-call goes on the job's ``result`` attribute, and the immediate return of
-the call might not be the job's end result.  It could also be a failure,
-indicating an exception; or another partial, indicating that we are
-waiting to be called back by the second partial; or a twisted deferred,
-indicating that we are waiting to be called back by a twisted Deferred
-(see the ``zc.twist``).  After you have the partial, you can then use a
-number of methods and attributes on the partial for further set up. 
-Let's show the most basic use first, though.
+To use a job, simply wrap the callable--a method of a persistent object or a
+callable persistent object or a global function--in the job. You can include
+ordered and keyword arguments to the job, which may be persistent objects or
+simply pickleable objects.
 
-Note that, even though this looks like an interactive prompt, all
-functions and classes defined in this document act as if they were
-defined within a module.  Classes and functions defined in an interactive
-prompt are normally not picklable, and Jobs must work with
-picklable objects [#set_up]_.
+Unlike a partial but like a Twisted deferred, the result of the wrapped call
+goes on the job's ``result`` attribute. It could also be a failure, indicating
+an exception; or temporarily, None, indicating that we are waiting to be called
+back by a second Job or a twisted Deferred (see the ``zc.twist`` package).
+
+After you have the job, you can then use a number of methods and attributes
+on the partial for further set up. Let's show the most basic use first, though.
+
+(Note that, even though this looks like an interactive prompt, all functions and
+classes defined in this document act as if they were defined within a module.
+Classes and functions defined in an interactive prompt are normally not
+picklable, and Jobs must work with picklable objects. [#set_up]_.)
 
     >>> import zc.async.job
     >>> def call():
@@ -52,8 +52,8 @@ Initially it has a NEW status.
     >>> j.status == zc.async.interfaces.NEW
     True
 
-We can call the job from the NEW (or ASSIGNED, see later) status, and
-then see that the function was called, and see the result on the partial.
+We can call the job from the NEW (or PENDING or ASSIGNED, see later) status,
+and then see that the function was called, and see the result on the partial.
 
     >>> res = j()
     hello world
@@ -69,8 +69,8 @@ but as mentioned above, the job may return a deferred or another job.
     'my result'
 
 In addition to using a global function, we can also use a method of a
-persistent object.  Imagine we have a ZODB root that we can put objects
-in to.
+persistent object. (For this example, imagine we have a ZODB root into which we
+can put objects.)
 
     >>> import persistent
     >>> class Demo(persistent.Persistent):
@@ -117,13 +117,13 @@ though.
     ...
     exceptions.RuntimeError: Bad Things Happened Here
 
-Note that all calls can return a failure explicitly, rather than raising
-an exception that the job converts to an exception.  However, there
-is an important difference in behavior.  If a wrapped call raises an
-exception, the job aborts the transaction; but if the wrapped call
-returns a failure, no abort occurs.  Wrapped calls that explicitly return
-failures are thus responsible for any necessary transaction aborts.  See
-the footnote for an example [#explicit_failure_example]_.
+Note that all calls can return a failure explicitly, rather than raising an
+exception that the job converts to an exception. However, there is an important
+difference in behavior. If a wrapped call raises an exception, the job aborts
+the transaction; but if the wrapped call returns a failure, no automatic abort
+occurs. Wrapped calls that explicitly return failures are thus responsible for
+any necessary transaction aborts. See the footnote for an example
+[#explicit_failure_example]_.
 
 Now let's return a job from the job.  This generally represents a result
 that is waiting on another asynchronous persistent call, which would
@@ -236,23 +236,24 @@ This last feature makes jobs possible to use for callbacks: our next
 topic.
 
 Callbacks
----------
+=========
 
-The job object can also be used to handle return values and
-exceptions from the call.  The ``addCallbacks`` method enables the
-functionality.  Its signature is (success=None, failure=None).  It may
-be called multiple times, each time adding a success and/or failure
-callable that takes an end result: a value or a zc.async.Failure object,
-respectively.  Failure objects are passed to failure callables, and
-any other results are passed to success callables.
+The job object can also be used to handle return values and exceptions from the
+call. The ``addCallbacks`` method enables the functionality. Its signature is
+(success=None, failure=None). It may be called multiple times, each time adding
+a success and/or failure callable that takes the end result of the original,
+parent job: a value or a zc.async.Failure object, respectively. Failure objects
+are passed to failure callables, and any other results are passed to success
+callables.
 
-The return value of the success and failure callables is
-important for chains and for determining whether a job had any
-errors that need logging, as we'll see below.  The call to
-``addCallbacks`` returns a job, which can be used for chaining (see
-``Chaining Callbacks``_).
+Note that, unlike with Twisted deferred's, the results of callbacks for a given
+job are not chained.  To chain, add a callback to the desired callback.  The
+primary reason for a Twisted callback is try:except:else:finally logic.  In
+most cases, because zc.async jobs are long-running, the try:except logic can be
+accomplished within the code for the job itself.  For certain kinds of
+exceptions, an IRetryPolicy is used instead.
 
-Let's look at a simple example.
+Let's look at a simple example of a callback.
 
     >>> def call(*args):
     ...     res = 1
@@ -333,6 +334,7 @@ simultaneously.  This one causes a success...
     failure. [Failure instance: Traceback: exceptions.TypeError...]
     also a failure. [Failure instance: Traceback: exceptions.TypeError...]
 
+------------------
 Chaining Callbacks
 ------------------
 
@@ -384,6 +386,7 @@ cleanup (like try...finally).  Here's an example of handling errors.
     >>> isinstance(j.result, twisted.python.failure.Failure)
     True
 
+--------------------------
 Callbacks on Completed Job
 --------------------------
 
@@ -403,6 +406,7 @@ immediately.
     >>> j.status == zc.async.interfaces.COMPLETED
     True
 
+-------------
 Chaining Jobs
 -------------
 
@@ -422,33 +426,68 @@ combined result; and errors are nested in arguments.
     success! 15
     also a success! 60
 
-Failing
--------
+Failures
+========
 
-Speaking again of failures, it's worth discussing two other aspects of
-failing.  One is that jobs offer an explicit way to fail a call.  It
-can be called when the job has a NEW, PENDING, ASSIGNED or ACTIVE status. 
-The primary use cases for this method are to cancel a job that is
-overdue to start, and to cancel a job that was in progress by a
-worker thread in a dispatcher when the dispatcher died (more on that below).
+Let's talk more about failures.  We'll divide them up into a two large types.
+
+- The code you ran in the job failed.
+
+- The system around your code (zc.async code, the ZODB, or even the machine on
+  which the job is running) failed.
+
+If your code fails, it's mostly up to you to deal with it.  There are two
+mechanisms to use: callbacks, which we've already seen, and retry policies,
+which we'll look at below.
+
+If the system fails around your code, four sorts of things might happen. In the
+context of the full zc.async system, it is the responsibility of the zc.async
+code to react as described below, and, when pertinent, your reponsibility to
+make sure that the retry policy for the job does what you need.
+
+- The job never started, and timed out. zc.async should call ``fail`` on the
+  job, which aborts the job and begins callbacks.  (This is handled in the
+  queue's ``claim`` method, in the full context of zc.async.)
+
+- The job started but was unable to commit. Internally to the job's machinery,
+  the job uses a retry policy to decide what to do, as described below.
+
+- The job started but then was interrupted. zc.async should call
+  ``handleInterrupt``, in which a retry policy decides what to do, as described
+  below. (This is handled in a DispatcherAgents collection's ``deactivate``
+  method, in the full context of zc.async.)
+
+- The job completed, but the callbacks were interrupted. zc.async should call
+  ``resumeCallbacks``, which will handle the remaining callbacks in the manner
+  described here. (This is handled in a DispatcherAgents collection's
+  ``deactivate`` method, in the full context of zc.async.)
+
+We need to explore a few elements of this, then: the ``fail`` method, retry
+policies, job errors, commit errors, and the ``handleInterrupt`` method.
+
+--------
+``fail``
+--------
+
+The ``fail`` method is an explicit way to fail a job. It can be called when the
+job has a NEW, PENDING, or ASSIGNED status. The use case for this method is to
+cancel a job that is overdue to start.  It defaults to a TimeoutError.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
     >>> transaction.commit()
     >>> j.fail()
     >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    Traceback (most recent call last):
-    ...
-    zc.async.interfaces.AbortedError:
+    Traceback...zc.async.interfaces.TimeoutError...
 
-``fail`` calls all failure callbacks with the failure.
+``fail`` calls all callbacks with the failure.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
     >>> j_callback = j.addCallbacks(failure=failure)
     >>> transaction.commit()
     >>> res = j.fail() # doctest: +ELLIPSIS
-    failure. [Failure instance: Traceback...zc.async.interfaces.AbortedError...]
+    failure. [Failure instance: Traceback...zc.async.interfaces.TimeoutError...]
 
-As seen above, it fails with zc.async.interfaces.AbortedError by default.
+As seen above, it fails with zc.async.interfaces.TimeoutError by default.
 You can also pass in a different error.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
@@ -459,41 +498,854 @@ You can also pass in a different error.
     ...
     exceptions.RuntimeError: failed
 
-As mentioned, if a dispatcher dies when working on an active task, the
-active task should be aborted using ``fail``, so the method also works if
-a job has the ACTIVE status.  We'll reach under the covers to show this.
+It won't work for failing tasks in ACTIVE or COMPLETED status.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
     >>> j._status = zc.async.interfaces.ACTIVE
     >>> transaction.commit()
     >>> j.fail()
-    >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     Traceback (most recent call last):
     ...
-    zc.async.interfaces.AbortedError:
+    BadStatusError: can only call fail on a job with NEW, PENDING, or ASSIGNED status
 
-It won't work for failing tasks in COMPLETED or CALLBACKS status.
-
+    >>> j._status = zc.async.interfaces.NEW
+    >>> j.fail()
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
     >>> j.fail()
     Traceback (most recent call last):
     ...
-    BadStatusError: can only call fail on a job with NEW, PENDING, ASSIGNED, or ACTIVE status
+    BadStatusError: can only call fail on a job with NEW, PENDING, or ASSIGNED status
+
+It's a dirty secret that it will work in CALLBACKS status.  This is because we
+need to support retries in the face of internal commits.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
     >>> j._status = zc.async.interfaces.CALLBACKS
+    >>> transaction.commit()
     >>> j.fail()
-    Traceback (most recent call last):
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
+    >>> j.result is None # the default
+    True
+
+--------------
+Retry Policies
+--------------
+
+All of the other failure situations touch on retry policies, directly or
+indirectly.
+
+What is a retry policy?  It is used in three circumstances.
+
+- When the code the job ran fails, the job will try to call
+  ``retry_policy.jobError(failure, data_cache)`` to get a boolean as to whether
+  the job should be retried.
+
+- When the commit fails, the job will try to call
+  ``retry_policy.commitError(failure, data_cache)`` to get a boolean as to
+  whether the job should be retried.
+
+- When the job starts but fails to complete because the system is interrupted,
+  the job will try to call ``retry_policy.interrupted()`` to get a boolean as
+  to whether the job should be retried.
+
+Why does this need to be a policy?  Can't it be a simpler arrangement?
+
+The heart of the problem is that different jobs need different error
+resolutions.
+
+In some cases, jobs may not be fully transactional.  For instance, the job
+may be communicating with an external system, such as a credit card system.
+The retry policy here should typically be "never": perhaps a callback should be
+in charge of determining what to do next.
+
+If a job is fully transactional, it can be retried.  But even then the desired
+behavior may differ.
+
+- In typical cases, some errors should simply cause a failure, while other
+  errors, such as database conflict errors, should cause a limited number of
+  retries.
+
+- In some jobs, conflict errors should be retried forever, because the job must
+  be run to completion or else the system should fall over. Callbacks that try
+  to handle errors themselves may take this approach, for instance.
+
+zc.async currently ships with three retry policies.
+
+1.  The default, appropriate for most fully transactional jobs, is the
+    zc.async.job.RetryCommonFourTimes.
+
+2.  The other available (pre-written) option for transactional jobs is
+    zc.async.job.RetryCommonForever. Callbacks will get this policy by
+    default.
+
+Both of these policies retry ZEO disconnects forever; and interrupts and
+transaction errors such as conflicts either four times (for a total of five
+attempts) or forever, respectively.
+
+3.  The last retry policy is zc.async.job.NeverRetry.  This is appropriate for
+    non-transactional jobs. You'll still typically need to handle errors in
+    your callbacks.
+
+Let's take a detailed look at these three in isolation before seeing them in
+practice below.
+
+We'll start with the default retry policy, RetryCommonFourTimes.  We can get it
+with ``getRetryPolicy``.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> policy = j.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.RetryCommonFourTimes)
+    True
+    >>> verifyObject(zc.async.interfaces.IRetryPolicy, policy)
+    True
+
+Now we'll try out a few calls.  ``jobError`` and ``commitError`` both take a
+failure and a dictionary to stash data about the retry.  The job then calls
+the retry policy with the data dictionary before a commit using the
+``updateData`` method.
+
+Here's the policy requesting that a job be tried a total of five times,
+combined from in the job and in the commit
+
+    >>> import zc.twist
+    >>> import ZODB.POSException
+    >>> conflict = zc.twist.Failure(ZODB.POSException.ConflictError())
+    >>> data = {}
+
+    >>> policy.jobError(conflict, data)
+    True
+    >>> policy.jobError(conflict, data)
+    True
+    >>> policy.jobError(conflict, data)
+    True
+    >>> policy.jobError(conflict, data)
+    True
+    >>> policy.jobError(conflict, data)
+    False
+
+Now we've expired the total number of retries for this kind of error, so during
+commit it will fail immediately.
+
+    >>> policy.commitError(conflict, data)
+    False
+
+We'll reset the data (which holds the information until ``updateData`` is
+called to store the information persistently, so that aborted transactions
+don't discard the history from past attempts) and try again.
+
+    >>> data = {}
+    >>> policy.commitError(conflict, data)
+    True
+    >>> policy.commitError(conflict, data)
+    True
+    >>> policy.commitError(conflict, data)
+    True
+    >>> policy.commitError(conflict, data)
+    True
+    >>> policy.commitError(conflict, data)
+    False
+
+A ZEO ClientDisconnected error will be retried forever.  We treat 50 as close
+enough to "forever".  It uses time.sleep to backoff.  We'll stub that so we can
+see what happens.
+
+    >>> import time
+    >>> sleep_requests = []
+    >>> def sleep(i):
+    ...     sleep_requests.append(i)
     ...
-    BadStatusError: can only call fail on a job with NEW, PENDING, ASSIGNED, or ACTIVE status
+    >>> old_sleep = time.sleep
+    >>> time.sleep = sleep
 
-Using ``resumeCallbacks``
--------------------------
+    >>> import ZEO.Exceptions
+    >>> disconnect = zc.twist.Failure(ZEO.Exceptions.ClientDisconnected())
 
-So ``fail`` is the proper way to handle an active job that was being
-worked on by on eof a dead dispatcher's worker thread, but how does one
-handle a job that was in the CALLBACKS status?  The answer is to use
-resumeCallbacks.  Any job that is still pending will be called; any
-job that is active will be failed; any job that is in the middle
-of calling its own callbacks will have its ``resumeCallbacks`` called; and
-any job that is completed will be ignored.
+    >>> for i in range(50):
+    ...     if not policy.jobError(disconnect, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+    >>> sleep_requests # doctest: +ELLIPSIS
+    [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, ..., 60]
+    >>> len(sleep_requests)
+    50
+
+After jobError has upped the backoff, it keeps at 60 seconds for
+ClientDisconnected errors at commit.
+
+    >>> policy.commitError(disconnect, data)
+    True
+    >>> sleep_requests[50]
+    60
+
+Here's the backoff happening in commitError.
+
+    >>> del sleep_requests[:]
+    >>> data = {}
+    >>> for i in range(50):
+    ...     if not policy.commitError(disconnect, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+    >>> sleep_requests # doctest: +ELLIPSIS
+    [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, ..., 60]
+    >>> len(sleep_requests)
+    50
+
+If we encounter another kind of error, no retries are requested.
+
+    >>> runtime = zc.twist.Failure(RuntimeError())
+    >>> policy.jobError(runtime, data)
+    False
+    >>> policy.commitError(runtime, data)
+    False
+    >>> value = zc.twist.Failure(ValueError())
+    >>> policy.jobError(value, data)
+    False
+    >>> policy.commitError(value, data)
+    False
+
+When the system is interrupted, ``handleInterrupt`` uses the retry_policy's
+``interrupted`` method to determine what to do.  It does not need to pass a
+data dictionary.  The default policy will retry ten times, for a total of ten
+attempts.
+
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    True
+    >>> policy.interrupted()
+    False
+
+``updateData`` is only used after ``jobError`` and ``commitError``, and is
+called every time there is a commit attempt, so we're wildly out of order here,
+but we'll call the method now anyway to show we can, and then perform the job.
+
+    >>> transaction.commit()
+    >>> policy.updateData(data)
+    >>> j()
+    10
+
+The policy may also want to perform additional logging.
+
+The other policies perform similarly. [#show_other_policies]_
+
+To change a policy on a job, you have two options. First, you can change the
+``retry_policy_factory`` on your instance.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> j.retry_policy_factory = zc.async.job.NeverRetry
+    >>> policy = j.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.NeverRetry)
+    True
+
+Second, you can leverage the fact that the default policy tries to adapt the
+job to zc.async.interfaces.IRetryPolicy (with the default name of ''), and only
+if that fails does it use RetryCommonFourTimes.
+
+    >>> import zope.component
+    >>> zope.component.provideAdapter(
+    ...     zc.async.job.RetryCommonForever,
+    ...     provides=zc.async.interfaces.IRetryPolicy)
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> policy = j.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.RetryCommonForever)
+    True
+
+    >>> zope.component.getGlobalSiteManager().unregisterAdapter(
+    ...     zc.async.job.RetryCommonForever,
+    ...     provided=zc.async.interfaces.IRetryPolicy) # tearDown
+    True
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> policy = j.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.RetryCommonFourTimes)
+    True
+
+If you are working with callbacks, the default retry policy is
+``RetryCommonForever``.
+
+    >>> def foo(result):
+    ...     print result
+    ...
+    >>> callback = j.addCallback(foo)
+    >>> policy = callback.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.RetryCommonForever)
+    True
+
+This can be changed in the same kind of way as a non-callback job.  You can
+set the ``retry_policy_factory``.
+
+    >>> callback = j.addCallback(foo)
+    >>> callback.retry_policy_factory = zc.async.job.NeverRetry
+    >>> policy = callback.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.NeverRetry)
+    True
+
+You can also register an adapter.  In this case it must be an adapter
+registered with the 'callback' name.
+
+    >>> zope.component.provideAdapter(
+    ...     zc.async.job.RetryCommonFourTimes,
+    ...     provides=zc.async.interfaces.IRetryPolicy, name='callback')
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> callback = j.addCallback(foo)
+    >>> policy = callback.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.RetryCommonFourTimes)
+    True
+
+    >>> zope.component.getGlobalSiteManager().unregisterAdapter(
+    ...     zc.async.job.RetryCommonFourTimes,
+    ...     provided=zc.async.interfaces.IRetryPolicy, name='callback') # tearDown
+    True
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> callback = j.addCallback(foo)
+    >>> policy = callback.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.RetryCommonForever)
+    True
+
+Finally, it is worth noting that, typically, once a retry policy has been
+obtained with ``getRetryPolicy``, changing the factory or adapter registration
+will not change the policy: it has already been instantiated and stored on the
+job.
+
+    >>> callback.retry_policy_factory = zc.async.job.NeverRetry
+    >>> isinstance(callback.getRetryPolicy(), zc.async.job.NeverRetry)
+    False
+    >>> policy is callback.getRetryPolicy()
+    True
+
+Now we'll look at the standard retry policies in use as we examine more failure
+scenarios below.
+
+---------------------
+Failures in Your Code
+---------------------
+
+As seen above, failures in your code will generally be ignored by the default
+retry policy, and passed on as a Failure object on the job's request.  The
+only difference is for ConflictErrors (retry five times) and ClientDisconnected
+(retry forever).  Let's manufacture some of these problems.
+
+First, a few "normal" errors.  They just go to the result.
+
+    >>> count = 0
+    >>> max = 50
+    >>> def raiseAnError(klass):
+    ...     global count
+    ...     count += 1
+    ...     if count < max:
+    ...         raise klass()
+    ...     else:
+    ...         print 'tried %d times.  stopping.' % (count,)
+    ...         return 42
+    ...
+    >>> job = root['j'] = zc.async.job.Job(raiseAnError, ValueError)
+    >>> transaction.commit()
+    >>> job()
+    <zc.twist.Failure exceptions.ValueError>
+    >>> job.result
+    <zc.twist.Failure exceptions.ValueError>
+    >>> count
+    1
+    >>> count = 0
+
+    >>> job = root['j'] = zc.async.job.Job(raiseAnError, TypeError)
+    >>> transaction.commit()
+    >>> job()
+    <zc.twist.Failure exceptions.TypeError>
+    >>> job.result
+    <zc.twist.Failure exceptions.TypeError>
+    >>> count
+    1
+    >>> count = 0
+
+    >>> job = root['j'] = zc.async.job.Job(raiseAnError, RuntimeError)
+    >>> transaction.commit()
+    >>> job()
+    <zc.twist.Failure exceptions.RuntimeError>
+    >>> job.result
+    <zc.twist.Failure exceptions.RuntimeError>
+    >>> count
+    1
+    >>> count = 0
+
+If we raise a ConflictError (or any TransactionError), that will try five
+times, and then be let through, so it will look very similar to the previous
+examples except for our ``count`` variable.
+
+    >>> job = root['j'] = zc.async.job.Job(raiseAnError,
+    ...                                    ZODB.POSException.ConflictError)
+    >>> transaction.commit()
+    >>> job()
+    <zc.twist.Failure ZODB.POSException.ConflictError>
+    >>> job.result
+    <zc.twist.Failure ZODB.POSException.ConflictError>
+    >>> count
+    5
+    >>> count = 0
+
+It's worth showing that, as you'd expect, if the job succeeds within the
+allotted retries, everything is fine.
+
+    >>> max = 3
+
+    >>> job = root['j'] = zc.async.job.Job(raiseAnError,
+    ...                                    ZODB.POSException.ConflictError)
+    >>> transaction.commit()
+    >>> job()
+    tried 3 times.  stopping.
+    42
+    >>> job.result
+    42
+    >>> count
+    3
+    >>> count = 0
+
+If we raise a ClientDisconnected error, that will retry forever, with a
+timeout.  our job doesn't let this happen, but the retry policy would.
+
+    >>> max = 50
+    >>> del sleep_requests[:]
+    >>> job = root['j'] = zc.async.job.Job(raiseAnError,
+    ...                                    ZEO.Exceptions.ClientDisconnected)
+    >>> transaction.commit()
+    >>> job()
+    tried 50 times.  stopping.
+    42
+    >>> count
+    50
+    >>> sleep_requests # doctest: +ELLIPSIS
+    [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, ..., 60]
+    >>> len(sleep_requests)
+    49
+    >>> count = 0
+
+None of the provided retry policies utilize this functionality, but the
+pertinent retry policy method, ``jobError`` can not only return ``True``
+(retry now) or ``False`` (do not retry) but a datetime.datetime or a
+datetime.timedelta.  Datetimes and timedeltas indicate that the policy requests
+that the job be returned to the queue to be claimed again.  Let's give an
+example of this.
+
+As implied by this description, this functionality only makes sense within
+a fuller zc.async context.  We need a stub Agent as a job's parent, and a stub
+Queue in its ``parent`` lineage.
+
+    >>> class StubQueue(persistent.Persistent):
+    ...     zope.interface.implements(zc.async.interfaces.IQueue)
+    ...     def putBack(self, job):
+    ...         self.put_back = job
+    ...         job.parent = self
+    ...     def put(self, job, begin_after=None):
+    ...         self.put_job = job
+    ...         self.put_begin_after = begin_after
+    ...         job.parent = self
+    ...
+    >>> class StubAgent(persistent.Persistent):
+    ...     zope.interface.implements(zc.async.interfaces.IAgent)
+    ...     def __init__(self):
+    ...         # usually would have dispatcher agent parent, which would then
+    ...         # have queue as parent, but this is a stub
+    ...         self.parent = StubQueue()
+    ...     def jobCompleted(self, job):
+    ...         self.completed = job
+    ...     def remove(self, job):
+    ...         job.parent = None
+    ...         self.removed = job
+    ...
+
+We'll also need a quick stub retry policy that takes advantage of this
+functionality.
+
+    >>> import persistent
+    >>> import datetime
+    >>> class StubRescheduleRetryPolicy(persistent.Persistent):
+    ...     zope.interface.implements(zc.async.interfaces.IRetryPolicy)
+    ...     _reply = datetime.timedelta(hours=1)
+    ...     def __init__(self, job):
+    ...         self.parent = self.__parent__ = job
+    ...     def jobError(self, failure, data_cache):
+    ...         return self._reply
+    ...     def commitError(self, failure, data_cache):
+    ...         return self._reply
+    ...     def interrupted(self):
+    ...         return self._reply
+    ...     def updateData(self, data_cache):
+    ...         pass
+    ...
+
+    >>> j = root['j'] = zc.async.job.Job(raiseAnError, TypeError)
+    >>> agent = j.parent = StubAgent()
+    >>> j.retry_policy_factory = StubRescheduleRetryPolicy
+    >>> transaction.commit()
+    >>> j is j()
+    True
+
+Notice above that, when this happens, the result of the call is the job itself.
+
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> agent.removed is j
+    True
+    >>> agent.parent.put_job is j
+    True
+    >>> agent.parent.put_begin_after
+    datetime.datetime(2006, 8, 10, 16, 44, 22, 211, tzinfo=<UTC>)
+
+    >>> import pytz
+    >>> j = root['j'] = zc.async.job.Job(raiseAnError, TypeError)
+    >>> agent = j.parent = StubAgent()
+    >>> j.retry_policy_factory = StubRescheduleRetryPolicy
+    >>> StubRescheduleRetryPolicy._reply = datetime.datetime(3000, 1, 1)
+    >>> transaction.commit()
+    >>> j is j()
+    True
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> agent.removed is j
+    True
+    >>> agent.parent.put_job is j
+    True
+    >>> agent.parent.put_begin_after
+    datetime.datetime(3000, 1, 1, 0, 0, tzinfo=<UTC>)
+
+------------------
+Failures on Commit
+------------------
+
+Failures on commit are handled very similarly to those occurring while
+performing the job.
+
+We'll have to hack ``TransactionManager.commit`` to show this.
+
+    >>> from transaction import TransactionManager
+    >>> old_commit = TransactionManager.commit
+    >>> commit_count = 0
+    >>> error = None
+    >>> max = 2
+    >>> allow_commits = [1] # change state to active
+    >>> def new_commit(self):
+    ...     global commit_count
+    ...     commit_count += 1
+    ...     if commit_count in allow_commits:
+    ...         old_commit(self) # changing state to "active" or similar
+    ...     elif commit_count - len(allow_commits) < max:
+    ...         raise error()
+    ...     else:
+    ...         if commit_count - len(allow_commits) == max:
+    ...             print 'tried %d time(s).  committing.' % (
+    ...                 commit_count-len(allow_commits))
+    ...         old_commit(self)
+    ...
+    >>> TransactionManager.commit = new_commit
+    >>> count = 0
+    >>> def count_calls():
+    ...     global count
+    ...     count += 1
+    ...     return 42
+    ...
+
+Normal errors will simply pass through with only one try.
+
+    >>> error = ValueError
+    >>> j = root['j'] = zc.async.job.Job(count_calls)
+    >>> transaction.commit()
+    >>> j()
+    tried 2 time(s).  committing.
+    <zc.twist.Failure exceptions.ValueError>
+    >>> count
+    1
+
+Note that, since the error at commit is obscuring the original result, the
+original result is logged.
+
+    >>> for r in reversed(event_logs.records):
+    ...     if r.levelname == 'INFO':
+    ...         break
+    ... else:
+    ...     assert False, 'could not find log'
+    ...
+    >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Commit failed ... Prior to this, job succeeded with result: 42
+
+This happens both for non-error results (as above) and for error results.
+
+    >>> count = commit_count = 0
+    >>> allow_commits = [1, 2, 3] # set to active, then get retry policy, then call
+    >>> j = root['j'] = zc.async.job.Job(raiseAnError, RuntimeError)
+    >>> transaction.commit()
+    >>> j()
+    tried 2 time(s).  committing.
+    <zc.twist.Failure exceptions.ValueError>
+    >>> found = []
+    >>> for r in reversed(event_logs.records):
+    ...     if r.levelname == 'ERROR':
+    ...         found.append(r)
+    ...         if len(found) == 2:
+    ...             break
+    ... else:
+    ...     assert False, 'could not find log'
+    ...
+    >>> print found[1].getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Commit failed ... Prior to this, job failed with traceback:
+    ...
+    exceptions.RuntimeError...
+
+The ValueError, from transaction time, is the main error recorded.
+
+    >>> print found[0].getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <...Job...raiseAnError... failed with traceback:
+    ...
+    exceptions.ValueError...
+
+The conflict error will be tried five times.
+
+    >>> max = 6
+    >>> count = commit_count = 0
+    >>> allow_commits = [1, 3, 4, 6, 7, 9, 10, 12, 13] # set active state, then get retries
+    >>> error = ZODB.POSException.ConflictError
+    >>> j = root['j'] = zc.async.job.Job(count_calls)
+    >>> transaction.commit()
+    >>> j()
+    tried 6 time(s).  committing.
+    <zc.twist.Failure ZODB.POSException.ConflictError>
+    >>> count
+    5
+
+If it succeeds in the number of tries allotted, the result will be fine.
+
+    >>> max = 3
+    >>> count = commit_count = 0
+    >>> allow_commits = [1, 3, 4, 6, 7]
+    >>> error = ZODB.POSException.ConflictError
+    >>> j = root['j'] = zc.async.job.Job(count_calls)
+    >>> transaction.commit()
+    >>> j()
+    tried 3 time(s).  committing.
+    42
+    >>> count
+    3
+
+As an aside, the code regards getting the desired retry policy as a requirement
+and so will try until it does so.  Here's a repeat of the previous example,
+with some retries getting a failed commit.  Everything except a ConflictError
+has a backoff.
+
+    >>> max = 25
+    >>> count = commit_count = 0
+    >>> allow_commits = [1]
+    >>> error = ZODB.POSException.ConflictError
+    >>> del sleep_requests[:]
+    >>> j = root['j'] = zc.async.job.Job(count_calls)
+    >>> transaction.commit()
+    >>> j()
+    tried 25 time(s).  committing.
+    42
+    >>> count
+    2
+    >>> sleep_requests
+    []
+
+The ClientDisconnected will be tried forever until it succeeds, with a backoff.
+We're putting in some irregular patterns of commits to test that these also
+work, which skew some of the results
+
+    >>> max = 50
+    >>> count = commit_count = 0
+    >>> allow_commits = [1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19, 22, 25]
+    >>> del sleep_requests[:]
+    >>> error = ZEO.Exceptions.ClientDisconnected
+    >>> j = root['j'] = zc.async.job.Job(count_calls)
+    >>> transaction.commit()
+    >>> j()
+    tried 50 time(s).  committing.
+    42
+    >>> count
+    9
+    >>> len(sleep_requests)
+    51
+
+None of the provided retry policies utilize this functionality, but the
+pertinent retry policy method, ``jobError`` can not only return ``True``
+(retry now) or ``False`` (do not retry) but a datetime.datetime or a
+datetime.timedelta.  Datetimes and timedeltas indicate that the policy requests
+that the job be returned to the queue to be claimed again.  Let's give an
+example of this.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> agent = j.parent = StubAgent()
+    >>> StubRescheduleRetryPolicy._reply = datetime.timedelta(hours=1)
+    >>> j.retry_policy_factory = StubRescheduleRetryPolicy
+    >>> count = commit_count = 0
+    >>> max = 1
+    >>> error = ValueError
+    >>> transaction.commit()
+    >>> j is j()
+    True
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> agent.removed is j
+    True
+    >>> agent.parent.put_job is j
+    True
+    >>> agent.parent.put_begin_after
+    datetime.datetime(2006, 8, 10, 16, 44, 22, 211, tzinfo=<UTC>)
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> agent = j.parent = StubAgent()
+    >>> j.retry_policy_factory = StubRescheduleRetryPolicy
+    >>> StubRescheduleRetryPolicy._reply = datetime.datetime(3000, 1, 1)
+    >>> count = commit_count = 0
+    >>> transaction.commit()
+    >>> j is j()
+    True
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> agent.removed is j
+    True
+    >>> agent.parent.put_job is j
+    True
+    >>> agent.parent.put_begin_after
+    datetime.datetime(3000, 1, 1, 0, 0, tzinfo=<UTC>)
+
+All of this looks very similar to job errors. The only big difference between
+the behavior of job errors and commit errors is that a failure of a failure to
+commit *must* commit: it will try forever until it succeeds or is interrupted.
+Here's an example with a ConflictError.
+
+    >>> count = commit_count = 0
+    >>> max = 50
+    >>> error = ZODB.POSException.ConflictError
+    >>> allow_commits = [1, 3, 4, 6, 7, 9, 10, 12, 13]
+    >>> j = root['j'] = zc.async.job.Job(count_calls)
+    >>> transaction.commit()
+    >>> j()
+    tried 50 time(s).  committing.
+    <zc.twist.Failure ZODB.POSException.ConflictError>
+    >>> count
+    5
+
+    >>> TransactionManager.commit = old_commit
+
+    >>> time.sleep = old_sleep # tearDown
+
+-------------------
+``handleInterrupt``
+-------------------
+
+Not infrequently, systems will be stopped while jobs are in the middle of their
+work.  When the clean-up occurs, the job needs to figure out what to do to
+handle the interruption.  The right thing to do is to call ``handleInterrupt``.
+This method itself defers to a retry policy to determine what to do.
+
+This method takes no arguments. The default behavior is to allow up to 10
+interruptions. It expects a parent agent to reschedule it in a queue.  Let's
+give an example.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> queue = j.parent = StubQueue()
+    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> transaction.commit()
+    >>> j.handleInterrupt()
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> queue.put_back is j
+    True
+
+After 9 interruptions, the default policy will give up after the tenth try.
+
+    >>> for i in range(8):
+    ...     j.parent = agent
+    ...     j._status = zc.async.interfaces.ACTIVE
+    ...     j.handleInterrupt()
+    ...     if j.status != zc.async.interfaces.PENDING:
+    ...         print 'error', i, j.status
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+    >>> j.parent = agent
+    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> j.handleInterrupt()
+    >>> j.status == zc.async.interfaces.COMPLETED
+    True
+    >>> j.result
+    <zc.twist.Failure zc.async.interfaces.AbortedError>
+
+If the retry policy returns True, as happens above, this should be interpreted
+by the agent and queue as a request to immediately reschedule the job. The
+policy can also return a datettime.timedelta or datetime.datetime to ask that
+it be rescheduled later in the future.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> queue = j.parent = StubQueue()
+    >>> StubRescheduleRetryPolicy._reply = datetime.timedelta(hours=1)
+    >>> j.retry_policy_factory = StubRescheduleRetryPolicy
+    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> transaction.commit()
+    >>> j.handleInterrupt()
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> queue.put_job is j
+    True
+    >>> queue.put_begin_after
+    datetime.datetime(2006, 8, 10, 16, 44, 22, 211, tzinfo=<UTC>)
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> queue = j.parent = StubQueue()
+    >>> j.retry_policy_factory = StubRescheduleRetryPolicy
+    >>> StubRescheduleRetryPolicy._reply = datetime.datetime(3000, 1, 1)
+    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> transaction.commit()
+    >>> j.handleInterrupt()
+    >>> j.status == zc.async.interfaces.PENDING
+    True
+    >>> queue.put_job is j
+    True
+    >>> queue.put_begin_after
+    datetime.datetime(3000, 1, 1, 0, 0, tzinfo=<UTC>)
+
+In a full zc.async context, rescheduling is more of a dance between the job,
+the agent, and the queue.  See `catastrophes.txt` for more information.
+
+-------------------
+``resumeCallbacks``
+-------------------
+
+``handleInterrupt`` should be called when a job was working on its own code.
+But what happens if the system stops while a job was working on its callbacks?
+When the job is handled, the system should call ``resumeCallbacks``. The
+method will call any callback that is still pending, and not timed out because
+of ``begin_by``; it will call ``fail`` on any callback that is pending and
+timed out; it will call ``handleInterrupt`` on any callback that is active'; it
+will call ``resumeCallbacks`` on any callback that itself has the CALLBACKS
+status; and will ignore any job that is completed.  As such, it encompasses
+all of the retry behavior discussed above.  Moreover, while it does not use
+retry policies directly, indirectly they are often used.
+
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
     >>> j._result = 10
@@ -517,11 +1369,8 @@ any job that is completed will be ignored.
     80
     >>> sub_callbacks_j.status == zc.async.interfaces.COMPLETED
     True
-    >>> print active_j.result.getTraceback()
-    ... # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    Traceback (most recent call last):
-    ...
-    zc.async.interfaces.AbortedError:
+    >>> active_j.result # was retried because of default retry policy
+    50
     >>> active_j.status == zc.async.interfaces.COMPLETED
     True
     >>> pending_j.result
@@ -529,8 +1378,12 @@ any job that is completed will be ignored.
     >>> pending_j.status == zc.async.interfaces.COMPLETED
     True
 
-[#aborted_active_callback_log]_
+[#retried_active_callback_log]_
 
+Introspection
+=============
+
+------------------------------------
 Introspecting and Mutating Arguments
 ------------------------------------
 
@@ -567,6 +1420,7 @@ on the job.
     >>> res = j() # doctest: +ELLIPSIS
     <zc.async.job.Job (oid ...>
 
+-----------------
 Result and Status
 -----------------
 
@@ -673,6 +1527,7 @@ Other similar restrictions include the following:
 - Also, a job's direct callback may not call the job
   [#callback_self]_.
 
+----------------------
 More Job Introspection
 ----------------------
 
@@ -769,6 +1624,8 @@ the top level).  Here's an example.
     True
     >>> transaction.abort()
 
+    >>> time.sleep = old_sleep # probably put in test tearDown
+
 =========
 Footnotes
 =========
@@ -783,15 +1640,17 @@ Footnotes
     >>> root = conn.root()
     >>> import zc.async.configure
     >>> zc.async.configure.base()
+    >>> import zc.async.testing
+    >>> zc.async.testing.setUpDatetime() # pins datetimes
 
 .. [#verify] Verify interface
 
     >>> from zope.interface.verify import verifyObject
     >>> verifyObject(zc.async.interfaces.IJob, j)
     True
-    
+
     Note that status and result are readonly.
-    
+
     >>> j.status = 1
     Traceback (most recent call last):
     ...
@@ -804,9 +1663,9 @@ Footnotes
 .. [#no_live_frames] Failures have two particularly dangerous bits: the
     traceback and the stack.  We use the __getstate__ code on Failures
     to clean them up.  This makes the traceback (``tb``) None...
-    
+
     >>> j.result.tb # None
-    
+
     ...and it makes all of the values in the stack--the locals and
     globals-- into strings.  The stack is a list of lists, in which each
     internal list represents a frame, and contains five elements: the
@@ -814,14 +1673,14 @@ Footnotes
     the line number (``f_lineno``), an items list of the locals, and an
     items list for the globals.  All of the values in the items list
     would normally be objects, but are now strings.
-    
+
     >>> for (codename, filename, lineno, local_i, global_i) in j.result.stack:
     ...     for k, v in local_i:
     ...         assert isinstance(v, basestring), 'bad local %s' % (v,)
     ...     for k, v in global_i:
     ...         assert isinstance(v, basestring), 'bad global %s' % (v,)
     ...
-    
+
     Here's a reasonable question.  The Twisted Failure code has a
     __getstate__ that cleans up the failure, and that's even what we are
     using to sanitize the failure.  If the failure is attached to a
@@ -845,7 +1704,7 @@ Footnotes
     desired changes to the transaction (such as aborting) before the
     job calls commit.  Compare.  Here is a call that raises an
     exception, and rolls back changes.
-    
+
     (Note that we are passing arguments to the job, a topic that has
     not yet been discussed in the text when this footnote is given: read
     on a bit in the main text to see the details, if it seems surprising
@@ -942,14 +1801,16 @@ Footnotes
     ...     assert False, 'could not find log'
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    <zc.async.job.Job (oid 114, db 'unnamed')
+    <zc.async.job.Job (oid ..., db 'unnamed')
      ``zc.async.job.completeStartedJobArguments(zc.async.job.Job
-                                                (oid 109, db 'unnamed'))``>
+                                                (oid ..., db 'unnamed'))``>
     succeeded with result:
     None
 
-    However, the callbacks that fail themselves are logged (again, as all jobs
-    are) at the "error" level and include a detailed traceback.
+    However, the callbacks that fail themselves are logged (by default at a
+    "CRITICAL" level because callbacks are often in charge of error handling,
+    and having an error in your error handler may be a serious problem) and
+    include a detailed traceback.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 4)
     >>> transaction.commit()
@@ -957,8 +1818,8 @@ Footnotes
     >>> j() # doctest: +ELLIPSIS
     20
 
-    >>> for r in reversed(trace_logs.records):
-    ...     if r.levelname == 'ERROR':
+    >>> for r in reversed(event_logs.records):
+    ...     if r.levelname == 'CRITICAL':
     ...         break
     ... else:
     ...     assert False, 'could not find log'
@@ -966,11 +1827,7 @@ Footnotes
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <...Job...``zc.async.doctest_test.multiply()``> failed with traceback:
     *--- Failure #... (pickled) ---
-    .../zc/async/job.py:...
-     [ Locals...
-      res : 'None...
-     ( Globals...
-    .../zc/async/job.py:...
+    ...job.py:...
      [ Locals...
       effective_args : '[20]...
      ( Globals...
@@ -978,17 +1835,196 @@ Footnotes
     *--- End of Failure #... ---
     <BLANKLINE>
 
-.. [#aborted_active_callback_log] The fact that the pseudo-aborted "active"
-    job failed is logged.
+.. [#show_other_policies]
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> j.retry_policy_factory = zc.async.job.RetryCommonForever
+    >>> policy = j.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.RetryCommonForever)
+    True
+
+    Here's the policy requesting that a job be tried "forever" (we show 50
+    times), both in the job and in the commit.
+
+    >>> import zc.twist
+    >>> import ZODB.POSException
+    >>> conflict = zc.twist.Failure(ZODB.POSException.ConflictError())
+    >>> data = {}
+
+    >>> for i in range(50):
+    ...     if not policy.jobError(conflict, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+
+    >>> for i in range(50):
+    ...     if not policy.commitError(conflict, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+
+    A ZEO ClientDisconnected error will also be retried forever, but with a
+    backoff.
+
+    >>> import ZEO.Exceptions
+    >>> disconnect = zc.twist.Failure(ZEO.Exceptions.ClientDisconnected())
+    >>> del sleep_requests[:]
+
+    >>> for i in range(50):
+    ...     if not policy.jobError(disconnect, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+    >>> sleep_requests # doctest: +ELLIPSIS
+    [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, ..., 60]
+    >>> len(sleep_requests)
+    50
+    >>> del sleep_requests[:]
+
+    >>> data = {}
+    >>> for i in range(50):
+    ...     if not policy.commitError(disconnect, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+    >>> sleep_requests # doctest: +ELLIPSIS
+    [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, ..., 60]
+    >>> len(sleep_requests)
+    50
+
+    If we encounter another kind of error during the job, no retries are
+    requested.
+
+    >>> runtime = zc.twist.Failure(RuntimeError())
+    >>> policy.jobError(runtime, data)
+    False
+    >>> value = zc.twist.Failure(ValueError())
+    >>> policy.jobError(value, data)
+    False
+
+    However, during the commit, any kind of error will cause a retry, forever.
+
+    >>> for i in range(50):
+    ...     if not policy.commitError(runtime, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+
+    >>> for i in range(50):
+    ...     if not policy.commitError(value, data):
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+
+    When the system is interrupted, ``handleInterrupt`` uses the retry_policy's
+    ``interrupted`` method to determine what to do.  It does not need to pass a
+    data dictionary.  This also happens forever.
+
+    >>> for i in range(50):
+    ...     if not policy.interrupted():
+    ...         print 'error'
+    ...         break
+    ... else:
+    ...     print 'success'
+    ...
+    success
+
+    ``updateData`` is only used after ``jobError`` and ``commitError``, and is
+    called every time there is a commit attempt, so we're wildly out of order here,
+    but we'll call the method now anyway to show we can, and then perform the job.
+
+    >>> transaction.commit()
+    >>> policy.updateData(data)
+    >>> j()
+    10
+
+Now we will show ``NeverRetry``. As the name implies, this is a simple policy
+for jobs that should never retry.  Typical reasons for this are that the job is
+talking to an external system or doing something else that is effectively not
+transactional.  More sophisticated policies for specific versions of this
+scenario may be possible; however, also consider callbacks for this usecase.
+
+    >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
+    >>> j.retry_policy_factory = zc.async.job.NeverRetry
+    >>> policy = j.getRetryPolicy()
+    >>> isinstance(policy, zc.async.job.NeverRetry)
+    True
+
+    So, here's a bunch of "no"s.
+
+    >>> import zc.twist
+    >>> import ZODB.POSException
+    >>> conflict = zc.twist.Failure(ZODB.POSException.ConflictError())
+    >>> data = {}
+
+    >>> policy.jobError(conflict, data)
+    False
+
+    >>> policy.commitError(conflict, data)
+    False
+
+    >>> policy.jobError(disconnect, data)
+    False
+
+    >>> policy.commitError(disconnect, data)
+    False
+
+    >>> runtime = zc.twist.Failure(RuntimeError())
+    >>> policy.jobError(runtime, data)
+    False
+
+    >>> policy.commitError(runtime, data)
+    False
+
+    >>> value = zc.twist.Failure(ValueError())
+    >>> policy.jobError(value, data)
+    False
+
+    >>> policy.commitError(value, data)
+    False
+
+    >>> policy.interrupted()
+    False
+
+    ``updateData`` is only used after ``jobError`` and ``commitError``, and is
+    called every time there is a commit attempt, so we're wildly out of order here,
+    but we'll call the method now anyway to show we can, and then perform the job.
+
+    >>> transaction.commit()
+    >>> policy.updateData(data)
+    >>> j()
+    10
+
+.. [#retried_active_callback_log] The fact that the pseudo-aborted "active"
+    job was retried is logged.
 
     >>> for r in reversed(trace_logs.records):
-    ...     if r.levelname == 'DEBUG' and r.getMessage().startswith('failing'):
+    ...     if (r.levelname == 'DEBUG' and
+    ...         r.getMessage().startswith('retrying interrupted')):
     ...         break
     ... else:
     ...     assert False, 'could not find log'
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    failing aborted callback
+    retrying interrupted callback
     <...Job...``zc.async.doctest_test.multiply(5)``> to <...Job...>
 
 .. [#call_self] Here's a job trying to call itself.

@@ -13,6 +13,7 @@
 ##############################################################################
 import datetime
 import bisect
+import logging
 import pytz
 import persistent
 import persistent.interfaces
@@ -23,6 +24,7 @@ import zope.interface
 import zope.component
 import zope.event
 import zope.bforest
+import zope.minmax
 import zc.queue
 import zc.dict
 
@@ -43,22 +45,20 @@ class DispatcherAgents(zc.async.utils.Dict):
 
     UUID = None
     activated = None
-    
+
     def __init__(self, uuid):
         super(DispatcherAgents, self).__init__()
         self.UUID = uuid
-        self.__class__.last_ping.initialize(self)
-    
-    zc.async.utils.createAtom('last_ping', None)
-    
+        self.last_ping = zope.minmax.Maximum()
+
     ping_interval = datetime.timedelta(seconds=30)
     ping_death_interval = datetime.timedelta(seconds=60)
 
     @property
     def dead(self):
-        last_ping = self.last_ping
+        last_ping = self.last_ping.value
         if self.activated and (
-            self.last_ping is None or self.activated > self.last_ping):
+            last_ping is None or self.activated > last_ping):
             last_ping = self.activated
         elif last_ping is None:
             return False
@@ -103,26 +103,42 @@ class DispatcherAgents(zc.async.utils.Dict):
             else:
                 while job is not None:
                     status = job.status
-                    if status == zc.async.interfaces.ASSIGNED:
+                    if status in (zc.async.interfaces.PENDING,
+                                  zc.async.interfaces.ASSIGNED):
+                        # odd
+                        zc.async.log.warning(
+                            'unexpected job status %s for %r; treating as NEW',
+                            status, job)
+                        status = zc.async.interfaces.NEW
+                    if status == zc.async.interfaces.NEW:
                         tmp = job.assignerUUID
                         job.assignerUUID = None
                         job.parent = None
                         queue.put(job)
                         job.assignerUUID = tmp
                     elif job.status == zc.async.interfaces.ACTIVE:
-                        queue.put(job.fail)
+                        j = queue.put(
+                            job.handleInterrupt,
+                            retry_policy_factory=zc.async.job.RetryCommonForever,
+                            failure_log_level=logging.CRITICAL)
                     elif job.status == zc.async.interfaces.CALLBACKS:
-                        queue.put(job.resumeCallbacks)
+                        j = queue.put(
+                            job.resumeCallbacks,
+                            retry_policy_factory=zc.async.job.RetryCommonForever,
+                            failure_log_level=logging.CRITICAL)
                     elif job.status == zc.async.interfaces.COMPLETED:
                         # huh, that's odd.
                         agent.completed.add(job)
+                        zc.async.utils.log.warning(
+                            'unexpectedly had to inform agent of completion '
+                            'of %r', job)
                     try:
                         job = agent.pull()
                     except IndexError:
                         job = None
         zope.event.notify(
             zc.async.interfaces.DispatcherDeactivated(self))
-        
+
 
 class Queues(zc.async.utils.Dict):
 
@@ -161,9 +177,10 @@ class Dispatchers(zc.dict.Dict):
         if not da.activated:
             raise ValueError('UUID is not activated.')
         now = datetime.datetime.now(pytz.UTC)
-        if (da.last_ping is None or
-            da.last_ping + da.ping_interval <= now):
-            da.last_ping = now
+        last_ping = da.last_ping.value
+        if (last_ping is None or
+            last_ping + da.ping_interval <= now):
+            da.last_ping.value = now
         next = self._getNextActiveSibling(uuid)
         if next is not None and next.dead:
             # `next` seems to be a dead dispatcher.
@@ -188,28 +205,37 @@ class Quota(zc.async.utils.Base):
         self.size = size
 
     def clean(self):
+        now = datetime.datetime.now(pytz.UTC)
         for i, job in enumerate(reversed(self._data)):
-            if job.status in (
-                zc.async.interfaces.CALLBACKS,
-                zc.async.interfaces.COMPLETED):
+            status = job.status
+            if status in (zc.async.interfaces.CALLBACKS,
+                          zc.async.interfaces.COMPLETED) or (
+                status == zc.async.interfaces.PENDING and
+                job.begin_after > now): # for a rescheduled task
                 self._data.pull(-1-i)
 
     @property
     def filled(self):
         return len(self._data) >= self.size
 
+    def __contains__(self, item):
+        for i in self:
+            if i is item:
+                return True
+        return False
+
     def add(self, item):
+        if item in self:
+            return
         if not zc.async.interfaces.IJob.providedBy(item):
             raise ValueError('must be IJob')
         if self.name not in item.quota_names:
             raise ValueError('quota name must be in quota_names')
-        # self.clean()
         if self.filled:
             raise ValueError('Quota is filled')
         self._data.put(item)
 
-    for nm in ('__len__', '__iter__', '__getitem__', '__nonzero__', 'get', 
-               '__contains__'):
+    for nm in ('__len__', '__iter__', '__getitem__', '__nonzero__', 'get'):
         locals()[nm] = zc.async.utils.simpleWrapper(nm)
 
 
@@ -229,6 +255,8 @@ class Quotas(zc.dict.Dict):
 class Queue(zc.async.utils.Base):
     zope.interface.implements(zc.async.interfaces.IQueue)
 
+    _putback_queue = None
+
     def __init__(self):
         self._queue = zc.queue.CompositeQueue()
         self._held = BTrees.OOBTree.OOBTree()
@@ -238,9 +266,14 @@ class Queue(zc.async.utils.Base):
         self.dispatchers = Dispatchers()
         self.dispatchers.__parent__ = self
 
-    def put(self, item, begin_after=None, begin_by=None):
+    def put(self, item, begin_after=None, begin_by=None,
+            failure_log_level=None, retry_policy_factory=None):
         item = zc.async.interfaces.IJob(item)
-        if item.assignerUUID is not None:
+        if failure_log_level is not None:
+            item.failure_log_level = failure_log_level
+        if retry_policy_factory is not None:
+            item.retry_policy_factory = retry_policy_factory
+        if item.status != zc.async.interfaces.NEW:
             raise ValueError(
                 'cannot add already-assigned job')
         for name in item.quota_names:
@@ -253,10 +286,9 @@ class Queue(zc.async.utils.Base):
             item.begin_after = now
         if begin_by is not None:
             item.begin_by = begin_by
-        elif item.begin_by is None:
-            item.begin_by = datetime.timedelta(hours=1) # good idea?
-        item.assignerUUID = zope.component.getUtility(
-            zc.async.interfaces.IUUID)
+        if item.assignerUUID is not None: # rescheduled job keeps old UUID
+            item.assignerUUID = zope.component.getUtility(
+                zc.async.interfaces.IUUID)
         if item._p_jar is None:
             # we need to do this if the job will be stored in another
             # database as well during this transaction.  Also, _held storage
@@ -274,7 +306,35 @@ class Queue(zc.async.utils.Base):
         self._length.change(1)
         return item
 
+    def putBack(self, item):
+        # an agent has claimed a job, but now the job needs to be returned. the
+        # only current caller for this is a job's ``handleInterrupt`` method.
+        # The scenario for this is that the agent's dispatcher died while the
+        # job was active, interrupting the work; and the job's retry policy
+        # asks that the job be put back on the queue to be claimed immediately.
+        # This method puts the job in a special internal queue that ``_iter``
+        # looks at first. This allows jobs to maintain their order, if needed,
+        # within a quota.
+        assert zc.async.interfaces.IJob.providedBy(item)
+        assert item.status == zc.async.interfaces.NEW, item.status
+        assert item.begin_after is not None
+        assert item._p_jar is not None
+        # to support legacy instances of the queue that were created before
+        # this functionality and its separate internal data structure were
+        # part of the code, we instantiate the _putback_queue when we first
+        # need it, here.
+        if self._putback_queue is None:
+            self._putback_queue = zc.queue.CompositeQueue()
+        self._putback_queue.put(item)
+        item.parent = self
+        self._length.change(1)
+
     def _iter(self):
+        putback_queue = self._putback_queue
+        if putback_queue: # not None and not empty
+            dq_pop = putback_queue.pull
+            for dq_ix, dq_next in enumerate(putback_queue):
+                yield dq_pop, dq_ix, dq_next
         queue = self._queue
         tree = self._held
         q = enumerate(queue)
@@ -331,16 +391,17 @@ class Queue(zc.async.utils.Base):
         if not self._length():
             return default
         uuid = None
+        quotas_cleaned = set()
         for pop, ix, job in self._iter():
             if job.begin_after > now:
                 break
             res = None
             quotas = []
-            if (job.begin_after + job.begin_by) < now:
-                res = zc.async.interfaces.IJob(
-                        job.fail) # specify TimeoutError?
+            if (job.begin_by is not None and
+                (job.begin_after + job.begin_by) < now):
+                res = zc.async.interfaces.IJob(job.fail)
+                res.args.append(zc.async.interfaces.TimeoutError())
                 res.begin_after = now
-                res.begin_by = datetime.timedelta(hours=1)
                 res.parent = self
                 if uuid is None:
                     uuid = zope.component.getUtility(zc.async.interfaces.IUUID)
@@ -349,8 +410,10 @@ class Queue(zc.async.utils.Base):
                 for name in job.quota_names:
                     quota = self.quotas.get(name)
                     if quota is not None:
-                        quota.clean()
-                        if quota.filled:
+                        if name not in quotas_cleaned:
+                            quota.clean()
+                            quotas_cleaned.add(name)
+                        if quota.filled and job not in quota:
                             break
                         quotas.append(quota)
                 else:

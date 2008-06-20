@@ -1,15 +1,9 @@
-Bugs and improvements:
-
-- need retry tasks, particularly for callbacks
-
-- need CRITICAL logs for callbacks
-
-- when database went away, and then came back, async didn't come back.
+For release
 
 - be even more pessimistic about memory for saved polls and job info in
   dispatcher.
 
-For future versions:
+Bugs and improvements:
 
 - queues should be pluggable like agent with filter
 - show how to broadcast, maybe add conveniences
@@ -36,10 +30,17 @@ For future versions:
     Notice that all of the tests in this package use FileStorage.
   * callbacks should be very, very quick, and very reliable.  If you want to do
     something that might take a while, put another job in the queue
-  
+
+More docs:
+
+- custom retry policies, particularly for non-transactional tasks;
+
+- changing the default retry policy, per-process and per-agent; and
+
+- changing the default log level for queue jobs, callback jobs, and per-job.
+
 
 For some other package, maybe:
 
 - TTW Management and logging views, as in zasync (see goals in the "History"
   section of the README).
-  

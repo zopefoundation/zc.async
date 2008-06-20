@@ -1087,15 +1087,16 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
     >>> t = transaction.begin()
     >>> job = queue.put(
-    ...     send_message, datetime.datetime(2006, 7, 21, 12, tzinfo=pytz.UTC))
+    ...     send_message, datetime.datetime(2006, 7, 21, 12, tzinfo=pytz.UTC),
+    ...     datetime.timedelta(hours=1))
     >>> transaction.commit()
     >>> reactor.wait_for(job)
     >>> job.result
-    <zc.twist.Failure zc.async.interfaces.AbortedError>
+    <zc.twist.Failure zc.async.interfaces.TimeoutError>
     >>> import sys
     >>> job.result.printTraceback(sys.stdout) # doctest: +NORMALIZE_WHITESPACE
     Traceback (most recent call last):
-    Failure: zc.async.interfaces.AbortedError:
+    Failure: zc.async.interfaces.TimeoutError:
 
 .. [#job] The Job class can take arguments and keyword arguments
     for the wrapped callable at call time as well, similar to Python

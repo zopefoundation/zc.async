@@ -8,29 +8,29 @@ Dispatchers expect to get a "reactor" to power the timed calls.  This reactor
 must have several methods:
 
 class IReactor(zope.interface.Interface):
-    
+
     def callFromThread(callable, *args, **kw):
         """have callable run in reactor's thread, by reactor, ASAP.
-        
+
         Intended to be called from a thread other than the reactor's main
         loop.
         """
-    
+
     def callInThread(callable, *args, **kw):
         """have callable run in a separate thread, ASAP.
-        
+
         Must be called in same thread as reactor's main loop.
         """
-    
+
     def callLater(seconds, callable, *args, **kw):
         """have callable run in reactor at least <seconds> from now
-        
+
         Must be called in same thread as reactor's main loop.
         """
 
     def addSystemEventTrigger(phase, event, callable, *args, **kw):
         """Install a callable to be run in phase of event.
-        
+
         must support phase 'before', and event 'shutdown'.
         """
 
@@ -140,7 +140,7 @@ This accomplished the following things.
 - The queue fired events to announce the dispatcher's registration and
   activation.  We could have registered subscribers for either or both
   of these events to create agents.
-  
+
   Note that the dispatcher in queue.dispatchers is a persistent
   representative of the actual dispatcher: they are different objects.
 
@@ -161,17 +161,17 @@ This accomplished the following things.
     True
 
 - The dispatcher made its first ping. A ping means that the dispatcher changes
-  a datetime to record that it is alive. 
+  a datetime to record that it is alive.
 
-    >>> queue.dispatchers[dispatcher.UUID].last_ping is not None
+    >>> queue.dispatchers[dispatcher.UUID].last_ping.value is not None
     True
 
-  The dispatcher needs to update its last_ping after every ``ping_interval``
-  seconds.  If it has not updated the last_ping after ``ping_death_interval``
-  then the dispatcher is considered to be dead, and active jobs in the
-  dispatcher's agents are ended (and given a chance to respond to that status
-  change, so they can put themselves back on the queue to be restarted if
-  desired).
+  The dispatcher needs to update its ``last_ping.value`` after every
+  ``ping_interval`` seconds. If it has not updated the ``last_ping.value``
+  after ``ping_death_interval`` then the dispatcher is considered to be dead,
+  and active jobs in the dispatcher's agents are ended (and given a chance to
+  respond to that status change, so they can put themselves back on the queue
+  to be restarted if desired).
 
     >>> queue.dispatchers[dispatcher.UUID].ping_interval
     datetime.timedelta(0, 30)
@@ -180,7 +180,7 @@ This accomplished the following things.
 
 - We have some log entries.  (We're using some magic log handlers inserted by
   setup code in tests.py here.)
-  
+
     >>> print event_logs # doctest: +ELLIPSIS
     zc.async.events INFO
       attempting to activate dispatcher ...
@@ -282,7 +282,7 @@ We also have some log entries.
         {'main':
           {'active jobs': [], 'error': None,
            'new jobs': [(..., 'unnamed')], 'len': 0, 'size': 3}}}
-    
+
 
 [#getPollInfo]_ Notice our ``new jobs`` from the poll and the log has a value
 in it now. We can get some information about that job from the dispatcher.
@@ -350,8 +350,18 @@ Importantly, the job is also moved off of the agent.
 
     >>> badjob.parent # doctest: +ELLIPSIS
     <zc.async.agent.Agent object at 0x...>
-    >>> len(badjob.parent)
-    0
+    >>> import time
+    >>> for i in range(60):
+    ...     if len(badjob.parent) == 0:
+    ...         print 'yay'
+    ...         break
+    ...     else:
+    ...         time.sleep(0.1)
+    ...         _ = transaction.begin()
+    ... else:
+    ...     print 'oops'
+    ...
+    yay
 
 ``zc.async.local`` also allows some fun tricks.  Your callable can access the
 queue, perhaps to put another job in.
@@ -371,7 +381,7 @@ You can also access the job--for instance, to access annotations on the job, as
 of the last database sync for the thread's connection (at transaction
 boundaries).  This function is ``zc.async.local.getJob()``, and is seen below.
 
-It can also get and set job annotations *live, in another connection*. 
+It can also get and set job annotations *live, in another connection*.
 This allows you to send messages about job progress, or get live
 information about whether you should change or stop your work, for
 instance.
@@ -452,8 +462,8 @@ The db's pool size has returned to the original value.
     >>> import ZODB.FileStorage
     >>> storage = ZODB.FileStorage.FileStorage(
     ...     'main.fs', create=True)
-    >>> from ZODB.DB import DB 
-    >>> db = DB(storage) 
+    >>> from ZODB.DB import DB
+    >>> db = DB(storage)
     >>> conn = db.open()
     >>> root = conn.root()
     >>> import zc.async.configure
@@ -461,7 +471,7 @@ The db's pool size has returned to the original value.
 
 .. [#getPollInfo] The dispatcher has a ``getPollInfo`` method that lets you
     find this poll information also.
-    
+
     >>> dispatcher.getPollInfo(at=poll.key) is poll
     True
     >>> dispatcher.getPollInfo(at=poll.utc_timestamp) is poll
@@ -480,7 +490,7 @@ The db's pool size has returned to the original value.
 .. [#show_error] OK, so you want to see a verbose traceback?  OK, you asked
     for it. We're eliding more than 90% of this, and this is a small one,
     believe it or not. Rotate your logs!
-    
+
     Notice that all of the values in the logs are reprs.
 
     >>> bad_job = queue.put(
@@ -489,8 +499,8 @@ The db's pool size has returned to the original value.
 
     >>> wait_for_result(bad_job)
     <zc.twist.Failure exceptions.TypeError>
-    
-    >>> for r in reversed(trace_logs.records):
+
+    >>> for r in reversed(event_logs.records):
     ...     if r.levelname == 'ERROR':
     ...         break
     ... else:
@@ -500,10 +510,7 @@ The db's pool size has returned to the original value.
     <zc.async.job.Job (oid ..., db 'unnamed')
      ``<built-in function mul>(14, None)``> failed with traceback:
     *--- Failure #... (pickled) ---
-    .../zc/async/job.py:...: _call_with_retry(...)
-     [ Locals ]...
-     ( Globals )...
-    .../zc/async/job.py:...: <lambda>(...)
+    .../zc/async/job.py:...: __call__(...)
      [ Locals ]...
      ( Globals )...
     exceptions.TypeError: unsupported operand type(s) for *: 'int' and 'NoneType'

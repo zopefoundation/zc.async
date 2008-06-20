@@ -24,7 +24,7 @@ attributes.
 [#queues_collection]_ As shown in the README.txt of this package (or see
 zc.async.adapters.defaultQueueAdapter), the queue with the name '' will
 typically be registered as an adapter to persistent objects that
-provides zc.async.interfaces.IQueue [#verify]_. 
+provides zc.async.interfaces.IQueue [#verify]_.
 
 The queue doesn't have any jobs yet.
 
@@ -82,24 +82,26 @@ zc.async.interfaces.IUUID utility with the empty name ('').
     >>> job.parent is queue
     True
     >>> transaction.commit()
-    
+
 A job added without any special calls gets a `begin_after` attribute
 of now.
 
     >>> import datetime
     >>> import pytz
-    >>> now = datetime.datetime.now(pytz.UTC) 
+    >>> now = datetime.datetime.now(pytz.UTC)
     >>> now
     datetime.datetime(2006, 8, 10, 15, 44, 22, 211, tzinfo=<UTC>)
     >>> job.begin_after == now
     True
 
-A ``begin_by`` attribute is a duration, and defaults to one hour.  This
-means that it must be completed an hour after the ``begin_after`` datetime,
-or else the system will fail it.
+A ``begin_by`` attribute is a duration (datetime.timedelta) or None, and
+defaults to None.
 
-    >>> job.begin_by == datetime.timedelta(hours=1)
+    >>> job.begin_by == None
     True
+
+If ``begin_by`` were an hour, that would mean that it must be completed an hour
+after the ``begin_after`` datetime, or else the system will fail it.
 
 Now let's add a job to be performed later, using ``begin_after``.
 
@@ -240,9 +242,9 @@ it has several different behaviors:
 - If begin_after + begin_by >= now, a job that makes the original job fail
   is used instead.
 
-- If a job has one or more ``quota_names`` and the associated quotas are
-  filled with jobs not in the CALLBACKS or COMPLETED status then it will
-  not be returned.
+- If a job is not failing and has one or more ``quota_names`` and the
+  associated quotas are filled with jobs not in the CALLBACKS or COMPLETED
+  status then it will not be returned.
 
 - It does not take an index argument.
 
@@ -391,22 +393,46 @@ CALLBACKS or COMPLETED status, I will be unable to claim job4.
     ...     @property
     ...     def queue(self):
     ...         return self.parent.parent
-    ...     def claimJob(self):
+    ...     def claimJob(self, filter=None):
     ...         if len(self) < self.size:
-    ...             job = self.queue.claim()
+    ...             job = self.queue.claim(filter=filter)
     ...             if job is not None:
     ...                 job.parent = self
     ...                 self.append(job)
     ...                 return job
-    ...     def pull(self):
-    ...         return self.pop(0)
+    ...     def pull(self, index=0):
+    ...         res = self.pop(index)
+    ...         res.parent = None
+    ...         return res
+    ...     def remove(self, item):
+    ...         self.pull(self.index(item))
     ...     def jobCompleted(self, job):
+    ...         persistent.list.PersistentList.remove(self, job)
     ...         self.completed.add(job)
-    ...         
+    ...     def reschedule(self, item, when):
+    ...         now = datetime.datetime.utcnow()
+    ...         if isinstance(when, datetime.datetime):
+    ...             self.remove(job)
+    ...             if when.tzinfo is not None:
+    ...                 when = when.astimezone(pytz.UTC).replace(tzinfo=None)
+    ...             if when <= now:
+    ...                 self.queue.disclaim(item)
+    ...             else:
+    ...                 self.queue.put(item, begin_after=when)
+    ...         elif isinstance(when, datetime.timedelta):
+    ...             self.remove(job)
+    ...             if when <= datetime.timedelta():
+    ...                 self.queue.disclaim(item)
+    ...             else:
+    ...                 self.queue.put(item, begin_after=now+when)
+    ...         else:
+    ...             raise TypeError('``when`` must be datetime or timedelta')
+    ...
 
     >>> job4 is queue.claim()
     True
     >>> job4.parent = StubAgent()
+    >>> job4.parent.append(job4)
     >>> job4.status == zc.async.interfaces.ASSIGNED
     True
     >>> list(quota) == [job4]
@@ -426,23 +452,25 @@ The final characteristic of ``claim`` to review is that jobs that have
 timed out are returned in wrappers that fail the original job.
 
     >>> job9_from_outer_space = queue.put(mock_work)
+    >>> job9_from_outer_space.begin_by = datetime.timedelta(hours=1)
     >>> zc.async.testing.set_now(
     ...     datetime.datetime.now(pytz.UTC) +
     ...     job9_from_outer_space.begin_by + datetime.timedelta(seconds=1))
     >>> job9 = queue.claim()
     >>> job9 is job9_from_outer_space
     False
-    >>> stub = root['stub'] = StubAgent() 
+    >>> stub = root['stub'] = StubAgent()
     >>> job9.parent = stub
+    >>> stub.append(job9)
     >>> transaction.commit()
     >>> job9()
     >>> job9_from_outer_space.status == zc.async.interfaces.COMPLETED
     True
     >>> print job9_from_outer_space.result.getTraceback()
+    ... # doctest: +NORMALIZE_WHITESPACE
     Traceback (most recent call last):
-    Failure: zc.async.interfaces.AbortedError: 
+    Failure: zc.async.interfaces.TimeoutError:
     <BLANKLINE>
-    
 
 Dispatchers
 ===========
@@ -492,12 +520,12 @@ been pinged.
 
     >>> print da.activated
     None
-    >>> print da.last_ping
+    >>> print da.last_ping.value
     None
 
-When the object's ``last_ping`` + ``ping_interval`` is greater than now,
-a new ``last_ping`` should be recorded, as we'll see below.  If the
-``last_ping`` (or ``activated``, if more recent) +
+When the object's ``last_ping.value`` + ``ping_interval`` is greater than now,
+a new ``last_ping.value`` should be recorded, as we'll see below.  If the
+``last_ping.value`` (or ``activated``, if more recent) +
 ``ping_death_interval`` is older than now, the dispatcher is considered to
 be ``dead``.
 
@@ -514,7 +542,7 @@ Now we'll activate the dispatcher.
     >>> import pytz
     >>> now = datetime.datetime.now(pytz.UTC)
     >>> da.activate()
-    >>> now <= da.activated <= datetime.datetime.now(pytz.UTC) 
+    >>> now <= da.activated <= datetime.datetime.now(pytz.UTC)
     True
 
 It's still not dead. :-)
@@ -638,10 +666,10 @@ Now, when we poll, we get a ping.
 
     >>> before = datetime.datetime.now(pytz.UTC)
     >>> pollStub(conn)
-    >>> before <= da.last_ping <= datetime.datetime.now(pytz.UTC)
+    >>> before <= da.last_ping.value <= datetime.datetime.now(pytz.UTC)
     True
 
-We don't have any jobs to claim yet.  Let's add one and do it again. 
+We don't have any jobs to claim yet.  Let's add one and do it again.
 We'll use a test fixture, time_flies, to make the time change.
 
     >>> job10 = queue.put(mock_work)
@@ -652,10 +680,10 @@ We'll use a test fixture, time_flies, to make the time change.
     ...         datetime.timedelta(seconds=seconds))
     ...
 
-    >>> last_ping = da.last_ping
+    >>> last_ping = da.last_ping.value
     >>> time_flies(5)
     >>> pollStub(conn)
-    >>> da.last_ping == last_ping
+    >>> da.last_ping.value == last_ping
     True
 
     >>> len(jobs_to_do)
@@ -669,11 +697,11 @@ original ping.  We've already gone through 5 seconds.  We'll fly through
 
     >>> time_flies(10)
     >>> pollStub(conn)
-    >>> da.last_ping == last_ping
+    >>> da.last_ping.value == last_ping
     True
     >>> time_flies(15)
     >>> pollStub(conn)
-    >>> da.last_ping > last_ping
+    >>> da.last_ping.value > last_ping
     True
 
 Dead Dispatchers
@@ -684,7 +712,7 @@ end: when it restarts it should clean out the old jobs in its agents and
 then proceed.  But what if a queue has more than one simultaneous
 dispatcher?  How do we know to clean out the dead dispatcher's jobs?
 
-The ``ping`` method not only changes the ``last_ping`` but checks the
+The ``ping`` method not only changes the ``last_ping.value`` but checks the
 next sibling dispatcher, as defined by UUID, to make sure that it is not
 dead. It uses the ``dead`` attribute, introduced above, to test whether
 the sibling is alive.
@@ -708,8 +736,8 @@ We'll introduce another virtual dispatcher to show this behavior.
     False
 
 Let's do that again, with an agent in the new dispatcher and some jobs in the
-agent.  Assigned jobs will be reassigned; in-progress jobs will have a
-new task that fails them; callback jobs will resume their callback; and
+agent. Assigned jobs will be reassigned; in-progress jobs will have a new task
+that calls ``handleInterrupt``; callback jobs will resume their callback; and
 completed jobs will be moved to the completed collection.
 
     >>> alt_agent = alt_da['main'] = StubAgent()
@@ -755,15 +783,384 @@ completed jobs will be moved to the completed collection.
     4
     >>> queue[1] is jobA
     True
-    >>> queue[2].callable == jobB.fail
+    >>> queue[2].callable == jobB.handleInterrupt
     True
     >>> queue[3].callable == jobC.resumeCallbacks
     True
     >>> alt_agent.completed.first() is jobD
     True
 
+As an aside, notice that the ``handleInterrupt`` and ``resumeCallbacks`` jobs
+have custom error log levels, and custom retry policies.
+
+    >>> import logging
+    >>> queue[2].failure_log_level == logging.CRITICAL
+    True
+    >>> queue[3].failure_log_level == logging.CRITICAL
+    True
+    >>> queue[2].retry_policy_factory is zc.async.job.RetryCommonForever
+    True
+    >>> queue[3].retry_policy_factory is zc.async.job.RetryCommonForever
+    True
+
 If you have multiple workers, it is strongly suggested that you get the
 associated servers connected to a shared time server.
+
+Rescheduled Jobs
+----------------
+
+When a job is interrupted--it was active when it stopped--it asks its retry
+policy whether to retry.  The policy can respond in one of three ways:
+
+- yes, please retry right now;
+
+- yes, please retry later; or
+
+- no, please do not retry, and fail instead.
+
+All three of these possibilities potentially affect the queue in different
+ways, so we will look at examples.
+
+First, let's look at the simple cases for all three.
+
+The scenario above lets us look at what is probably the most common case: the
+default retry policy.  Let's claim the ``handleInterrupt`` task.
+
+    >>> len(queue)
+    4
+    >>> j = alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'handleInterrupt')
+    ...
+    >>> j.callable == jobB.handleInterrupt
+    True
+    >>> len(queue)
+    3
+
+The default retry policy's behavior is to retry nine times, for a total of ten
+attempts, and to request that the original job be retried as soon as
+possible--first in line. That behavior will become more interesting when we
+look at interaction with quotas below. But now, performing this job will push
+jobB back in the queue--again, notably, in very first place in the queue.
+
+    >>> j()
+    >>> len(queue)
+    4
+    >>> queue[0] is jobB
+    True
+    >>> jobB is alt_agent.claimJob()
+    True
+    >>> jobB()
+    42
+    >>> len(queue)
+    3
+
+That was an example of the retry policy saying "please retry right now":
+returning ``True``. Now let's look at the other two possible responses.
+
+"please retry later": with a datetime.
+
+    >>> import persistent
+    >>> import datetime
+    >>> class StubRetryPolicy(persistent.Persistent):
+    ...     zope.interface.implements(zc.async.interfaces.IRetryPolicy)
+    ...     _reply = datetime.datetime(3000, 1, 1)
+    ...     def __init__(self, job):
+    ...         self.parent = self.__parent__ = job
+    ...     def jobError(self, failure, data_cache):
+    ...         return self._reply
+    ...     def commitError(self, failure, data_cache):
+    ...         return self._reply
+    ...     def interrupted(self):
+    ...         return self._reply
+    ...     def updateData(self, data_cache):
+    ...         pass
+    ...
+
+    >>> j = zc.async.job.Job(mock_work)
+    >>> j._status = zc.async.interfaces.ACTIVE # hack internals for test
+    >>> j.retry_policy_factory = StubRetryPolicy
+    >>> j_wrap = queue.put(j.handleInterrupt)
+    >>> len(queue)
+    4
+    >>> j_wrap is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'handleInterrupt')
+    ...
+    True
+    >>> len(queue)
+    3
+    >>> j_wrap()
+    >>> len(queue)
+    4
+    >>> queue[3] is j
+    True
+    >>> j.begin_after
+    datetime.datetime(3000, 1, 1, 0, 0, tzinfo=<UTC>)
+
+...with a timedelta.
+
+    >>> j = zc.async.job.Job(mock_work)
+    >>> j._status = zc.async.interfaces.ACTIVE # hack internals for test
+    >>> StubRetryPolicy._reply = datetime.timedelta(hours=1)
+    >>> j.retry_policy_factory = StubRetryPolicy
+    >>> j_wrap = queue.put(j.handleInterrupt)
+    >>> len(queue)
+    5
+    >>> j_wrap is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'handleInterrupt')
+    ...
+    True
+    >>> len(queue)
+    4
+    >>> j_wrap()
+    >>> len(queue)
+    5
+    >>> queue[3] is j
+    True
+    >>> j.begin_after
+    datetime.datetime(2006, 8, 10, 18, 32, 33, tzinfo=<UTC>)
+
+"please do not retry": does not affect the queue, so we will not show it here.
+
+The trickiest aspects occur with quotas.
+
+"please retry now": with a quota.  In this case, the job should retain its
+precise place in the quota if the quota has a limit of one, and should remain
+in the quota if the quota has a greater limit.
+
+    >>> quota = queue.quotas['content catalog']
+    >>> quota[0]()
+    42
+    >>> quota.clean()
+    >>> len(quota)
+    0
+    >>> j = queue.put(mock_work)
+    >>> j.quota_names = ('content catalog',)
+    >>> j2 = queue.put(mock_work)
+    >>> j2.quota_names = ('content catalog',)
+    >>> transaction.commit()
+    >>> len(queue)
+    7
+    >>> j is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            'content catalog' in candidate.quota_names)
+    ...
+    True
+    >>> list(quota) == [j]
+    True
+
+    >>> j._status = zc.async.interfaces.ACTIVE # fake beginning to call
+    >>> alt_agent.remove(j)
+    >>> j_wrap = queue.put(j.handleInterrupt)
+
+The ``j`` job still claims the space in the quota, so ``j2`` can't be
+claimed.
+
+    >>> print alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            'content catalog' in candidate.quota_names)
+    ...
+    None
+
+Now we'll get the ``handleInterrupt`` task.  The ``j`` job still cannot be
+removed from the quota.
+
+    >>> j_wrap is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'handleInterrupt')
+    ...
+    True
+    >>> len(quota)
+    1
+    >>> quota.clean()
+    >>> list(quota) == [j]
+    True
+
+Now we'll perform the task.  The ``j`` job returns to the queue in a
+``PENDING`` status, and the quota still cannot be cleared.
+
+    >>> j_wrap()
+    >>> len(queue)
+    7
+    >>> queue[0] is j
+    True
+    >>> len(quota)
+    1
+    >>> quota.clean()
+    >>> list(quota) == [j]
+    True
+
+The agent can claim job ``j`` again, however.
+
+    >>> j is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            'content catalog' in candidate.quota_names)
+    ...
+    True
+
+Still cannot clear the quota.
+
+    >>> len(quota)
+    1
+    >>> quota.clean()
+    >>> list(quota) == [j]
+    True
+
+Once we perform j, the quota can be cleared, and j2 can be claimed, as usual.
+
+    >>> j()
+    42
+
+    >>> j2 is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            'content catalog' in candidate.quota_names)
+    ...
+    True
+
+"please retry later": with a quota.  In this case, other jobs can take the
+place of the original job in the quota.
+
+    >>> j3 = queue.put(mock_work)
+    >>> j3.quota_names = ('content catalog',)
+    >>> transaction.commit()
+    >>> j2.retry_policy_factory = StubRetryPolicy
+    >>> list(quota) == [j2]
+    True
+
+    >>> j2._status = zc.async.interfaces.ACTIVE # fake beginning to call
+    >>> alt_agent.remove(j2)
+    >>> j2_wrap = queue.put(j2.handleInterrupt)
+    >>> j2_wrap is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'handleInterrupt')
+    ...
+    True
+    >>> len(queue)
+    6
+    >>> j2_wrap()
+    >>> len(queue)
+    7
+    >>> queue[-2] is j2
+    True
+    >>> j2.status == zc.async.interfaces.PENDING
+    True
+
+    >>> j3 is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            'content catalog' in candidate.quota_names)
+    ...
+    True
+    >>> j3()
+    42
+
+A retry policy can also request resceduling from a jobError or a commitError,
+although the default retry policies do not.
+
+jobError: "please reschedule now"
+
+    >>> def raiseAnError():
+    ...     raise RuntimeError
+    ...
+    >>> StubRetryPolicy._reply = datetime.timedelta()
+    >>> j = queue.put(raiseAnError, retry_policy_factory=StubRetryPolicy)
+    >>> len(queue)
+    7
+    >>> j is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'raiseAnError')
+    ...
+    True
+    >>> len(queue)
+    6
+    >>> j() is j
+    True
+    >>> len(queue)
+    7
+    >>> queue.claim() is j
+    True
+
+jobError: "please reschedule later"
+
+    >>> StubRetryPolicy._reply = datetime.timedelta(hours=1)
+    >>> j = queue.put(raiseAnError, retry_policy_factory=StubRetryPolicy)
+    >>> len(queue)
+    7
+    >>> j is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'raiseAnError')
+    ...
+    True
+    >>> len(queue)
+    6
+    >>> j() is j
+    True
+    >>> len(queue)
+    7
+    >>> queue[-2] is j
+    True
+    >>> j.begin_after
+    datetime.datetime(2006, 8, 10, 18, 32, 33, tzinfo=<UTC>)
+
+commitError: "please reschedule now"
+
+    >>> error_flag = False
+    >>> old_commit = transaction.TransactionManager.commit
+    >>> def commit(self):
+    ...     global error_flag
+    ...     if error_flag:
+    ...         error_flag = False
+    ...         raise ValueError()
+    ...     old_commit(self)
+    ...
+    >>> transaction.TransactionManager.commit = commit
+    >>> def causeCommitError():
+    ...     global error_flag
+    ...     error_flag = True
+    ...
+    >>> StubRetryPolicy._reply = datetime.timedelta()
+    >>> j = queue.put(causeCommitError, retry_policy_factory=StubRetryPolicy)
+    >>> len(queue)
+    8
+    >>> j is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'causeCommitError')
+    ...
+    True
+    >>> len(queue)
+    7
+    >>> j() is j
+    True
+    >>> len(queue)
+    8
+    >>> queue.claim() is j
+    True
+
+commitError: "please reschedule later"
+
+    >>> StubRetryPolicy._reply = datetime.timedelta(hours=1)
+    >>> j = queue.put(causeCommitError, retry_policy_factory=StubRetryPolicy)
+    >>> len(queue)
+    8
+    >>> j is alt_agent.claimJob(
+    ...     filter=lambda candidate:
+    ...            candidate.callable.__name__ == 'causeCommitError')
+    ...
+    True
+    >>> len(queue)
+    7
+    >>> j() is j
+    True
+    >>> len(queue)
+    8
+    >>> queue[-2] is j
+    True
+    >>> j.begin_after
+    datetime.datetime(2006, 8, 10, 18, 32, 33, tzinfo=<UTC>)
+
+
+    >>> transaction.TransactionManager.commit = old_commit
 
 =========
 Footnotes
@@ -801,12 +1198,12 @@ Footnotes
     Traceback (most recent call last):
     ...
     KeyError: 'foo'
-    
+
     >>> container['foo'] = None
     Traceback (most recent call last):
     ...
     ValueError: value must be IQueue
-    
+
     >>> del container['']
     >>> len(container)
     0

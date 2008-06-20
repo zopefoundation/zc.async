@@ -18,7 +18,6 @@ from setuptools import setup, find_packages
 try:
     import docutils
 except ImportError:
-    import warnings
     def validateReST(text):
         return ''
 else:
@@ -95,15 +94,16 @@ setup(
         'uuid',
         'zc.queue',
         'zc.dict>=1.2.1',
-        'zc.twist>=1.2',
+        'zc.twist>=1.3',
         'Twisted>=8.0.1', # 8.0 was setuptools compatible, 8.0.1 had bugfixes.
-        # note that Twisted builds with warnings, at least with py2.4.  It
+        # note that Twisted builds with warnings with py2.4.  It
         # seems to still build ok.
         'zope.bforest>=1.2',
         'zope.component',
         'zope.event',
         'zope.i18nmessageid',
         'zope.interface',
+        'zope.minmax',
         'zope.testing',
         'rwproperty',
         ],

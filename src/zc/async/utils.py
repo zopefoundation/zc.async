@@ -14,13 +14,26 @@
 import datetime
 import logging
 import sys
+import time
 
+import ZEO.Exceptions
+import ZODB.POSException
 import rwproperty
 import persistent
+import zope.minmax
 import zc.dict
 import pytz
 import zope.bforest.periodic
 
+
+EXPLOSIVE_ERRORS = (SystemExit, KeyboardInterrupt)
+
+SYSTEM_ERRORS = (ZEO.Exceptions.ClientDisconnected,
+                 ZODB.POSException.POSKeyError)
+
+INITIAL_BACKOFF = 5
+MAX_BACKOFF = 60
+BACKOFF_INCREMENT = 5
 
 def simpleWrapper(name):
     # notice use of "simple" in function name!  A sure sign of trouble!
@@ -47,39 +60,12 @@ class Base(persistent.Persistent):
     def __parent__(self, value):
         self._z_parent__ = None
 
-
-class Atom(persistent.Persistent):
-    def __init__(self, value):
-        self.value = value
-
-    def __getstate__(self):
-        return self.value
-
-    def __setstate__(self, state):
-        self.value = state
-
-class AtomDescriptor(object):
-    def __init__(self, name, initial=None):
-        self.name = name
-        self.initial = initial
-
-    def __get__(self, obj, klass=None):
-        if obj is None:
-            return self
-        return obj.__dict__[self.name].value
-
-    def __set__(self, obj, value):
-        obj.__dict__[self.name].value = value
-
-    def initialize(self, obj):
-        obj.__dict__[self.name] = Atom(self.initial)
-
-def createAtom(name, initial):
-    sys._getframe(1).f_locals[name] = AtomDescriptor(name, initial)
+# for legacy databases
+Atom = zope.minmax.Maximum
 
 
 class Dict(zc.dict.Dict, Base):
-    
+
     copy = None # mask
 
     def __setitem__(self, key, value):
@@ -236,3 +222,114 @@ class Periodic(persistent.Persistent):
 
     def __len__(self):
         return len(self._data)
+
+def never_fail(call, identifier, tm):
+    # forever for TransactionErrors; forever, with backoff, for anything else
+    trans_ct = 0
+    backoff_ct = 0
+    backoff = INITIAL_BACKOFF
+    res = None
+    while 1:
+        try:
+            res = call()
+            tm.commit()
+        except ZODB.POSException.TransactionError:
+            tm.abort()
+            trans_ct += 1
+            if not trans_ct % 5:
+                log.warning(
+                    '%d consecutive transaction errors while %s',
+                    trans_ct, identifier, exc_info=True)
+                res = None
+        except EXPLOSIVE_ERRORS:
+            tm.abort()
+            raise
+        except Exception, e:
+            if isinstance(e, SYSTEM_ERRORS):
+                level = logging.ERROR
+            else:
+                level = logging.CRITICAL
+            tm.abort()
+            backoff_ct += 1
+            if backoff_ct == 1:
+                # import pdb; pdb.set_trace()
+                log.log(level,
+                        'first error while %s; will continue in %d seconds',
+                        identifier, backoff, exc_info=True)
+            elif not backoff_ct % 10:
+                log.log(level,
+                        '%d consecutive errors while %s; '
+                        'will continue in %d seconds',
+                        backoff_ct, identifier, backoff, exc_info=True)
+            res = None
+            time.sleep(backoff)
+            backoff = min(MAX_BACKOFF, backoff + BACKOFF_INCREMENT)
+        else:
+            return res
+
+def wait_for_system_recovery(call, identifier, tm):
+    # forever for TransactionErrors; forever, with backoff, for SYSTEM_ERRORS
+    trans_ct = 0
+    backoff_ct = 0
+    backoff = INITIAL_BACKOFF
+    res = None
+    while 1:
+        try:
+            res = call()
+            tm.commit()
+        except ZODB.POSException.TransactionError:
+            tm.abort()
+            trans_ct += 1
+            if not trans_ct % 5:
+                log.warning(
+                    '%d consecutive transaction errors while %s',
+                    ct, identifier, exc_info=True)
+                res = None
+        except EXPLOSIVE_ERRORS:
+            tm.abort()
+            raise
+        except SYSTEM_ERRORS:
+            tm.abort()
+            backoff_ct += 1
+            if backoff_ct == 1:
+                log.error('first error while %s; will continue in %d seconds',
+                          identifier, backoff, exc_info=True)
+            elif not backoff_ct % 5:
+
+                log.error('%d consecutive errors while %s; '
+                          'will continue in %d seconds',
+                          backoff_ct, identifier, backoff, exc_info=True)
+            res = None
+            time.sleep(backoff)
+            backoff = min(MAX_BACKOFF, backoff + BACKOFF_INCREMENT)
+        except:
+            log.error('Error while %s', identifier, exc_info=True)
+            tm.abort()
+            return zc.twist.Failure()
+        else:
+            return res
+
+def try_transaction_five_times(call, identifier, tm):
+    ct = 0
+    res = None
+    while 1:
+        try:
+            res = call()
+            tm.commit()
+        except ZODB.POSException.TransactionError:
+            tm.abort()
+            ct += 1
+            if ct >= 5:
+                log.error('Five consecutive transaction errors while %s',
+                          identifier, exc_info=True)
+                res = zc.twist.Failure()
+            else:
+                continue
+        except EXPLOSIVE_ERRORS:
+            tm.abort()
+            raise
+        except:
+            tm.abort()
+            log.error('Error while %s', identifier, exc_info=True)
+            res = zc.twist.Failure()
+        return res
