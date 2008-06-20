@@ -1163,18 +1163,16 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
      'shortest active': None,
      'shortest failed': (..., 'unnamed'),
      'shortest successful': (..., 'unnamed'),
-     'started': 10,
-     'statistics end': datetime.datetime(2006, 8, 10, 15, 46, 52, 211),
+     'started': 12,
+     'statistics end': datetime.datetime(2006, 8, 10, 15, 44, 22, 211),
      'statistics start': datetime.datetime(2006, 8, 10, 15, 56, 52, 211),
-     'successful': 8,
+     'successful': 10,
      'unknown': 0}
 
-    Although, wait a second--the 'statistics end', the 'started', and the
-    'successful' values have changed!  Why?
-
-    To keep memory from rolling out of control, the dispatcher by default
-    only keeps 10 to 12.5 minutes worth of poll information in memory.  For
-    the rest, keep logs and look at them (...and rotate them!).
+    Note that these statistics eventually rotate out. By default, poll info
+    will eventually rotate out after about 30 minutes (400 polls), and job info
+    will only keep the most recent 200 stats in-memory. To look in history
+    beyond these limits, check your logs.
 
     The ``getActiveJobIds`` list is empty now.
 
@@ -1212,9 +1210,9 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
      'shortest active': None,
      'shortest failed': (..., 'unnamed'),
      'shortest successful': (..., 'unnamed'),
-     'started': 22,
-     'statistics end': datetime.datetime(2006, 8, 10, 15, 46, 52, 211),
+     'started': 24,
+     'statistics end': datetime.datetime(2006, 8, 10, 15, 44, 22, 211),
      'statistics start': datetime.datetime(2006, 8, 10, 15, ...),
-     'successful': 20,
+     'successful': 22,
      'unknown': 0}
     >>> reactor.stop()

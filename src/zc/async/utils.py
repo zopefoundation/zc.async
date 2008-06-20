@@ -18,6 +18,7 @@ import time
 
 import ZEO.Exceptions
 import ZODB.POSException
+import BTrees
 import rwproperty
 import persistent
 import zope.minmax
@@ -103,23 +104,16 @@ def long_to_dt(l):
     return (datetime.datetime.max -
             datetime.timedelta(days, seconds, microseconds))
 
-class Periodic(persistent.Persistent):
-    # sorts on begin_after from newest to oldest
+
+class AbstractSet(persistent.Persistent):
 
     __parent__ = None
 
-    def __init__(self, period, buckets):
-        self._data = zope.bforest.periodic.LOBForest(period, count=buckets)
+    def __init__(self):
+        self._data = BTrees.family64.IO.BTree()
 
     def clear(self):
         self._data.clear()
-
-    @property
-    def period(self):
-        return self._data.period
-    @rwproperty.setproperty
-    def period(self, value):
-        self._data.period = value
 
     def add(self, item):
         key = zc.async.utils.dt_to_long(datetime.datetime.utcnow()) + 15
@@ -130,98 +124,96 @@ class Periodic(persistent.Persistent):
         item.parent = self.__parent__
         item.key = key
 
-    def iter(self, start=None, stop=None):
-        sources = []
-        if start is not None:
-            start = zc.async.utils.dt_to_long(start)
-        if stop is not None:
-            stop = zc.async.utils.dt_to_long(stop)
-        for b in self._data.buckets:
-            i = iter(b.items(start, stop))
-            try:
-                n = i.next()
-            except StopIteration:
-                pass
-            else:
-                sources.append([n, i])
-        sources.sort()
-        length = len(sources)
-        while length > 1:
-            src = sources.pop(0)
-            yield src[0][1]
-            try:
-                src[0] = src[1].next()
-            except StopIteration:
-                length -= 1
-            else:
-                bisect.insort(sources, src)
-        if sources:
-            yield sources[0][0][1]
-            for k, v in sources[0][1]:
-                yield v
-
     def __iter__(self):
-        return self._data.itervalues() # this takes more memory but the pattern
-        # is typically faster than the custom iter above (for relatively
-        # complete iterations of relatively small sets).  The custom iter
-        # has the advantage of the start and stop code.
-
-    def first(self, start=None):
-        original = start
-        if start is not None:
-            start = zc.async.utils.dt_to_long(start)
-            minKey = lambda bkt: bkt.minKey(start)
-        else:
-            minKey = lambda bkt: bkt.minKey()
-        i = iter(self._data.buckets)
-        bucket = i.next()
-        try:
-            key = minKey(bucket)
-        except ValueError:
-            key = None
-        for b in i:
-            try:
-                k = minKey(b)
-            except ValueError:
-                continue
-            if key is None or k < key:
-                bucket, key = b, k
-        if key is None:
-            raise ValueError(original)
-        return bucket[key]
-
-    def last(self, stop=None):
-        original = stop
-        if stop is not None:
-            stop = zc.async.utils.dt_to_long(stop)
-            maxKey = lambda bkt: bkt.maxKey(stop)
-        else:
-            maxKey = lambda bkt: bkt.maxKey()
-        i = iter(self._data.buckets)
-        bucket = i.next()
-        try:
-            key = maxKey(bucket)
-        except ValueError:
-            key = None
-        for b in i:
-            try:
-                k = maxKey(b)
-            except ValueError:
-                continue
-            if key is None or k > key:
-                bucket, key = b, k
-        if key is None:
-            raise ValueError(original)
-        return bucket[key]
-
-    def __nonzero__(self):
-        for b in self._data.buckets:
-            for ignore in b:
-                return True
-        return False
+        return self._data.itervalues()
 
     def __len__(self):
         return len(self._data)
+
+    def __nonzero__(self):
+        return bool(self._data)
+
+    def first(self, start=None):
+        if start is not None:
+            if isinstance(start, (int, long)):
+                args = (start,)
+            else:
+                args = (dt_to_long(start),)
+        else:
+            args = ()
+        return self._data[self._data.minKey(*args)]
+
+    def last(self, stop=None):
+        if stop is not None:
+            if isinstance(stop, (int, long)):
+                args = (stop,)
+            else:
+                args = (dt_to_long(stop),)
+        else:
+            args = ()
+        return self._data[self._data.maxKey(*args)]
+
+    def iter(self, start=None, stop=None):
+        if start is not None:
+            start = zc.async.utils.dt_to_long(start)
+        if stop is not None:
+            stop = zc.async.utils.dt_to_long(stop)
+        return self._data.itervalues(start, stop)
+
+
+class Periodic(AbstractSet):
+    # sorts on begin_after from newest to oldest
+
+    def __init__(self, period, buckets):
+        self._data = zope.bforest.periodic.LOBForest(period, count=buckets)
+
+    @property
+    def period(self):
+        return self._data.period
+    @rwproperty.setproperty
+    def period(self, value):
+        self._data.period = value
+
+
+class RollingSet(AbstractSet):
+
+    size = 100
+
+    def add(self, item):
+        super(RollingSet, self).add(item)
+        diff = len(self._data) - self.size
+        while diff > 0:
+            self._data.pop(self._data.maxKey())
+            diff -= 1
+
+
+class RollingMapping(zc.dict.OrderedDict):
+
+    size = 100
+
+    def __setitem__(self, key, value):
+        super(RollingMapping, self).__setitem__(key, value)
+        diff = len(self) - self.size
+        if diff > 0:
+            for key in self._order[:diff]:
+                self._data.pop(key)
+            del self._order[:diff]
+            self._len.change(-diff)
+
+    def maxKey(self, key=None):
+        if key is None:
+            args = ()
+        else:
+            args = (key,)
+        return self._data.maxKey(*args)
+
+    def minKey(self, key=None):
+        if key is None:
+            args = ()
+        else:
+            args = (key,)
+        return self._data.minKey(*args)
+
 
 def never_fail(call, identifier, tm):
     # forever for TransactionErrors; forever, with backoff, for anything else

@@ -304,7 +304,8 @@ class Dispatcher(object):
     thread = None # this is just a placeholder that other code can use the
     # way that zc.async.subscribers.ThreadedDispatcherInstaller.__call__ does.
 
-    def __init__(self, db, reactor, poll_interval=5, uuid=None):
+    def __init__(self, db, reactor, poll_interval=5, uuid=None, jobs_size=200,
+                 polls_size=400):
         if uuid is None:
             uuid = zope.component.getUtility(zc.async.interfaces.IUUID)
         if uuid in _dispatchers:
@@ -315,25 +316,26 @@ class Dispatcher(object):
         # None at some point, to default to the installed Twisted reactor.
         self.poll_interval = poll_interval
         self.UUID = uuid
-        # we keep these small so that memory usage doesn't balloon too big.
-        # for polls, about 10 minutes at 5 seconds a poll with a fairly large
-        # poll size of maybe 300 bytes means 12 polls/minute, or 120 polls,
-        # * 300 == 36000, about 36K.  Not too bad.  Jobs can take much more
-        # memory depending on the result--a failure takes a lot of memory, for
-        # instance--and there's no real way to guess how many we would get in
-        # a given period of time.  With a wild guess of an average of a K per
-        # job, and storage of 20 minutes, we would get 240K for 12 jobs a
-        # minute, or 1.2M for a job a second, and so on.  That's much bigger,
-        # but we still have a long way to go before we have noticeable memory
-        # consumption on typical production machines.
-        # We keep jobs longer than polls because you may want to find out
-        # about active jobs in a given poll, and jobs will begin their
-        # timeout period when they are begun, so we give a bit of cushion.
-        self.polls = zc.async.utils.Periodic(
-            period=datetime.timedelta(minutes=10), buckets=5) # max of 12.5 min
+        # Let's talk about jobs_size and polls_size.
+        #
+        # Let's take a random guess that data for a job might be about 1K on
+        # average.  That would mean that the default value (keep 200 jobs)
+        # would mean about 200K.
+        #
+        # Let's randomly guess that a poll record averages 300 bytes on
+        # average.  That would mean that the default value (keep 400 polls)
+        # would mean (400*300 bytes == 120000 bytes == ) about 120K.  That
+        # would cover (400 polls * 5 seconds/poll * 1 min/60 seconds == )
+        # just over 33 minutes of polling at the default poll_interval.
+        #
+        # These memory usages should be not really noticeable on typical
+        # production machines. On the other hand, if this is causing you memory
+        # problems, reduce these values when you instantiate your dispatcher.
+        self.polls = zc.async.utils.RollingSet()
+        self.polls.size = polls_size
         self.polls.__parent__ = self
-        self.jobs = zope.bforest.periodic.OOBForest(
-            period=datetime.timedelta(minutes=20), count=9) # max of 22.5 min
+        self.jobs = zc.async.utils.RollingMapping()
+        self.jobs.size = jobs_size
         self.jobs.__parent__ = self
         self._activated = set()
         self.queues = {}
@@ -648,19 +650,7 @@ class Dispatcher(object):
                 at = zc.async.utils.dt_to_long(before) + 16
             else:
                 at = before + 1
-        for bucket in tuple(self.polls._data.buckets): # freeze order
-            try:
-                if at is None:
-                    key = bucket.minKey()
-                else:
-                    key = bucket.minKey(at)
-                return bucket[key]
-            except (ValueError, KeyError):
-                # ValueError because minKey might not have a value
-                # KeyError because bucket might be cleared in another thread
-                # between minKey and __getitem__
-                pass
-        raise ValueError('no poll matches')
+        return self.polls.first(at)
 
     def iterPolls(self, at=None, before=None, since=None, count=None):
         # `polls` may be mutated during iteration so we don't iterate over it

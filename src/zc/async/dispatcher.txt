@@ -306,6 +306,9 @@ in it now. We can get some information about that job from the dispatcher.
 Notice that the result is a repr.  If this had been a failure, it would have
 been a (very) verbose traceback [#show_error]_.
 
+Only information about the most recent polls and jobs is kept in memory for
+analysis (400 polls and 200 jobs, by default) [#roll_off]_.
+
 As seen in other documents in zc.async, the job can also be a method of a
 persistent object, affecting a persistent object.
 
@@ -516,3 +519,118 @@ The db's pool size has returned to the original value.
     exceptions.TypeError: unsupported operand type(s) for *: 'int' and 'NoneType'
     *--- End of Failure #... ---
     <BLANKLINE>
+
+.. [#roll_off] Here's the defaults for the maximum most recent polls and jobs.
+
+    >>> dispatcher.polls.size
+    400
+    >>> dispatcher.jobs.size
+    200
+
+    You can set the size of the jobs and polls collections when you instantiate
+    the dispatcher.
+
+    >>> import uuid
+    >>> alt_dispatcher = zc.async.dispatcher.Dispatcher(
+    ...     db, reactor, poll_interval=0.5, uuid=uuid.uuid1(),
+    ...     jobs_size=50, polls_size=100)
+    >>> alt_dispatcher.polls.size
+    100
+    >>> alt_dispatcher.jobs.size
+    50
+
+    Here's an example of the roll-off, creating artificial job and poll
+    information.  First we show polls.
+
+    >>> parallel = []
+    >>> for i in range(10):
+    ...     info = zc.async.dispatcher.PollInfo(ct=i)
+    ...     alt_dispatcher.polls.add(info)
+    ...     parallel.insert(0, info)
+    ...
+    >>> len(alt_dispatcher.polls)
+    10
+    >>> list(alt_dispatcher.polls) == parallel
+    True
+    >>> for i in range(90):
+    ...     info = zc.async.dispatcher.PollInfo(ct=i)
+    ...     alt_dispatcher.polls.add(info)
+    ...     parallel.insert(0, info)
+    ...
+    >>> len(alt_dispatcher.polls)
+    100
+    >>> list(alt_dispatcher.polls) == parallel
+    True
+    >>> info = zc.async.dispatcher.PollInfo(ct=i)
+    >>> alt_dispatcher.polls.add(info)
+    >>> parallel.insert(0, info)
+    >>> list(alt_dispatcher.polls) == parallel
+    False
+    >>> len(alt_dispatcher.polls)
+    100
+    >>> len(parallel)
+    101
+    >>> list(alt_dispatcher.polls) == parallel[:100]
+    True
+    >>> for i in range(10):
+    ...     info = zc.async.dispatcher.PollInfo(ct=i)
+    ...     alt_dispatcher.polls.add(info)
+    ...     parallel.insert(0, info)
+    ...
+    >>> len(alt_dispatcher.polls)
+    100
+    >>> len(parallel)
+    111
+    >>> list(alt_dispatcher.polls) == parallel[:100]
+    True
+
+    Now we show jobs.
+
+    >>> parallel = []
+    >>> for i in range(10):
+    ...     info = {'ct': i}
+    ...     alt_dispatcher.jobs[i] = info
+    ...     parallel.insert(0, (i, info))
+    ...
+    >>> len(alt_dispatcher.jobs)
+    10
+    >>> dict(alt_dispatcher.jobs) == dict(parallel)
+    True
+    >>> for i in range(10, 50):
+    ...     info = {'ct': i}
+    ...     alt_dispatcher.jobs[i] = info
+    ...     parallel.insert(0, (i, info))
+    ...
+    >>> len(list(alt_dispatcher.jobs))
+    50
+    >>> len(alt_dispatcher.jobs)
+    50
+    >>> dict(alt_dispatcher.jobs) == dict(parallel)
+    True
+    >>> i = 50
+    >>> info = {'ct': i}
+    >>> alt_dispatcher.jobs[i] = info
+    >>> parallel.insert(0, (i, info))
+    >>> dict(alt_dispatcher.jobs) == dict(parallel)
+    False
+    >>> len(list(alt_dispatcher.jobs))
+    50
+    >>> len(alt_dispatcher.jobs)
+    50
+    >>> len(parallel)
+    51
+    >>> dict(alt_dispatcher.jobs) == dict(parallel[:50])
+    True
+    >>> for i in range(51, 60):
+    ...     info = {'ct': i}
+    ...     alt_dispatcher.jobs[i] = info
+    ...     parallel.insert(0, (i, info))
+    ...
+    >>> len(list(alt_dispatcher.jobs))
+    50
+    >>> len(alt_dispatcher.jobs)
+    50
+    >>> len(parallel)
+    60
+    >>> dict(alt_dispatcher.jobs) == dict(parallel[:50])
+    True

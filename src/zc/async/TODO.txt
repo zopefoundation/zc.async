@@ -1,37 +1,40 @@
-For release
-
-- be even more pessimistic about memory for saved polls and job info in
-  dispatcher.
-
-Bugs and improvements:
+Improvements
 
 - queues should be pluggable like agent with filter
+
+More docs:
+
 - show how to broadcast, maybe add conveniences
+
 - show how to use with collapsing jobs (hint to future self: use external queue
   to put in work, and have job(s) just pull what they can see from queue)
+
 - write tips and tricks
+
   * avoid long transactions if possible.  really avoid long transactions
     involving frequently written objects.  Discuss ramifications and
     strategies, such as doing big work in one job, then in callback schedule
     actually writing the data into the hotspot.
+
   * in zope.app.testing.functional tests, zc.async doesn't do well being
     started in a layer's setup because then it is associated with the
     wrapped layer DB, and the test is associated with the DemoStorage wrapper,
     so that the test can see what zc.async does, but zc.async can't see what
     the test does.  The current workaround is to start the dispatcher in the
     test or the test set up (but, again, *not* The layer set up).
+
   * In tests, don't check to see if poll is activated until after the first
     poll. Try ``zc.async.testing.get_poll(zc.async.dispatcher.get(), 0)``, for
     instance.
+
   * In tests, be aware that DemoStorage does not support mvcc and does not
     support conflict resolution, so you may experience ConflictError (write and
     particularly read) problems with it that you will not experience as much,
     or at all, with a storage that supports those features such as FileStorage.
     Notice that all of the tests in this package use FileStorage.
+
   * callbacks should be very, very quick, and very reliable.  If you want to do
     something that might take a while, put another job in the queue
-
-More docs:
 
 - custom retry policies, particularly for non-transactional tasks;
 

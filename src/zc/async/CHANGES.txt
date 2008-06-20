@@ -50,6 +50,11 @@
 
 - Depends on new release of zc.twist (1.3)
 
+- Switched dispatcher's in-memory storage of job and poll information to be per
+  job or per poll, respectively, rather than per time period, so as to try and
+  make memory usage more predictable (for instance, whether a dispatcher is
+  whipping through lots of jobs quickly, or doing work more slowly).
+
 1.1.1 (2008-05-14)
 ==================
 
