@@ -1,4 +1,4 @@
-1.2 (unreleased)
+1.2 (2008-06-20)
 ================
 
 - made the log for finding an activated agent report the pertinent queue's oid
