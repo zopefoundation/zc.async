@@ -1566,21 +1566,14 @@ except through addCallbacks or addCallback.
     1
 
 When you use ``addCallbacks``, the job you get back has a callable with
-the success and failure jobs you passed in as arguments.  Moreover, the
-job you get back already has a callback, for safety reasons.  If a
-dispatcher dies while the job is in progress, active argument jobs
-should be cleaned up and will not be cleaned up automatically with the
-logic in ``resumeCallbacks`` (by design: this may not be desired behavior
-in all cases).  Therefore we add a callback to the main callback that
-does this job.
+the success and failure jobs you passed in as arguments.
 
     >>> j.callbacks[0] is j_callback
     True
-    >>> len(j_callback.callbacks)
-    1
+    >>> j_callback.args # doctest: +ELLIPSIS
+    [<zc.async.job.Job ... ``zc.async.doctest_test.multiply(5)``>, None]
 
-``addCallback`` does not have this characteristic (you are responsible for any
-internal jobs, therefore).
+``addCallback`` does not have this characteristic.
 
     >>> j_callback2 = zc.async.job.Job(multiply, 9)
     >>> j_callback2 is j.addCallback(j_callback2)
@@ -1768,11 +1761,10 @@ Footnotes
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     starting callback
      <...Job (oid ..., db 'unnamed')
-      ``...completeStartedJobArguments(...Job (oid ..., db 'unnamed'))``>
-    to
-     <...Job (oid ..., db 'unnamed')
       ``...success_or_failure(...Job (oid ..., db 'unnamed'),
                               ...Job (oid ..., db 'unnamed'))``>
+    to
+     <...Job (oid ..., db 'unnamed') ``...multiply(5, 3)``>
 
 
     As with all job calls, the results are logged.
@@ -1785,8 +1777,7 @@ Footnotes
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``zc.async.job.completeStartedJobArguments(zc.async.job.Job
-                                                (oid ..., db 'unnamed'))``>
+     ``zc.async.job.success_or_failure(...)``>
     succeeded with result:
     None
 
@@ -1802,8 +1793,7 @@ Footnotes
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``zc.async.job.completeStartedJobArguments(zc.async.job.Job
-                                                (oid ..., db 'unnamed'))``>
+     ``zc.async.job.success_or_failure(...)``>
     succeeded with result:
     None
 

@@ -66,17 +66,6 @@ def success_or_failure(success, failure, res):
         return res
     return callable(res)
 
-def completeStartedJobArguments(job, result):
-    if isinstance(result, twisted.python.failure.Failure):
-        for collection in (job.args, job.kwargs.values()):
-            for a in collection:
-                if zc.async.interfaces.IJob.providedBy(a):
-                    status = a.status
-                    if status == zc.async.interfaces.ACTIVE:
-                        a.fail()
-                    elif status == zc.async.interfaces.CALLBACKS:
-                        a.resumeCallbacks()
-
 class RetryCommonFourTimes(persistent.Persistent): # default
     zope.component.adapts(zc.async.interfaces.IJob)
     zope.interface.implements(zc.async.interfaces.IRetryPolicy)
@@ -407,13 +396,6 @@ class Job(zc.async.utils.Base):
             if failure is not None:
                 failure.parent = res
             self.addCallback(res)
-            # we need to handle the case of callbacks on the internal success/
-            # failure jobs, to be safe.
-            abort_handler = zc.async.interfaces.IJob(
-                completeStartedJobArguments)
-            abort_handler.args.append(res)
-            res.addCallback(
-                abort_handler, failure_log_level, retry_policy_factory)
         else:
             res = self
         return res
