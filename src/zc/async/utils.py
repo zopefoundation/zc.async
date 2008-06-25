@@ -116,7 +116,7 @@ class AbstractSet(persistent.Persistent):
         self._data.clear()
 
     def add(self, item):
-        key = zc.async.utils.dt_to_long(datetime.datetime.utcnow()) + 15
+        key = dt_to_long(datetime.datetime.utcnow()) + 15
         while key in self._data:
             key -= 1
         self._data[key] = item
@@ -155,9 +155,9 @@ class AbstractSet(persistent.Persistent):
 
     def iter(self, start=None, stop=None):
         if start is not None:
-            start = zc.async.utils.dt_to_long(start)
+            start = dt_to_long(start)
         if stop is not None:
-            stop = zc.async.utils.dt_to_long(stop)
+            stop = dt_to_long(stop)
         return self._data.itervalues(start, stop)
 
 

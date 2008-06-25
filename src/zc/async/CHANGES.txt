@@ -1,3 +1,11 @@
+(unreleased)
+============
+
+- remove obsolete retry approach for success/failure callbacks
+  (``completeStartedJobArguments``): it is now handled by retry policies.
+
+- remove odd full-path self-references within the utils module.
+
 1.2 (2008-06-20)
 ================
 
