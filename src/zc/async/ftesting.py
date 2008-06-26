@@ -8,7 +8,7 @@ import zc.async.testing
 
 # helper functions convenient for Zope 3 functional tests
 
-def setUpAsync(
+def setUp(
     connection=None,
     queue_installer=zc.async.subscribers.queue_installer,
     dispatcher_installer=zc.async.subscribers.ThreadedDispatcherInstaller(
@@ -21,7 +21,7 @@ def setUpAsync(
     db = connection.db()
     zope.component.provideHandler(agent_installer)
     event = zc.async.interfaces.DatabaseOpened(db)
-    
+
     dispatcher_installer(event)
     dispatcher = zc.async.dispatcher.get()
     _ = transaction.begin()
@@ -31,8 +31,7 @@ def setUpAsync(
     assert dispatcher.activated is not None
 
 
-def tearDownAsync():
+def tearDown():
     dispatcher = zc.async.dispatcher.get()
     dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
     dispatcher.thread.join(3)
-
