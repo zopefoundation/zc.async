@@ -53,7 +53,7 @@ locals to find it. If you want it to leave your locals alone, pass it a
 database connection.
 
 So, here's some set up.  We create a database and make our stub
-``getRootObject`` function.
+``getRootFolder`` function in the globals.
 
     >>> import transaction
     >>> import BTrees
@@ -66,9 +66,10 @@ So, here's some set up.  We create a database and make our stub
     >>> root = conn.root()
     >>> PseudoZopeRoot = root['Application'] = BTrees.family32.OO.BTree()
     >>> transaction.commit()
-    >>> def getRootObject():
+    >>> def _getRootObject():
     ...     return PseudoZopeRoot
     ...
+    >>> globals()['getRootFolder'] = _getRootObject
 
 Notice we are using a real FileStorage, and not a DemoStorage, as is usually
 used in ftests. The fact that DemoStorage does not have MVCC can sometimes lead
@@ -141,3 +142,4 @@ If you used a FileStorage, as we did here, you'll need to clean up as well.
     >>> storage.cleanup()
 
     >>> del storage # we just do this to not confuse our own tearDown code.
+    >>> del globals()['getRootFolder'] # clean up globals

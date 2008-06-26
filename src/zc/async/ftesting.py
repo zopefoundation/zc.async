@@ -17,7 +17,7 @@ def setUp(
     """Set up zc.async, as is needed for Zope 3 functional tests.
     """
     if connection is None:
-        connection = sys._getframe(1).f_locals['getRootObject']()._p_jar
+        connection = sys._getframe(1).f_globals['getRootFolder']()._p_jar
     db = connection.db()
     zope.component.provideHandler(agent_installer)
     event = zc.async.interfaces.DatabaseOpened(db)
