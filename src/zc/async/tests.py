@@ -144,6 +144,7 @@ def test_suite():
             'README.txt',
             'README_2.txt',
             'catastrophes.txt',
+            'ftesting.txt',
             setUp=modSetUp, tearDown=modTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),
         ))

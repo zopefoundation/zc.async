@@ -1,0 +1,143 @@
+Normally, in a Zope 3 configuration that uses zc.async, you configure it
+when you start your application.  For instance, you might include a zc.async
+zcml file like basic_dispatcher_policy.zcml that performs the necessary set up.
+
+However, the Zope 3 ftesting layer database dance doesn't play well with
+zc.async unless you take a bit of extra care.
+
+This is because zc.async will be started with the ftests' underlying database,
+and then the test will be run with a DemoStorage wrapper. The zc.async
+dispatcher will run, then, but it will never see the changes that you make in
+the wrapper DemoStorage that your test manipulates.  This can be mystifying
+and frustrating.
+
+Because of this, when you write a Zope 3 app that wants to use both layered
+ftests and zc.async, you have to set things up in a mildly inconvenient way.
+
+When you start your application normally, use configuration (zcml or grok or
+whatever) to register subscribers like the ones in subscribers.py: adding
+queues, starting dispatchers, and adding agents.
+
+But don't have this configuration registered for your ftests. Instead, bypass
+that part of your site's configuration in your ftesting layer, and use the
+``zc.async.ftesting.setUpAsync`` function to set zc.async up in tests when you
+need it, in a footnote of your test or in a similar spot.
+
+You'll still want the basic adapters registered, as found in zc.async's
+configure.zcml or configure.py files; and maybe the
+zc.async.queue.getDefaultQueue adapter too.  This can be registered in
+ftesting.zcml with this snippet::
+
+  <include package="zc.async" />
+  <adapter factory="zc.async.queue.getDefaultQueue" />
+
+Or in Python, you might want to do something like this:
+
+    >>> import zc.async.configure
+    >>> zc.async.configure.base() # or, more likely, ``minimal`` for Zope 3
+    >>> import zope.component
+    >>> import zc.async.queue
+    >>> zope.component.provideAdapter(zc.async.queue.getDefaultQueue)
+
+Don't forget to call ``tearDownAsync`` (see below) at the end of your test!
+
+Here's a usage example.
+
+As mentioned above, ``setUpAsync`` does expect the necessary basic adapters to
+already be installed.
+
+Zope 3 ftests generally have a ``getRootObject`` hanging around to give you the
+root object in the Zope application (but not in the ZODB).  Therefore, this
+function tries to be helpful, for better and worse, and muck around in the
+locals to find it.  If you want it to leave your locals alone, pass it a
+database connection.
+
+So, here's some set up.  We create a database and make our stub
+``getRootObject`` function.  
+
+    >>> import transaction
+    >>> import BTrees
+    >>> import ZODB.FileStorage
+    >>> storage = ZODB.FileStorage.FileStorage(
+    ...     'zc_async.fs', create=True)
+    >>> from ZODB.DB import DB
+    >>> db = DB(storage)
+    >>> conn = db.open()
+    >>> root = conn.root()
+    >>> PseudoZopeRoot = root['Application'] = BTrees.family32.OO.BTree()
+    >>> transaction.commit()
+    >>> def getRootObject():
+    ...     return PseudoZopeRoot
+    ...
+
+Notice we are using a real FileStorage, and not a DemoStorage, as is usually
+used in ftests.  The fact that DemoStorage does not have MVCC can sometimes
+lead standard ftests to raise spurious ReadConflictErrors that will not
+actually occur in production.  The ConflictErrors will generally be retried, so
+your tests should usually pass, even though you might see some "complaints".
+
+Now we can call ``setUpAsync`` as if we were in a functional test.
+
+    >>> import zc.async.ftesting
+    >>> zc.async.ftesting.setUpAsync()
+
+Now the dispatcher is activated and the polls are running.  The function sets
+up a dispatcher that polls much more frequently than usual--every 0.1 seconds
+rather than every 5, so that tests might run faster--but otherwise uses
+typical zc.async default values.
+
+It's worth noting a few tricks that are particularly useful for tests here. 
+We'll also use a couple of them to verify that ``setUpAsync`` did its work.
+
+``zc.async.dispatcher.get()`` returns the currently installed dispatcher. This
+can let you check if it is activated and polling and use its simple statistical
+methods, if you want.
+
+    >>> import zc.async.dispatcher
+    >>> dispatcher = zc.async.dispatcher.get()
+
+For now, we'll just see that the dispatcher is activated.
+
+    >>> bool(dispatcher.activated)
+    True
+
+See the dispatcher.txt for information on information you can get from the
+dispatcher object.
+
+zc.async.testing has a number of helpful functions for testing. ``get_poll`` is
+the most pertinent here: given a dispatcher, it will give you the next poll. 
+This is a good way to make sure that a job you just put in has had a chance to
+be claimed by a dispatcher.  It's also a reasonable way to verify that the
+dispatcher has started.  ``setUpAsync`` already gets the first two polls, so
+it's definitely all started.
+
+    >>> import zc.async.testing
+    >>> import pprint
+    >>> pprint.pprint(zc.async.testing.get_poll(dispatcher))
+    {'': {'main': {'active jobs': [],
+                   'error': None,
+                   'len': 0,
+                   'new jobs': [],
+                   'size': 3}}}
+
+Other useful testing functions are ``zc.async.testing.wait_for_result``, which
+waits for the result on a give job and returns it; and
+``zc.async.testing.wait_for_annotation``, which waits for a given annotation
+on a given job.  These are demonstrated in various doctests in this package,
+but should also be reasonably simple and self-explanatory.
+
+Once you have finished your tests, make sure to shut down your dispatcher, or
+the testing framework will complain about an unstopped daemon thread.
+zc.async.ftesting.tearDownAsync will do the trick.
+
+    >>> zc.async.ftesting.tearDownAsync()
+    >>> dispatcher.activated
+    False
+
+If you used a FileStorage, as we did here, you'll need to clean up as well.
+
+    >>> db.close()
+    >>> storage.close()
+    >>> storage.cleanup()
+
+    >>> del storage # we just do this to not confuse our own tearDown code.

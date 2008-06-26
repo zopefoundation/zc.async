@@ -1,6 +1,10 @@
 (unreleased)
 ============
 
+- added helpers for setting up and tearing down Zope 3 functional tests
+  (ftesting.py), and a discussion of how to write Zope 3 functional tests with
+  layers (zope.app.testing.functional) in ftesting.txt.
+
 - remove obsolete retry approach for success/failure callbacks
   (``completeStartedJobArguments``): it is now handled by retry policies.
 
