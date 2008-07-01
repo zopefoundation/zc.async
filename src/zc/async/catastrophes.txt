@@ -115,7 +115,7 @@ Job Fails
 .........
 
 As discussed elsewhere, if your job fails in your own code, this is mostly
-your reponsibility. You should handle possible errors both within your job's
+your responsibility. You should handle possible errors both within your job's
 code, and in callbacks, as appropriate.
 
 The other tool at your disposal for this situation, as with others below, is a
@@ -175,7 +175,7 @@ Handling transaction errors after processing a job is also similar to the
 handling of transaction errors for polling exceptions. ConflictErrors and
 ClientDisconnected errors should often cause jobs to be aborted and restarted.
 However, if the job is not transactional, such as communicating with an
-external service, a simple abourt and retry may be hazardous. Also, many jobs
+external service, a simple abort and retry may be hazardous. Also, many jobs
 should be stopped if they retry on ConflictError more than some number of
 times--a heuristic bellweather--with the logic that they may be simply doing
 something too problematic, and they are blocking other tasks from starting. But
