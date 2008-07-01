@@ -51,10 +51,10 @@ interact.
 Queues and Jobs
 ===============
 
-As described in the README, we can put jobs to be performed now in the
-queue, and jobs to be performed later.  The collection can be
-introspected, and then agents can ``claim`` a job or simply remove it with
-``pull``; we'll examine the differences between these calls below.
+As described in the README, we can put jobs to be performed now in the queue,
+and jobs to be performed later. The collection can be introspected, and then
+agents can ``claim`` a job or simply remove it with ``pull`` or ``remove``.
+We'll examine the differences between these calls below.
 
 We'll start by adding a job to be performed as soon as possible.  Note
 that we'll use a testing tool that lets us control the current time
@@ -177,6 +177,31 @@ The ``pull`` method is a way to remove jobs without the connotation of
 For now, we'll just use it to pull a job, and then return it.
 
     >>> job4 is queue.pull()
+    True
+    >>> job4 is queue.put(job4)
+    True
+    >>> list(queue) == [job4, job3]
+    True
+
+The ``pull`` method takes the first item off the queue, or you can pass an
+index.
+
+The ``remove`` method lets you remove a specific job from the queue.
+
+    >>> queue.remove(job3)
+    >>> list(queue) == [job4]
+    True
+
+    >>> queue.remove(job4)
+    >>> list(queue)
+    []
+
+    >>> queue.remove(job4) # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    LookupError: ('item not in queue', <zc.async.job.Job...>)
+
+    >>> job3 is queue.put(job3)
     True
     >>> job4 is queue.put(job4)
     True

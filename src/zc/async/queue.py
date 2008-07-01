@@ -386,6 +386,17 @@ class Queue(zc.async.utils.Base):
                 return job
         assert False, 'programmer error: the length appears to be incorrect.'
 
+    def remove(self, item):
+        for pop, ix, job in self._iter():
+            if job is item:
+                assert pop(ix) is job
+                self._length.change(-1)
+                job.assignerUUID = None
+                job.parent = None
+                break
+        else:
+            raise LookupError('item not in queue', item)
+
     def claim(self, filter=None, default=None):
         now = datetime.datetime.now(pytz.UTC)
         if not self._length():

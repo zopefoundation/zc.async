@@ -244,20 +244,53 @@ methods of persistent objects can be used. This rules out, for instance,
 lambdas and other functions created dynamically. As we'll see below, the job
 instance can help us out there somewhat by offering closure-like features.
 
---------------
-``queue.pull``
---------------
+-----------------------------------
+``queue.pull`` and ``queue.remove``
+-----------------------------------
 
 If you put a job into a queue and it hasn't been claimed yet and you want to
-cancel the job, ``pull`` it from the queue.
+cancel the job, ``pull`` or ``remove`` it from the queue.
+
+The ``pull`` method removes the first job, or takes an integer index.
 
     >>> len(queue)
     0
-    >>> job = queue.put(send_message)
+    >>> job1 = queue.put(send_message)
+    >>> job2 = queue.put(send_message)
     >>> len(queue)
-    1
-    >>> job is queue.pull()
+    2
+    >>> job1 is queue.pull()
     True
+    >>> list(queue) == [job2]
+    True
+    >>> job1 is queue.put(job1)
+    True
+    >>> list(queue) == [job2, job1]
+    True
+    >>> job1 is queue.pull(-1)
+    True
+    >>> job2 is queue.pull()
+    True
+    >>> len(queue)
+    0
+
+The ``remove`` method removes the specific given job.
+
+    >>> job1 = queue.put(send_message)
+    >>> job2 = queue.put(send_message)
+    >>> len(queue)
+    2
+    >>> queue.remove(job1)
+    >>> list(queue) == [job2]
+    True
+    >>> job1 is queue.put(job1)
+    True
+    >>> list(queue) == [job2, job1]
+    True
+    >>> queue.remove(job1)
+    >>> list(queue) == [job2]
+    True
+    >>> queue.remove(job2)
     >>> len(queue)
     0
 

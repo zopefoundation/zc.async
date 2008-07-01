@@ -365,6 +365,9 @@ class IQueue(zc.queue.interfaces.IQueue):
         that dispatchers will not try to perform it.
         """
 
+    def remove(item):
+        """Removes item from queue or raises LookupError if not found."""
+
     def claim(filter=None, default=None):
         """returns first due job that is available for the given filter,
         removing it from the queue as appropriate; or None, if none are
