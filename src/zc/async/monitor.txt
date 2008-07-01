@@ -684,7 +684,7 @@ Here are the revised stats.
 
     >>> import zc.async.testing
     >>> reactor = zc.async.testing.Reactor()
-    >>> reactor.start() # this mokeypatches datetime.datetime.now 
+    >>> reactor.start() # this monkeypatches datetime.datetime.now 
 
     >>> import zc.async.queue
     >>> import zc.async.interfaces

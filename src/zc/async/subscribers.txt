@@ -149,7 +149,7 @@ database, with a queue, with a dispatcher, with an agent.
 When an IQueues or IQueue is installed, an event is fired that provides the
 object being added, the container it is added to, and the name under which it
 is added.  Therefore, two ObjectAdded events have fired now, one for a queues
-colection and one for a queue.
+collection and one for a queue.
 
     >>> from zope.component import eventtesting
     >>> for event in eventtesting.getEvents(zc.async.interfaces.IObjectAdded):

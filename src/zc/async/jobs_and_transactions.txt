@@ -44,7 +44,7 @@ job itself at the points marked "COMMIT" and "ABORT" in this list
 
 Note the following:
 - if a job's wrapped callable returns a failure, that means that it
-  is taking responsiblity for any necessary abort: the job will still
+  is taking responsibility for any necessary abort: the job will still
   attempt to commit.
 - the status never changes out of COMPLETED even when a new callback is
   added.

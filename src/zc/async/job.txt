@@ -442,7 +442,7 @@ which we'll look at below.
 
 If the system fails around your code, four sorts of things might happen. In the
 context of the full zc.async system, it is the responsibility of the zc.async
-code to react as described below, and, when pertinent, your reponsibility to
+code to react as described below, and, when pertinent, your responsibility to
 make sure that the retry policy for the job does what you need.
 
 - The job never started, and timed out. zc.async should call ``fail`` on the

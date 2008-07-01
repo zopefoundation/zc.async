@@ -1055,7 +1055,7 @@ place of the original job in the quota.
     >>> j3()
     42
 
-A retry policy can also request resceduling from a jobError or a commitError,
+A retry policy can also request rescheduling from a jobError or a commitError,
 although the default retry policies do not.
 
 jobError: "please reschedule now"
