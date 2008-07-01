@@ -1,5 +1,5 @@
-1.3 a1 (unreleased)
-===================
+1.3 (unreleased)
+================
 
 - added helpers for setting up and tearing down Zope 3 functional tests
   (ftesting.py), and a discussion of how to write Zope 3 functional tests with
@@ -9,6 +9,9 @@
   (``completeStartedJobArguments``): it is now handled by retry policies.
 
 - remove odd full-path self-references within the utils module.
+
+- doc improvements and fixes (thanks to Zvezdan Petkovic and Gintautas
+  Miliauskas).
 
 1.2 (2008-06-20)
 ================
