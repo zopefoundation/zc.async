@@ -19,7 +19,7 @@ For our zope.conf, we only need one additional stanza to the one seen above::
 storage file.)
 
 As before, you will probably prefer to use ZEO rather than FileStorage in
-production
+production.
 
 The zdaemon.conf instructions are the same: set the ZC_ASYNC_UUID environment
 variable properly in the zdaemon.conf file.

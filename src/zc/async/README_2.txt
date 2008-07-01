@@ -434,7 +434,7 @@ Agents
 Agents are the way you control what a dispatcher's worker threads do.  They
 pick the jobs and assign them to their dispatcher when the dispatcher asks.
 
-*If a dispatcher does not have any agents in a give queue, it will not perform
+*If a dispatcher does not have any agents in a given queue, it will not perform
 any tasks for that queue.*
 
 We currently have an agent that simply asks for the next available FIFO job.

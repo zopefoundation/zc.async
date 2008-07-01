@@ -107,7 +107,7 @@ site.zcml-alike [#get_vals]_.
     ...        'async_trace_log': os.path.join(dir, 'async_trace.log'),}
     ... 
 
-In a non-trivial production system of you will also probably want to replace
+In a non-trivial production system, you will also probably want to replace
 the file storage with a <zeoclient> stanza.
 
 Also note that an open monitor port should be behind a firewall, of course.
