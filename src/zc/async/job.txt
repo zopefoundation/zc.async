@@ -118,7 +118,7 @@ though.
     exceptions.RuntimeError: Bad Things Happened Here
 
 Note that all calls can return a failure explicitly, rather than raising an
-exception that the job converts to an exception. However, there is an important
+exception that the job converts to a failure. However, there is an important
 difference in behavior. If a wrapped call raises an exception, the job aborts
 the transaction; but if the wrapped call returns a failure, no automatic abort
 occurs. Wrapped calls that explicitly return failures are thus responsible for
