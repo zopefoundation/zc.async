@@ -5,7 +5,7 @@ Configuration without Zope 3
 This section discusses setting up zc.async without Zope 3. Since Zope 3 is
 ill-defined, we will be more specific: this describes setting up zc.async
 without ZCML, without any zope.app packages, and with as few dependencies as
-possible. A casual way of describing the dependencies is "ZODB, Twisted and
+possible. A casual way of describing the dependencies is "ZODB, Twisted, and
 zope.component," though we directly depend on some smaller packages and
 indirectly on others [#specific_dependencies]_.
 
@@ -173,7 +173,7 @@ ZODB Configuration
 A Queue
 -------
 
-All we must have for a client to be able to put jobs in a queue is...a queue.
+All we must have for a client to be able to put jobs in a queue is ... a queue.
 
 For a quick start, the ``zc.async.subscribers`` module provides a subscriber to
 a DatabaseOpened event that does the right dance. See
@@ -220,7 +220,7 @@ Quotas
 ------
 
 We touched on quotas in the usage section.  Some jobs will need to
-access resoources that are shared across processes.  A central data
+access resources that are shared across processes.  A central data
 structure such as an index in the ZODB is a prime example, but other
 examples might include a network service that only allows a certain
 number of concurrent connections.  These scenarios can be helped by
@@ -361,7 +361,7 @@ inline.
 Any object that conforms to the specification of zc.async.interfaces.IReactor
 will be usable by the dispatcher.  For our example, we will use our own instance
 of the Twisted select-based reactor running in a separate thread.  This is
-separate from the Twisted reator installed in twisted.internet.reactor, and
+separate from the Twisted reactor installed in twisted.internet.reactor, and
 so this approach can be used with an application that does not otherwise use
 Twisted (for instance, a Zope application using the "classic" zope publisher).
 
@@ -502,7 +502,7 @@ Logging and Monitoring
 
 Logs are sent to the ``zc.async.events`` log for big events, like startup and
 shutdown, and errors.  Poll and job logs are sent to ``zc.async.trace``.
-Confugure the standard Python logging module as usual to send these logs where
+Configure the standard Python logging module as usual to send these logs where
 you need.  Be sure to auto-rotate the trace logs.
 
 The package supports monitoring using zc.z3monitor, but using this package

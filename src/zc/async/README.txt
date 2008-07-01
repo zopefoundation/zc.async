@@ -50,7 +50,7 @@ This is a second-generation design.  The first generation was `zasync`,
 a mission-critical and successful Zope 2 product in use for a number of
 high-volume Zope 2 installations.  [#async_history]_ It's worthwhile noting
 that zc.async has absolutely no backwards compatibility with zasync and
-zc.async does not require Zope (although it can be used in conjuction with it,
+zc.async does not require Zope (although it can be used in conjunction with it,
 details below).
 
 Design Overview
@@ -64,7 +64,7 @@ Looking at the design from the perspective of regular usage, your code obtains
 a ``queue``, which is a place to register jobs to be performed asynchronously.
 
 Your application calls ``put`` on the queue to register a job.  The job must be
-a pickleable, callable object; a global function, a callable persistent object,
+a pickleable, callable object.  A global function, a callable persistent object,
 a method of a persistent object, or a special zc.async.job.Job object
 (discussed later) are all examples of suitable objects.  The job by default is
 registered to be performed as soon as possible, but can be registered to be
@@ -517,7 +517,7 @@ available off of zc.async.local.
     immutable objects like strings or numbers [#getLiveAnnotation]_.
 
     If the ``timeout`` argument is set to a positive float or int, the function
-    will wait that at least that number of seconds until an annotation of the
+    will wait at least that number of seconds until an annotation of the
     given name is available. Otherwise, it will return the ``default`` if the
     name is not present in the annotations. The ``poll`` argument specifies
     approximately how often to poll for the annotation, in seconds (to be more
@@ -878,13 +878,13 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
         component parts could only be replaced with difficulty, if at
         all. A goal for the 2.x design is to clearly define the role for
         each of three components such that, for instance, a user of a
-        queue does not need to know about the dispatcher ot the agents.
+        queue does not need to know about the dispatcher or the agents.
 
       * Improve scalability of asynchronous workers.
 
         The 1.x line was initially designed for a single asynchronous
         worker, which could be put on another machine thanks to ZEO.
-        Tarek Ziad of Nuxeo wrote zasyncdispatcher, which allowed
+        Tarek Ziade of Nuxeo wrote zasyncdispatcher, which allowed
         multiple asynchronous workers to accept work, allowing multiple
         processes and multiple machines to divide and conquer. It worked
         around the limitations of the original zasync design to provide
@@ -996,14 +996,14 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
     Now we'll set up the database, and make some policy decisions.  As
     the subsequent ``configuration`` sections discuss, some helpers are
-    available for you to set this stuff up if you'd like, though it's not too
+    available for you to set this up if you'd like, though it's not too
     onerous to do it by hand.
 
     We'll use a test reactor that we can control.
 
     >>> import zc.async.testing
     >>> reactor = zc.async.testing.Reactor()
-    >>> reactor.start() # this mokeypatches datetime.datetime.now
+    >>> reactor.start() # this monkeypatches datetime.datetime.now
 
     We need to instantiate the dispatcher with a reactor and a DB.  We
     have the reactor, so here is the DB.  We use a FileStorage rather
@@ -1063,9 +1063,9 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     Rather than committing the transaction,
     ``root._p_jar.add(root['demo'])`` would also accomplish the same
     thing from a multi-database perspective, without a commit.  It was
-    not used in the example because the ``transaction.commit()`` the author
-    judged it to be less jarring to the reader.  If you are down here
-    reading this footnote, maybe the author was wrong. :-)
+    not used in the example because the author judged the
+    ``transaction.commit()`` to be less jarring to the reader.  If you
+    are down here reading this footnote, maybe the author was wrong. :-)
 
 .. [#already_passed]
 
@@ -1076,7 +1076,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     >>> reactor.wait_for(job)
     imagine this sent a message to another machine
 
-    It's worth noting that this situation consitutes a small exception
+    It's worth noting that this situation constitutes a small exception
     in the handling of scheduled calls.  Scheduled calls usually get
     preference when jobs are handed out over normal non-scheduled "as soon as
     possible" jobs.  However, setting the begin_after date to an earlier
@@ -1103,7 +1103,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     2.5's `partial`.  This will be important when we use the Job as
     a callback.  For this use case, though, realize that the job
     will be called with no arguments, so you must supply all necessary
-    arguments for the callable on creation time.
+    arguments for the callable at creation time.
 
 .. [#setLiveAnnotation]  Here's the real rule, which is more complex.
     *Do not send non-persistent mutables or a persistent.Persistent
