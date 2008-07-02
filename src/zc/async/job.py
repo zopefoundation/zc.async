@@ -103,15 +103,15 @@ class RetryCommonFourTimes(persistent.Persistent): # default
             if failure.check(*exc) is not None:
                 count = data_cache.get(key, 0) + 1
                 if max_count is not None and count >= max_count:
-                    zc.async.utils.tracelog.info(
+                    zc.async.utils.tracelog.warning(
                         'Retry policy for job %r is not retrying after %d '
                         'counts of %s occurrences', self.parent, count, key)
                     return False
                 elif count==1 or not count % self.log_every:
-                    zc.async.utils.tracelog.info(
+                    zc.async.utils.tracelog.warning(
                         'Retry policy for job %r requests another attempt '
                         'after %d counts of %s occurrences', self.parent,
-                        count, key)
+                        count, key, exc_info=True)
                 backoff = min(max_backoff,
                               (init_backoff + (count-1) * incr_backoff))
                 if backoff:
@@ -158,10 +158,17 @@ class RetryCommonForever(RetryCommonFourTimes):
             # that just means we didn't record it.  We actually are going to
             # retry.
             key = 'other'
-            data_cache['other'] = data_cache.get('other', 0) + 1
+            count = data_cache['other'] = data_cache.get('other', 0) + 1
             data_cache['last_other'] = failure
             if 'first_active' not in data_cache:
                 data_cache['first_active'] = self.parent.active_start
+            if count==1 or not count % self.log_every:
+                # this is critical because it is unexpected.  Someone probably
+                # needs to see this. We can't move on until it is dealt with.
+                zc.async.utils.log.critical(
+                    'Retry policy for job %r requests another attempt '
+                    'after %d counts of %s occurrences', self.parent,
+                    count, key, exc_info=True)
         return True # always retry
 
 class NeverRetry(persistent.Persistent):

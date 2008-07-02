@@ -1,6 +1,11 @@
 1.3 (unreleased)
 ================
 
+- changed retry policy logs to "WARNING" level, from "INFO" level.
+
+- added "CRITICAL" level logs for "other" commit retries on the
+  RetryCommonForever retry policy.
+
 - added ``remove`` method on queue.
 
 - added helpers for setting up and tearing down Zope 3 functional tests
