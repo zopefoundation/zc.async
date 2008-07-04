@@ -1,7 +1,28 @@
 1.3 (unreleased)
 ================
 
+- added ``setUp`` and ``tearDown`` hooks to Job class so that code can run
+  before and after the main job's code.  The output of ``setUp`` is passed as
+  an argument to ``tearDown`` so that one can pass state to the other, if
+  needed. ``setUp`` is run immediately before the actual job call.
+  ``tearDown`` runs after the transaction is committed, or after it was aborted
+  if there was a failure.   A retry requested by a retry policy causes the
+  methods to be run again.  A failure in ``setUp`` is considered to be a
+  failure in the job, as far as the retryPolicy is concerned (i.e., the job
+  calls the retry policy's ``jobError`` method).  If ``setUp`` fails, the job
+  is not called, bit ``tearDown`` is.  ``tearDown`` will fail with a critical
+  log message, but then processing will continue.
+
+- using the new ``setUp`` and ``tearDown`` hooks, added a Zope 3-specific Job
+  subclass (see zc.async.z3.Job) that remembers the zope.app.component site and
+  interaction participants when instantiated. These can be mutated. Then, when
+  the job is run, the ``setUp`` sets up the site and a security interaction
+  with the old participants, and then the ``tearDown`` tears it all down after
+  the transaction has committed.
+
 - changed retry policy logs to "WARNING" level, from "INFO" level.
+
+- changed many dispatcher errors to "CRITICAL" level from "ERROR" level.
 
 - added "CRITICAL" level logs for "other" commit retries on the
   RetryCommonForever retry policy.
@@ -17,8 +38,16 @@
 
 - remove odd full-path self-references within the utils module.
 
+- renamed ``zc.async.utils.try_transaction_five_times`` to
+  ``zc.async.utils.try_five_times``.
+
 - doc improvements and fixes (thanks to Zvezdan Petkovic and Gintautas
   Miliauskas).
+
+- the ``z3`` "extra" distutils target now explicitly depends on zope.security,
+  zope.app.security, and zope.app.component.  This almost certainly does not
+  increase the practical dependencies of the ``z3`` extras, but it does reflect
+  new direct dependencies of the z3-specific modules in the package.
 
 1.2 (2008-06-20)
 ================

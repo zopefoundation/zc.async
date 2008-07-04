@@ -347,14 +347,14 @@ class Dispatcher(object):
             'in queue %s (oid %d)' % (
                 self.UUID, agent.name, ZODB.utils.u64(agent._p_oid),
                 agent.queue.name, ZODB.utils.u64(agent.queue._p_oid)))
-        res = zc.async.utils.try_transaction_five_times(
+        res = zc.async.utils.try_five_times(
             agent.claimJob, identifier, transaction)
         if isinstance(res, twisted.python.failure.Failure):
             identifier = 'stashing failure on agent %s (oid %s)' % (
                 agent.name, ZODB.utils.u64(agent._p_oid))
             def setFailure():
                 agent.failure = res
-            zc.async.utils.try_transaction_five_times(
+            zc.async.utils.try_five_times(
                 setFailure, identifier, transaction)
         return res
 
@@ -393,7 +393,7 @@ class Dispatcher(object):
                                 return False
                         da.activate()
                         return True
-                    if zc.async.utils.try_transaction_five_times(
+                    if zc.async.utils.try_five_times(
                         activate, identifier, transaction) is True:
                         self._activated.add(queue._p_oid)
                     else:
@@ -454,7 +454,7 @@ class Dispatcher(object):
                                 (job._p_oid, dbname, info))
                             job = self._getJob(agent)
                 identifier = 'committing ping for UUID %s' % (self.UUID,)
-                zc.async.utils.try_transaction_five_times(
+                zc.async.utils.try_five_times(
                     lambda: queue.dispatchers.ping(self.UUID), identifier,
                     transaction)
                 if len(pools) > len(queue_info):
@@ -554,7 +554,7 @@ class Dispatcher(object):
                             da = queue.dispatchers.get(self.UUID)
                             if da is not None and da.activated:
                                 da.deactivate()
-                zc.async.utils.try_transaction_five_times(
+                zc.async.utils.try_five_times(
                     deactivate_das, identifier, transaction)
             finally:
                 transaction.abort()

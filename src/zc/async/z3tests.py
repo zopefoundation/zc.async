@@ -16,8 +16,8 @@ import unittest
 from zope.testing import doctest, module
 import zope.component.testing
 import zc.ngi.async # to quiet the thread complaints from the testing
-# infrastructure, because there is no API way to stop the z3monitor server or
-# the zc.ngi.async thread. :-(
+# infrastructure, because there is no API way as of this writing to stop the
+# z3monitor server or the zc.ngi.async thread. :-(
 
 import zc.async.tests
 
@@ -39,6 +39,7 @@ def test_suite():
     return unittest.TestSuite((
         doctest.DocFileSuite(
             'monitor.txt',
+            'z3.txt',
             setUp=setUp, tearDown=zc.async.tests.modTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),
         doctest.DocFileSuite(

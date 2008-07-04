@@ -301,18 +301,19 @@ def wait_for_system_recovery(call, identifier, tm):
         else:
             return res
 
-def try_transaction_five_times(call, identifier, tm):
+def try_five_times(call, identifier, tm, commit=True):
     ct = 0
     res = None
     while 1:
         try:
             res = call()
-            tm.commit()
+            if commit:
+                tm.commit()
         except ZODB.POSException.TransactionError:
             tm.abort()
             ct += 1
             if ct >= 5:
-                log.error('Five consecutive transaction errors while %s',
+                log.critical('Five consecutive transaction errors while %s',
                           identifier, exc_info=True)
                 res = zc.twist.Failure()
             else:
@@ -322,6 +323,6 @@ def try_transaction_five_times(call, identifier, tm):
             raise
         except:
             tm.abort()
-            log.error('Error while %s', identifier, exc_info=True)
+            log.critical('Error while %s', identifier, exc_info=True)
             res = zc.twist.Failure()
         return res

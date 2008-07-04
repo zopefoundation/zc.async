@@ -221,6 +221,14 @@ class Job(zc.async.utils.Base):
         self.callbacks = zc.queue.PersistentQueue()
         self.annotations = BTrees.OOBTree.OOBTree()
 
+    def setUp(self):
+        # a hook (see z3.py, for instance) used in __call__
+        pass
+
+    def tearDown(self, setup_info):
+        # a hook (see z3.py, for instance) used in __call__
+        pass
+
     @property
     def active_start(self):
         return self._active_start
@@ -492,13 +500,20 @@ class Job(zc.async.utils.Base):
         res = None
         while 1:
             try:
+                setup_info = self.setUp()
                 res = self.callable(*effective_args, **effective_kwargs)
             except zc.async.utils.EXPLOSIVE_ERRORS:
                 tm.abort()
+                zc.async.utils.try_five_times(
+                    lambda: self.tearDown(setup_info),
+                    'tearDown for %r' % self, tm, commit=False)
                 raise
             except:
                 res = zc.twist.Failure()
                 tm.abort()
+                zc.async.utils.try_five_times(
+                    lambda: self.tearDown(setup_info),
+                    'tearDown for %r' % self, tm, commit=False)
                 retry = self._getRetry('jobError', tm, res, data_cache)
                 if isinstance(retry, (datetime.timedelta, datetime.datetime)):
                     identifier = (
@@ -516,10 +531,16 @@ class Job(zc.async.utils.Base):
                 callback = self._set_result(res, tm, data_cache)
             except zc.async.utils.EXPLOSIVE_ERRORS:
                 tm.abort()
+                zc.async.utils.try_five_times(
+                    lambda: self.tearDown(setup_info),
+                    'tearDown for %r' % self, tm, commit=False)
                 raise
             except:
                 failure = zc.twist.Failure()
                 tm.abort()
+                zc.async.utils.try_five_times(
+                    lambda: self.tearDown(setup_info),
+                    'tearDown for %r' % self, tm, commit=False)
                 retry = self._getRetry('commitError', tm, failure, data_cache)
                 if isinstance(retry, (datetime.timedelta, datetime.datetime)):
                     identifier = (
@@ -560,6 +581,10 @@ class Job(zc.async.utils.Base):
                 identifier = 'storing failure at commit of %r' % (self,)
                 zc.async.utils.never_fail(complete, identifier, tm)
                 callback = True
+            else:
+                zc.async.utils.try_five_times(
+                    lambda: self.tearDown(setup_info),
+                    'tearDown for %r' % self, tm, commit=False)
             if callback:
                 self._log_completion(res)
                 identifier = 'performing callbacks of %r' % (self,)

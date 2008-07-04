@@ -71,7 +71,7 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.3a6',
+    version='1.3a7',
     packages=find_packages('src'),
     package_dir={'':'src'},
     zip_safe=False,
@@ -110,6 +110,9 @@ setup(
     extras_require={
         'z3':[
             'zc.z3monitor',
+            'zope.security',
+            'zope.app.security',
+            'zope.app.component',
             'simplejson',
             ]},
     include_package_data=True,

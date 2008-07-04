@@ -1,0 +1,31 @@
+===============
+Tips and Tricks
+===============
+
+General
+=======
+
+* avoid long transactions if possible.  really avoid long transactions
+  involving frequently written objects.  Discuss ramifications and
+  strategies, such as doing big work in one job, then in callback schedule
+  actually writing the data into the hotspot. XXX
+
+* callbacks should be very, very quick, and very reliable.  If you want to do
+  something that might take a while, put another job in the queue
+
+Testing
+=======
+
+* In tests, don't check to see if poll is activated until after the first
+  poll. Try ``zc.async.testing.get_poll(zc.async.dispatcher.get(), 0)``, for
+  instance.
+
+* In tests, be aware that DemoStorage does not support mvcc and does not
+  support conflict resolution, so you may experience ConflictError (write and
+  particularly read) problems with it that you will not experience as much,
+  or at all, with a storage that supports those features such as FileStorage.
+  Notice that all of the tests in this package use FileStorage.
+
+.. insert the z3.txt document here
+
+.. insert the ftesting.txt document here.

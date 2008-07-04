@@ -344,29 +344,27 @@ Jobs
 Overview
 --------
 
-The result of a call to `put` returns an IJob.  The
-job represents the pending result.  This object has a lot of
-functionality that's explored in other documents in this package, and
-demonstrated a bit below, but here's a summary.
+The result of a call to ``put`` returns an ``IJob``. The job represents the
+pending result. This object has a lot of functionality that's explored in other
+documents in this package, and demonstrated a bit below, but here's a summary.
 
-- You can introspect, and even modify, the call and its
-  arguments.
+- You can introspect, and even modify, the call and its arguments.
 
-- You can specify that the job should be run serially with others
-  of a given identifier.
+- You can specify that the job should be run serially with others of a given
+  identifier.
 
-- You can specify other calls that should be made on the basis of the
-  result of this call.
+- You can specify other calls that should be made on the basis of the result of
+  this call.
 
-- You can persist a reference to it, and periodically (after syncing
-  your connection with the database, which happens whenever you begin or
-  commit a transaction) check its `state` to see if it is equal to
-  zc.async.interfaces.COMPLETED.  When it is, the call has run to
-  completion, either to success or an exception.
+- You can persist a reference to it, and periodically (after syncing your
+  connection with the database, which happens whenever you begin or commit a
+  transaction) check its ``status`` to see if it is equal to
+  ``zc.async.interfaces.COMPLETED``. When it is, the call has run to completion,
+  either to success or an exception.
 
-- You can look at the result of the call (once COMPLETED).  It might be
-  the result you expect, or a zc.twist.Failure, which is a
-  subclass of twisted.python.failure.Failure, way to safely communicate
+- You can look at the result of the call (once ``COMPLETED``). It might be the
+  result you expect, or a ``zc.twist.Failure``, a subclass of
+  ``twisted.python.failure.Failure``, which is a way to safely communicate
   exceptions across connections and machines and processes.
 
 -------
@@ -374,7 +372,7 @@ Results
 -------
 
 So here's a simple story.  What if you want to get a result back from a
-call?  Look at the job.result after the call is COMPLETED.
+call?  Look at the job.result after the call is ``COMPLETED``.
 
     >>> def imaginaryNetworkCall():
     ...     # let's imagine this makes a network call...
@@ -397,7 +395,7 @@ call?  Look at the job.result after the call is COMPLETED.
 Closures
 --------
 
-What's more, you can pass a Job to the `put` call.  This means that you
+What's more, you can pass a Job to the ``put`` call.  This means that you
 aren't constrained to simply having simple non-argument calls performed
 asynchronously, but you can pass a job with a call, arguments, and
 keyword arguments--effectively, a kind of closure.  Here's a quick example.
@@ -875,10 +873,10 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 .. Footnotes ..
 .. ......... ..
 
-.. [#async_history] The first generation, zasync, had the following goals:
+.. [#async_history] The first generation, ``zasync``, had the following goals:
 
-    - be scalable, so that another process or machine could do the
-      asynchronous work;
+    - be scalable, so that another process or machine could do the asynchronous
+      work;
 
     - support lengthy jobs outside of the ZODB;
 
@@ -886,8 +884,8 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
     - be recoverable, so that crashes would not lose work;
 
-    - be discoverable, so that logs and web interfaces give a view into
-      the work being done asynchronously;
+    - be discoverable, so that logs and web interfaces give a view into the
+      work being done asynchronously;
 
     - be easily extendible, to do new jobs; and
 
@@ -895,114 +893,105 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
     It met its goals well in some areas and adequately in others.
 
-    Based on experience with the first generation, this second
-    generation identifies several areas of improvement from the first
-    design, and adds several goals.
+    Based on experience with the first generation, this second generation
+    identifies several areas of improvement from the first design, and adds
+    several goals.
 
     - Improvements
 
       * More carefully delineate the roles of the comprising components.
 
-        The zasync design has three main components, as divided by their
-        roles: persistent deferreds, now called jobs; job queues (the
-        original zasync's "asynchronous call manager"); and dispatchers
-        (the original zasync ZEO client).  The zasync 1.x design
-        blurred the lines between the three components such that the
-        component parts could only be replaced with difficulty, if at
-        all. A goal for the 2.x design is to clearly define the role for
-        each of three components such that, for instance, a user of a
-        queue does not need to know about the dispatcher or the agents.
+        The zc.async design has three main components, as divided by their
+        roles: persistent deferreds, now called jobs; job queues (the original
+        zasync's "asynchronous call manager"); and dispatchers (the original
+        zasync ZEO client). The zasync 1.x design blurred the lines between the
+        three components such that the component parts could only be replaced
+        with difficulty, if at all. A goal for the 2.x design is to clearly
+        define the role for each of three components such that, for instance, a
+        user of a queue does not need to know about the dispatcher or the
+        agents.
 
       * Improve scalability of asynchronous workers.
 
-        The 1.x line was initially designed for a single asynchronous
-        worker, which could be put on another machine thanks to ZEO.
-        Tarek Ziade of Nuxeo wrote zasyncdispatcher, which allowed
-        multiple asynchronous workers to accept work, allowing multiple
-        processes and multiple machines to divide and conquer. It worked
-        around the limitations of the original zasync design to provide
-        even more scalability. However, it was forced to divide up work
-        well before a given worker looks at the queue.
+        The 1.x line was initially designed for a single asynchronous worker,
+        which could be put on another machine thanks to ZEO. Tarek Ziade of
+        Nuxeo wrote zasyncdispatcher, which allowed multiple asynchronous
+        workers to accept work, allowing multiple processes and multiple
+        machines to divide and conquer. It worked around the limitations of the
+        original zasync design to provide even more scalability. However, it
+        was forced to divide up work well before a given worker looks at the
+        queue.
 
-        While dividing work earlier allows guesses and heuristics a
-        chance to predict what worker might be more free in the future,
-        a more reliable approach is to let the worker gauge whether it
-        should take a job at the time the job is taken. Perhaps the
-        worker will choose based on the worker's load, or other
-        concurrent jobs in the process, or other details. A goal for the
-        2.x line is to more directly support this type of scalability.
+        While dividing work earlier allows guesses and heuristics a chance to
+        predict what worker might be more free in the future, a more reliable
+        approach is to let the worker gauge whether it should take a job at the
+        time the job is taken. Perhaps the worker will choose based on the
+        worker's load, or other concurrent jobs in the process, or other
+        details. A goal for the 2.x line is to more directly support this type
+        of scalability.
 
       * Improve scalability of registering jobs.
 
-        The 1.x line initially wasn't concerned about very many
-        concurrent asynchronous requests.  When this situation was
-        encountered, it caused ConflictErrors between the worker process
-        reading the deferred queue and the code that was adding the
-        deferreds.  Thanks to Nuxeo, this problem was addressed in the
-        1.x line.  A goal for the new version is to include and improve
-        upon the 1.x solution.
+        The 1.x line initially wasn't concerned about very many concurrent
+        asynchronous requests. When this situation was encountered, it caused
+        ConflictErrors between the worker process reading the deferred queue
+        and the code that was adding the deferreds. Thanks to Nuxeo, this
+        problem was addressed in the 1.x line. A goal for the new version is to
+        include and improve upon the 1.x solution.
 
       * Make it even simpler to provide new jobs.
 
-        In the first version, `plugins` performed jobs.  They had a
-        specific API and they had to be configured.  A goal for the new
-        version is to require no specific API for jobs, and to not
-        require any configuration.
+        In the first version, `plugins` performed jobs. They had a specific API
+        and they had to be configured. A goal for the new version is to require
+        no specific API for jobs, and to not require any configuration.
 
       * Improve report information, especially through the web.
 
-        The component that the first version of zasync provided to do
-        the asynchronous work, the zasync client, provided very verbose
-        logs of the jobs done, but they were hard to read and also did
-        not have a through- the-web parallel.  Two goals for the new
-        version are to improve the usefulness of the filesystem logs and
-        to include more complete through-the-web visibility of the
-        status of the provided asynchronous clients.
+        The component that the first version of zasync provided to do the
+        asynchronous work, the zasync client, provided very verbose logs of the
+        jobs done, but they were hard to read and also did not have a through-
+        the-web parallel. Two goals for the new version are to improve the
+        usefulness of the filesystem logs and to include more complete
+        visibility of the status of the provided asynchronous clients.
 
       * Make it easier to configure and start, especially for small
         deployments.
 
-        A significant barrier to experimentation and deployment of the
-        1.x line was the difficulty in configuration.  The 1.x line
-        relied on ZConfig for zasync client configuration, demanding
-        non-extensible similar-yet-subtly-different .conf files like the
-        Zope conf files. The 2.x line plans to provide code that Zope 3
-        can configure to run in the same process as a standard Zope 3
-        application.  This means that development instances can start a
-        zasync quickly and easily.  It also means that processes can be
-        reallocated on the fly during production use, so that a machine
-        being used as a zasync process can quickly be converted to a web
-        server, if needed, and vice versa.  It further means that the
-        Zope web server can be used for through-the-web reports of the
-        current zasync process state.
+        A significant barrier to experimentation and deployment of the 1.x line
+        was the difficulty in configuration. The 1.x line relied on ZConfig for
+        zasync client configuration, demanding non-extensible
+        similar-yet-subtly-different .conf files like the Zope conf files. The
+        2.x line provides code that Zope 3 can configure to run in the same
+        process as a standard Zope 3 application. This means that development
+        instances can start a zasync quickly and easily. It also means that
+        processes can be reallocated on the fly during production use, so that
+        a machine being used as a zasync process can quickly be converted to a
+        web server, if needed, and vice versa.
 
     - New goals
 
-      * Support intermediate return calls so that jobs can report back
-        how they are doing.
+      * Support intermediate return calls so that jobs can report back how they
+        are doing.
 
-        A frequent request from users of zasync 1.x was the ability for
-        a long- running asynchronous process to report back progress to
-        the original requester.  The 2.x line addresses this with three
-        changes:
+        A frequent request from users of zasync 1.x was the ability for a long-
+        running asynchronous process to report back progress to the original
+        requester. The 2.x line addresses this with three changes:
 
         + jobs are annotatable;
 
-        + jobs should not be modified in an asynchronous
-          worker that does work (though they may be read);
+        + jobs should not be modified in an asynchronous worker that does work
+          (though they may be read);
 
-        + jobs can request another job in a synchronous process
-          that annotates the job with progress status or other
-          information.
+        + jobs can request another job in a synchronous process that annotates
+          the job with progress status or other information.
 
-        Because of relatively recent changes in ZODB--multi version
-        concurrency control--this simple pattern should not generate
-        conflict errors.
+        Because of relatively recent changes in ZODB--multi version concurrency
+        control--this simple pattern should not generate conflict errors.
 
       * Support time-delayed calls.
 
-        Retries and other use cases make time-delayed deferred calls
-        desirable. The new design supports these sort of calls.
+        Retries and other use cases make time-delayed deferred calls desirable.
+        The new design supports these sort of calls.
 
 .. [#identifying_agent] The combination of a queue name plus a
     dispatcher UUID plus an agent name uniquely identifies an agent.
