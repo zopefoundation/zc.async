@@ -35,3 +35,4 @@ def tearDown():
     dispatcher = zc.async.dispatcher.get()
     dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
     dispatcher.thread.join(3)
+    zc.async.dispatcher.clear()

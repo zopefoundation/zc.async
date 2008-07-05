@@ -135,7 +135,21 @@ zc.async.ftesting.tearDown will do the trick.
     >>> dispatcher.activated
     False
 
-If you used a FileStorage, as we did here, you'll need to clean up as well.
+You can then start another async-enabled functional test up again later in the
+same layer, of course.
+
+    >>> zc.async.ftesting.setUp()
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> bool(dispatcher.activated)
+    True
+
+    >>> zc.async.ftesting.tearDown()
+    >>> dispatcher.activated
+    False
+
+In your test or your test's tearDown, if you used a FileStorage, as we did
+here, you'll need to clean up as well.  We normally do this in our tests'
+tearDowns, but we do it here, now, to make the point.
 
     >>> db.close()
     >>> storage.close()
