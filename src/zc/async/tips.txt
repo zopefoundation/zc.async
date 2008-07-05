@@ -2,19 +2,23 @@
 Tips and Tricks
 ===============
 
-General
-=======
+General Tips and Tricks
+=======================
 
-* avoid long transactions if possible.  really avoid long transactions
-  involving frequently written objects.  Discuss ramifications and
-  strategies, such as doing big work in one job, then in callback schedule
-  actually writing the data into the hotspot. XXX
+* Avoid long transactions if possible.  Really try to avoid long transactions
+  involving frequently written objects.  One possible strategy is to divide up
+  your code into a job for low-conflict tasks and one or more jobs for
+  high-conflict tasks, perhaps created in a callback.
 
-* callbacks should be very, very quick, and very reliable.  If you want to do
-  something that might take a while, put another job in the queue
+* Callbacks should be quick and reliable. If you want to do something that
+  might take a while, put another job in the queue.
 
-Testing
-=======
+* Some tasks are non-transactional.  If you want to do them in a ``Job``, you
+  don't want them to be retried!  Use the NeverRetry retry policy for these,
+  as described in the `Recovering from Catastrophes`_ section below.
+
+Testing Tips and Tricks
+=======================
 
 * In tests, don't check to see if poll is activated until after the first
   poll. Try ``zc.async.testing.get_poll(zc.async.dispatcher.get(), 0)``, for
@@ -25,6 +29,23 @@ Testing
   particularly read) problems with it that you will not experience as much,
   or at all, with a storage that supports those features such as FileStorage.
   Notice that all of the tests in this package use FileStorage.
+
+* ``zc.async.dispatcher.get()`` will get you the dispatcher.  You can then check
+  if it is ``activated`` and also use the other introspection and status
+  methods.
+
+* The ``zc.async.testing`` module has a number of helpful functions for
+  testing. ``get_poll``, given a dispatcher, will give you the next poll. This
+  is a good way to make sure that a job you just put in has had a chance to be
+  claimed by a dispatcher. It's also a reasonable way to verify that the
+  dispatcher has started. Other useful testing functions are
+  ``zc.async.testing.wait_for_result``, which waits for the result on a give
+  job and returns it; and ``zc.async.testing.wait_for_annotation``, which waits
+  for a given annotation on a given job. These are demonstrated in various
+  doctests in this package, but should also be reasonably simple and
+  self-explanatory.
+
+.. insert the catastrophes.txt document here
 
 .. insert the z3.txt document here
 

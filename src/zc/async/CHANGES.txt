@@ -1,5 +1,7 @@
-1.3 (unreleased)
+1.3 (2008-07-04)
 ================
+
+- added "Tips and Tricks" and incorporated into the PyPI page.
 
 - added ``setUp`` and ``tearDown`` hooks to Job class so that code can run
   before and after the main job's code.  The output of ``setUp`` is passed as

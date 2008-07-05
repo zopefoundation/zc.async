@@ -1,6 +1,6 @@
-============================
-Configuration without Zope 3
-============================
+=============
+Configuration
+=============
 
 This section discusses setting up zc.async without Zope 3. Since Zope 3 is
 ill-defined, we will be more specific: this describes setting up zc.async
@@ -43,7 +43,7 @@ Required Component Registrations
 The required registrations can be installed for you by the
 ``zc.async.configure.base`` function. Most other examples in this package,
 such as those in the `Usage`_ section, use this in their
-test setup. 
+test setup.
 
 Again, for a quick start, you might just want to use the helper
 ``zc.async.configure.base`` function, and move on to the `Required ZODB Set
@@ -58,7 +58,7 @@ ITransactionManager.
 
 The ``zc.twist`` package provides all of these adapters.  However,
 zope.app.keyreference also provides a version of the ``connection`` adapter
-that is identical or very similar, and that should work fine if you are 
+that is identical or very similar, and that should work fine if you are
 already using that package in your application.
 
     >>> import zc.twist
@@ -92,7 +92,7 @@ The queue looks for the UUID utility to set the ``assignerUUID`` job attribute,
 and may want to use it to optionally filter jobs during ``claim`` in the
 future. Also, the dispatcher will look for a UUID utility if a UUID is not
 specifically provided to its constructor.
-    
+
     >>> from zc.async.instanceuuid import UUID
     >>> zope.component.provideUtility(
     ...     UUID, zc.async.interfaces.IUUID, '')
@@ -133,7 +133,7 @@ resolution happens in the ZEO server, not in clients.
 
 A more subtle decision is whether to use multiple databases.  The zc.async
 dispatcher can generate a lot of database churn.  It may be wise to put the
-queue in a separate database from your content database(s).  
+queue in a separate database from your content database(s).
 
 The downsides to this option include the fact that you must be careful to
 specify to which database objects belong; and that broken cross-database
@@ -153,11 +153,11 @@ forward.
     >>> import ZODB.FileStorage
     >>> storage = ZODB.FileStorage.FileStorage(
     ...     'main.fs', create=True)
-    
+
     >>> async_storage = ZODB.FileStorage.FileStorage(
     ...     'async.fs', create=True)
 
-    >>> from ZODB.DB import DB 
+    >>> from ZODB.DB import DB
     >>> databases[''] = db = DB(storage)
     >>> databases['async'] = async_db = DB(async_storage)
     >>> async_db.databases = db.databases = databases
@@ -181,7 +181,7 @@ a DatabaseOpened event that does the right dance. See
 see that in use in `Configuration with Zope 3`_. For now, though, we're taking
 things step by step and explaining what's going on.
 
-Dispatchers look for queues in a mapping off the root of the database in 
+Dispatchers look for queues in a mapping off the root of the database in
 a key defined as a constant: zc.async.interfaces.KEY.  This mapping should
 generally be a zc.async.queue.Queues object.
 
@@ -525,62 +525,62 @@ hook up the basic data another way.
 
     - pytz
         A Python time zone library
-    
+
     - rwproperty
         A small package of descriptor conveniences
-    
+
     - uuid
         The uuid module included in Python 2.5
-    
+
     - zc.dict
         A ZODB-aware dict implementation based on BTrees.
-    
+
     - zc.queue
         A ZODB-aware queue
-    
+
     - zc.twist
         Conveniences for working with Twisted and the ZODB
-    
+
     - twisted
         The Twisted internet library.
-    
+
     - ZConfig
         A general configuration package coming from the Zope project with which
         the ZODB tests.
-    
+
     - zdaemon
         A general daemon tool coming from the Zope project.
-    
+
     - ZODB3
         The Zope Object Database.
-    
+
     - zope.bforest
         Aggregations of multiple BTrees into a single dict-like structure,
         reasonable for rotating data structures, among other purposes.
-    
+
     - zope.component
         A way to hook together code by contract.
-    
+
     - zope.deferredimport
         A way to defer imports in Python packages, often to prevent circular
         import problems.
-    
+
     - zope.deprecation
         A small framework for deprecating features.
-    
+
     - zope.event
         An exceedingly small event framework that derives its power from
         zope.component.
-    
+
     - zope.i18nmessageid
         A way to specify strings to be translated.
-    
+
     - zope.interface
         A way to specify code contracts and other data structures.
-    
+
     - zope.proxy
         A way to proxy other Python objects.
-    
+
     - zope.testing
         Testing extensions and helpers.
 
@@ -722,7 +722,7 @@ hook up the basic data another way.
     >>> reactor.callFromThread(reactor.stop)
     >>> thread.join(3)
     >>> assert not dispatcher.activated, 'dispatcher did not deactivate'
-    
+
     >>> import zc.async.testing
     >>> reactor = zc.async.testing.Reactor()
     >>> dispatcher.reactor = reactor

@@ -71,7 +71,7 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.3a7',
+    version='1.3.0',
     packages=find_packages('src'),
     package_dir={'':'src'},
     zip_safe=False,
@@ -83,6 +83,10 @@ setup(
         'src/zc/async/README_2.txt',
         'src/zc/async/README_3.txt',
         'src/zc/async/README_3b.txt',
+        'src/zc/async/tips.txt',
+        'src/zc/async/catastrophes.txt',
+        'src/zc/async/z3.txt',
+        'src/zc/async/ftesting.txt',
         "=======\nChanges\n=======\n\n",
         'src/zc/async/CHANGES.txt',
         out=True),

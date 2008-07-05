@@ -63,31 +63,31 @@ site.zcml-alike [#get_vals]_.
     ...     path %(main_storage_path)s
     ...   </filestorage>
     ... </zodb>
-    ... 
+    ...
     ... <product-config zc.z3monitor>
     ...   port %(monitor_port)s
     ... </product-config>
-    ... 
+    ...
     ... <logger>
     ...   level debug
     ...   name zc.async
     ...   propagate no
-    ... 
+    ...
     ...   <logfile>
     ...     path %(async_event_log)s
     ...   </logfile>
     ... </logger>
-    ... 
+    ...
     ... <logger>
     ...   level debug
     ...   name zc.async.trace
     ...   propagate no
-    ... 
+    ...
     ...   <logfile>
     ...     path %(async_trace_log)s
     ...   </logfile>
     ... </logger>
-    ... 
+    ...
     ... <eventlog>
     ...   <logfile>
     ...     formatter zope.exceptions.log.Formatter
@@ -105,7 +105,7 @@ site.zcml-alike [#get_vals]_.
     ...        'event_log': os.path.join(dir, 'z3.log'),
     ...        'async_event_log': os.path.join(dir, 'async.log'),
     ...        'async_trace_log': os.path.join(dir, 'async_trace.log'),}
-    ... 
+    ...
 
 In a non-trivial production system, you will also probably want to replace
 the file storage with a <zeoclient> stanza.
@@ -180,18 +180,18 @@ We can connect to the monitor server with telnet.
     >>> import telnetlib
     >>> tn = telnetlib.Telnet('127.0.0.1', monitor_port)
     >>> tn.write('async status\n') # immediately disconnects
-    >>> print tn.read_all() # doctest: +ELLIPSIS
+    >>> print tn.read_all() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     {
         "poll interval": {
             "seconds": ...
-        }, 
-        "status": "RUNNING", 
+        },
+        "status": "RUNNING",
         "time since last poll": {
             "seconds": ...
-        }, 
+        },
         "uptime": {
             "seconds": ...
-        }, 
+        },
         "uuid": "..."
     }
     <BLANKLINE>
@@ -238,10 +238,10 @@ These instructions are very similar to the `Two Database Set Up`_.
 
 .. [#extras_require] The "[z3]" is an "extra", defined in zc.async's setup.py
     in ``extras_require``. It pulls along zc.z3monitor and simplejson in
-    addition to the packages described in the `Configuration without Zope 3`_
-    section. Unfortunately, zc.z3monitor depends on zope.app.appsetup, which as
-    of this writing ends up depending indirectly on many, many packages, some
-    as far flung as zope.app.rotterdam.
+    addition to the packages described in the `Configuration`_ section.
+    Unfortunately, zc.z3monitor depends on zope.app.appsetup, which as of this
+    writing ends up depending indirectly on many, many packages, some as far
+    flung as zope.app.rotterdam.
 
 .. [#get_vals]
 

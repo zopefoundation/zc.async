@@ -3,6 +3,7 @@ zc.async
 ~~~~~~~~
 
 .. contents::
+   :depth: 2
 
 ============
 Introduction
@@ -127,8 +128,8 @@ dispatcher then asks the reactor to call itself again in a few seconds.
 Reading More
 ============
 
-This document continues on with three other main sections: `Usage`_,
-`Configuration without Zope 3`_, and `Configuration with Zope 3`_.
+This document continues on with four other main sections: `Usage`_,
+`Configuration`_, `Configuration with Zope 3`_, and `Tips and Tricks`_.
 
 Other documents in the package are primarily geared as maintainer
 documentation, though the author has tried to make them readable and
@@ -867,7 +868,7 @@ Conclusion
 This concludes our discussion of zc.async usage. The `next section`_ shows how
 to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
-.. _next section: `Configuration without Zope 3`_
+.. _next section: `Configuration`_
 
 .. ......... ..
 .. Footnotes ..

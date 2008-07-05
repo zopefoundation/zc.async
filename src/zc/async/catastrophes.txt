@@ -1,9 +1,9 @@
 Recovering from Catastrophes
 ============================
 
-------------
-Introduction
-------------
+--------------------
+What Might Go Wrong?
+--------------------
 
 Sometimes bad things happen in the course of processing tasks. What might go
 wrong? How does zc.async handle these errors? What are your responsibilities?
@@ -46,8 +46,8 @@ it have to handle?
 
 What needs to happen to handle these problems?
 
-Process Ends
-............
+Process Ends while Polling
+..........................
 
 If the process ends, your daemonizing front-end (zdaemon, supervisor, etc.)
 needs to restart it. The ZODB will discard incomplete transaction data, if any.
@@ -64,8 +64,8 @@ The only thing a zc.async dispatcher needs to handle is clean up.
   restarts a process for the original dispatcher instance, the new process
   needs to realize that the old process is dead, not competing with it.
 
-Transaction Error
-.................
+Transaction Error while Polling
+...............................
 
 If the poll gets a conflict error, it should simply abort and retry the poll,
 forever, with a small back-off.
@@ -139,8 +139,8 @@ zc.async also includes a ``Failure`` object on the job as a result, to let you
 react to the problem in a callback, and analyze it later.  This is discussed in
 detail in other documents.
 
-Process Ends
-............
+Process Ends During Job
+.......................
 
 If a process ends while it is performing a job, that is similar, in large part,
 to the possibility of the process ending the polling job: we need to restart
@@ -168,8 +168,8 @@ job can be changed.
 
 These settings are controlled with a RetryPolicy, discussed below.
 
-Transaction Error
-.................
+Transaction Error During Job
+............................
 
 Handling transaction errors after processing a job is also similar to the
 handling of transaction errors for polling exceptions. ConflictErrors and
@@ -264,19 +264,22 @@ behavior may differ.
 zc.async currently ships with three retry policies.
 
 1.  The default, appropriate for most fully transactional jobs, is the
-    zc.async.job.RetryCommonFourTimes.
+    zc.async.job.RetryCommonFourTimes.  This retries ZEO disconnects forever;
+    and interrupts and transaction errors such as conflicts a set number of
+    times.
 
 2.  The other available (pre-written) option for transactional jobs is
     zc.async.job.RetryCommonForever. Callbacks will get this policy by
-    default.
-
-Both of these policies retry ZEO disconnects forever; and interrupts and
-transaction errors such as conflicts either four times (for a total of five
-attempts) or forever, respectively.
+    default.  This retries ZEO disconnects, transaction errors such as conflict
+    errors, interrupts, and *anything* that happens during the job's commit,
+    forever.
 
 3.  The last retry policy is zc.async.job.NeverRetry.  This is appropriate for
     non-transactional jobs. You'll still typically need to handle errors in
     your callbacks.
+
+If you look at these, you will see that it is trivial to write your own, if
+desired.
 
 Scenarios
 ---------

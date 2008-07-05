@@ -1,6 +1,5 @@
-----------------------------
-The Context-Aware Zope 3 Job
-----------------------------
+Zope 3 General Tips and Tricks
+==============================
 
 If you use Zope 3, sometimes you want async jobs that have local sites and
 security set up. ``zc.async.z3.Job`` is a subclass of the main
