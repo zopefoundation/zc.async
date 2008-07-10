@@ -1,6 +1,40 @@
 Zope 3 Testing Tips and Tricks
 ==============================
 
+-------
+Summary
+-------
+
+- Make sure you are using zope.app.testing version 3.4.2 or newer, or else
+  ftests may intermittently raise spurious errors having to do with a missing
+  ``_result`` attribute on a request's response.
+
+- The Zope 3 tests use DemoStorage, which does not use MVCC.  This can lead
+  to your tests having occasional ConflictErrors that will not occur in
+  production.  In common cases, you won't notice these because of Zope's
+  usual retry policy.
+
+- Set up the basic configuration in zcml or Python (see examples below), but
+  you need to make sure that ftests do not use dispatchers started in the
+  application. Start up ftest dispatchers separately, using
+  ``zc.async.ftesting.setUp``, and then tear down after the tests are done with
+  ``zc.async.ftesting.tearDown``.
+
+  The ftest dispatcher polls every tenth of a second, so you shouldn't need to
+  wait long for you job to get started in your tests.
+
+- General zc.async testing tools such as ``zc.async.dispatcher.get`` and
+  ``zc.async.testing.get_poll`` can still be useful for in-depth zc.async
+  tests.
+
+- If you don't want to dig into guts in your functional tests to use the tools
+  described in the previous point, consider making a view to check on job
+  status using a data structure like JSON, and looking at that in your tests.
+
+----------
+Discussion
+----------
+
 Normally, in a Zope 3 configuration that uses zc.async, you configure it
 when you start your application.  For instance, you might include a zc.async
 zcml file like basic_dispatcher_policy.zcml that performs the necessary set up.
@@ -149,6 +183,10 @@ same layer, of course.
     >>> zc.async.ftesting.tearDown()
     >>> dispatcher.activated
     False
+
+Also worth noting, as mentioned in the summary, is that you should use
+zope.app.testing version 3.4.2 or higher to avoid getting spurious,
+intermittent bug reports from ftests that use zc.async.
 
 In your test or your test's tearDown, if you used a FileStorage, as we did
 here, you'll need to clean up as well.  We normally do this in our tests'
