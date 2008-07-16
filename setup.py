@@ -71,7 +71,7 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.3.0',
+    version='1.4.0a1',
     packages=find_packages('src'),
     package_dir={'':'src'},
     zip_safe=False,

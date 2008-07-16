@@ -375,6 +375,10 @@ class Job(zc.async.utils.Base):
         elif isinstance(value, zc.twist.METHOD_WRAPPER_TYPE):
             self._callable_root = zc.twist.get_self(value)
             self._callable_name = value.__name__
+        elif (isinstance(value, types.BuiltinMethodType) and
+              getattr(value, '__self__', None) is not None):
+            self._callable_root = value.__self__
+            self._callable_name = value.__name__
         else:
             self._callable_root, self._callable_name = value, None
         if zc.async.interfaces.IJob.providedBy(self._callable_root):

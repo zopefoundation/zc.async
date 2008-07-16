@@ -4,6 +4,15 @@
 - Mentioned in ftesting.txt that Zope 3 users should uses zope.app.testing
   3.4.2 or newer.  Also added a summary section at the beginning of that file.
 
+- Added logging of critical messages to __stdout__ for ``ftesting.setUp``.
+  This can help discovering problems in callback transactions.
+
+- Changed testing.wait_for_result and testing.wait_for_annotation to ignore
+  ReadConflictErrors, so they can be used more reliably in tests that use
+  MappingStorage, and other storages without MVCC.
+
+- Support <type 'builtin_function_or_method'> for adaptation to Job.
+
 1.3 (2008-07-04)
 ================
 

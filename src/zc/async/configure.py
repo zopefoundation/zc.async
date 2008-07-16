@@ -48,6 +48,10 @@ def minimal():
         zc.async.job.Job,
         adapts=(zc.twist.METHOD_WRAPPER_TYPE,),
         provides=zc.async.interfaces.IJob)
+    zope.component.provideAdapter( # optional, rarely used
+        zc.async.job.Job,
+        adapts=(types.BuiltinFunctionType,),
+        provides=zc.async.interfaces.IJob)
 
     # UUID for this instance
     zope.component.provideUtility(

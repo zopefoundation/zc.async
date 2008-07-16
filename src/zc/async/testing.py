@@ -11,6 +11,7 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
+import ZODB.POSException
 import threading
 import bisect
 from time import sleep as time_sleep # this import style is intentional, so
@@ -201,8 +202,12 @@ def get_poll(dispatcher, count=None, seconds=6):
 def wait_for_result(job, seconds=6):
     for i in range(seconds * 10):
         t = transaction.begin()
-        if job.status == zc.async.interfaces.COMPLETED:
-            return job.result
+        try:
+            if job.status == zc.async.interfaces.COMPLETED:
+                return job.result
+        except ZODB.POSException.ReadConflictError:
+            # storage does not have MVCC
+            pass
         time_sleep(0.1)
     else:
         assert False, 'job never completed'
@@ -211,8 +216,12 @@ def wait_for_result(job, seconds=6):
 def wait_for_annotation(job, name):
     for i in range(60):
         t = transaction.begin()
-        if name in job.annotations:
-            return job.annotations[name]
+        try:
+            if name in job.annotations:
+                return job.annotations[name]
+        except ZODB.POSException.ReadConflictError:
+            # storage does not have MVCC
+            pass
         time_sleep(0.1)
     else:
         assert False, 'annotation never found'

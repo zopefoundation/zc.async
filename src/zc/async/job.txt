@@ -94,6 +94,8 @@ can put objects.)
     >>> demo.counter
     1
 
+[#other_callables]_
+
 So our two calls so far have returned direct successes.  This one returns
 a failure, because the wrapped call raises an exception.
 
@@ -1652,6 +1654,17 @@ Footnotes
     Traceback (most recent call last):
     ...
     AttributeError: can't set attribute
+
+.. [#other_callables]  Other callables also work.
+
+    >>> import time
+    >>> import types
+    >>> isinstance(time.time, types.BuiltinFunctionType)
+    True
+    >>> j = root['j'] = zc.async.job.Job(time.time)
+    >>> transaction.commit()
+    >>> time.time() <= j() <= time.time()
+    True
 
 .. [#no_live_frames] Failures have two particularly dangerous bits: the
     traceback and the stack.  We use the __getstate__ code on Failures

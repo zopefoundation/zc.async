@@ -11,25 +11,29 @@ Summary
 
 - The Zope 3 tests use DemoStorage, which does not use MVCC.  This can lead
   to your tests having occasional ConflictErrors that will not occur in
-  production.  In common cases, you won't notice these because of Zope's
-  usual retry policy.
+  production. In common cases for ftests, you won't notice these because of
+  Zope's usual retry policy.  Unit or integration tests may show these
+  problems.
 
 - Set up the basic configuration in zcml or Python (see examples below), but
   you need to make sure that ftests do not use dispatchers started in the
-  application. Start up ftest dispatchers separately, using
-  ``zc.async.ftesting.setUp``, and then tear down after the tests are done with
-  ``zc.async.ftesting.tearDown``.
+  application. Start up ftest (or integration test) dispatchers separately,
+  using ``zc.async.ftesting.setUp``, and then tear down after the tests are
+  done with ``zc.async.ftesting.tearDown``.
 
   The ftest dispatcher polls every tenth of a second, so you shouldn't need to
   wait long for you job to get started in your tests.
 
-- General zc.async testing tools such as ``zc.async.dispatcher.get`` and
-  ``zc.async.testing.get_poll`` can still be useful for in-depth zc.async
-  tests.
+- General zc.async testing tools such as ``zc.async.dispatcher.get``,
+  ``zc.async.testing.get_poll`` and ``zc.async.testing.wait_for_result`` can
+  still be useful for in-depth zc.async tests.
 
 - If you don't want to dig into guts in your functional tests to use the tools
   described in the previous point, consider making a view to check on job
   status using a data structure like JSON, and looking at that in your tests.
+
+- The ``setUp`` code by default sends critical log messages to __stdout__ so it
+  can help diagnose why a callback might never complete.
 
 ----------
 Discussion
@@ -163,6 +167,19 @@ waits for the result on a give job and returns it; and
 ``zc.async.testing.wait_for_annotation``, which waits for a given annotation
 on a given job.  These are demonstrated in various doctests in this package,
 but should also be reasonably simple and self-explanatory.
+
+Callbacks will retry some errors forever, by default.  The logic is that
+callbacks are often the "cleanup" and must be run.  This can lead to confusion
+in debugging tests, though, because the retry warnings are sent to the log,
+and the log is not usually monitored in functional tests.
+
+``setUp`` tries to help with this by adding logging of ``CRITICAL`` log
+messages in the "zc.async" logger to stdout.
+
+    >>> import logging
+    >>> logging.getLogger('zc.async.event').critical('Foo!')
+    Foo!
+    >>> logging.getLogger('zc.async.event').error('Bar!')
 
 Once you have finished your tests, make sure to shut down your dispatcher, or
 the testing framework will complain about an unstopped daemon thread.

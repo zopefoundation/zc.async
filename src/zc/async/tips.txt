@@ -30,6 +30,10 @@ Testing Tips and Tricks
   or at all, with a storage that supports those features such as FileStorage.
   Notice that all of the tests in this package use FileStorage.
 
+* If you get a failure as a result and you didn't expect it, don't forget
+  the ``getTraceback`` and ``printTraceback`` methods on the failure.  The
+  whole point of the failure is to help you diagnose problems.
+
 * ``zc.async.dispatcher.get()`` will get you the dispatcher.  You can then check
   if it is ``activated`` and also use the other introspection and status
   methods.
