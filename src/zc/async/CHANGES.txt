@@ -1,5 +1,5 @@
-??
-==
+1.4 (2008-XX-XX)
+================
 
 - Mentioned in ftesting.txt that Zope 3 users should uses zope.app.testing
   3.4.2 or newer.  Also added a summary section at the beginning of that file.
