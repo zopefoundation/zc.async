@@ -15,11 +15,17 @@ import types
 
 import zc.twist
 import zope.component
+import zope.event
+import zope.component.event # yuck; as of this writing, this import causes the
+                            # zope.component hook to be installed in
+                            # zope.event.
 import ZODB.interfaces
 
 import zc.async.interfaces
 import zc.async.job
+import zc.async.queue
 import zc.async.instanceuuid
+import zc.async.subscribers
 
 # These functions accomplish what configure.zcml does; you don't want both
 # to be in play (the component registry will complain).
@@ -61,3 +67,19 @@ def base():
     # see comment in ``minimal``, above
     minimal()
     zope.component.provideAdapter(zc.twist.connection)
+
+# this function installs a queue named '' (empty string), starts the
+# dispatcher, and installs an agent named 'main', with default values.
+# It is a convenience for quick starts.
+def start(db, poll_interval=5, db_name=None, chooser=None, size=3):
+    zope.component.provideAdapter(zc.async.queue.getDefaultQueue)
+    zope.component.provideHandler(
+        zc.async.subscribers.QueueInstaller(db_name=db_name))
+    zope.component.provideHandler(
+        zc.async.subscribers.ThreadedDispatcherInstaller(
+            poll_interval=poll_interval))
+    zope.component.provideHandler(
+        zc.async.subscribers.AgentInstaller('main',
+                                            chooser=agent_chooser,
+                                            size=agent_size))
+    zope.event.notify(zc.async.interfaces.DatabaseOpened(db))

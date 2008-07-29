@@ -383,6 +383,7 @@ approach. Again, see ``zc.async.subscribers`` for some options you can explore.
 
 Now we are ready to instantiate our dispatcher.
 
+    >>> import zc.async.dispatcher
     >>> dispatcher = zc.async.dispatcher.Dispatcher(db, reactor)
 
 Notice it has the uuid defined in instanceuuid.

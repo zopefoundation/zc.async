@@ -742,9 +742,16 @@ First, consider a serialized example.  This simple pattern is one approach.
     >>> transaction.commit()
     >>> reactor.wait_for(job, attempts=3)
     TIME OUT
+    >>> len(agent)
+    1
     >>> reactor.wait_for(job, attempts=3)
     >>> job.result
     42
+
+The job is now out of the agent.
+
+    >>> len(agent)
+    0
 
 The second_job could also have returned a job, allowing for additional
 legs.  Once the last job returns a real result, it will cascade through the
@@ -752,8 +759,34 @@ past jobs back up to the original one.
 
 A different approach could have used callbacks.  Using callbacks can be
 somewhat more complicated to follow, but can allow for a cleaner
-separation of code: dividing code that does work from code that
-orchestrates the jobs.  We'll see an example of the idea below.
+separation of code: dividing code that does work from code that orchestrates
+the jobs. The ``serial`` helper function in the job module uses this pattern.
+Here's a quick example of the helper function [#define_longer_wait]_.
+
+    >>> def job_zero():
+    ...     return 0
+    ...
+    >>> def job_one():
+    ...     return 1
+    ...
+    >>> def job_two():
+    ...     return 2
+    ...
+    >>> def postprocess(zero, one, two):
+    ...     return zero.result, one.result, two.result
+    ...
+    >>> job = queue.put(zc.async.job.serial(job_zero, job_one, job_two,
+    ...                                     postprocess=postprocess))
+    >>> transaction.commit()
+
+    >>> wait_repeatedly()
+    ... # doctest: +ELLIPSIS
+    TIME OUT...
+
+    >>> job.result
+    (0, 1, 2)
+
+The ``parallel`` example we use below follows a similar pattern.
 
 Parallelized Work
 -----------------
@@ -767,7 +800,7 @@ code, as described in the previous paragraph.
 
 First, we'll define the jobs that do work.  ``job_A``, ``job_B``, and
 ``job_C`` will be jobs that can be done in parallel, and
-``post_process`` will be a function that assembles the job results for a
+``postprocess`` will be a function that assembles the job results for a
 final result.
 
     >>> def job_A():
@@ -782,17 +815,45 @@ final result.
     ...     # imaginary work...
     ...     return 21
     ...
-    >>> def post_process(*args):
+    >>> def postprocess(*jobs):
     ...     # this callable represents one that needs to wait for the
     ...     # parallel jobs to be done before it can process them and return
     ...     # the final result
-    ...     return sum(args)
+    ...     return sum(job.result for job in jobs)
     ...
 
-Now this code works with jobs to get everything done.  Note, in the
-callback function, that mutating the same object we are checking
-(job.args) is the way we are enforcing necessary serializability
-with MVCC turned on.
+This can be handled by a convenience function, ``parallel``, that will arrange
+everything for you.
+
+    >>> job = queue.put(zc.async.job.parallel(
+    ...     job_A, job_B, job_C, postprocess=postprocess))
+    >>> transaction.commit()
+
+Now we just wait for the result.
+
+    >>> wait_repeatedly()
+    ... # doctest: +ELLIPSIS
+    TIME OUT...
+
+    >>> job.result
+    42
+
+Ta-da!
+
+Now, how did this work?  Let's look at a simple implementation directly.  We'll
+use a slightly different postprocess, that expects results directly rather than
+the jobs.
+
+    >>> def postprocess(*results):
+    ...     # this callable represents one that needs to wait for the
+    ...     # parallel jobs to be done before it can process them and return
+    ...     # the final result
+    ...     return sum(results)
+    ...
+
+This code works with jobs to get everything done. Note, in the callback
+function, that mutating the same object we are checking (job.args) is the way
+we are enforcing necessary serializability with MVCC turned on.
 
     >>> def callback(job, result):
     ...     job.args.append(result)
@@ -800,7 +861,7 @@ with MVCC turned on.
     ...         zc.async.local.getJob().queue.put(job)
     ...
     >>> def main_job():
-    ...     job = zc.async.job.Job(post_process)
+    ...     job = zc.async.job.Job(postprocess)
     ...     queue = zc.async.local.getJob().queue
     ...     for j in (job_A, job_B, job_C):
     ...         queue.put(j).addCallback(
@@ -816,21 +877,20 @@ Now we'll put this in and let it cook.
 
     >>> job = queue.put(main_job)
     >>> transaction.commit()
-    >>> for i in range(10):
-    ...     reactor.wait_for(job, attempts=3)
-    ...     if job.status == zc.async.interfaces.COMPLETED:
-    ...         break
-    ... else:
-    ...     assert False, 'never completed'
+
+    >>> wait_repeatedly()
     ... # doctest: +ELLIPSIS
     TIME OUT...
     >>> job.result
     42
 
-Ta-da!
+Once again, ta-da!
 
 For real-world usage, you'd also probably want to deal with the possibility of
-one or more of the jobs generating a Failure, among other edge cases.
+one or more of the jobs generating a Failure, among other edge cases.  The
+``parallel`` function introduced above helps you handle this by returning
+jobs, rather than results, so you can analyze what went wrong and try to handle
+it.
 
 -------------------
 Returning Deferreds
@@ -1223,6 +1283,20 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     serial because of a quota, no other worker should be trying to work on
     those jobs.
 
+    Alternatively, you could use a standalone, non-zc.async queue of things to
+    do, and have the zc.async job just pull from that queue.  You might use
+    zc.queue for this stand-alone queue, or zc.catalogqueue.
+
+.. [#define_longer_wait]
+    >>> def wait_repeatedly():
+    ...     for i in range(10):
+    ...         reactor.wait_for(job, attempts=3)
+    ...         if job.status == zc.async.interfaces.COMPLETED:
+    ...             break
+    ...     else:
+    ...         assert False, 'never completed'
+    ...
+
 .. [#stop_usage_reactor]
 
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
@@ -1233,9 +1307,9 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
      'shortest active': None,
      'shortest failed': (..., 'unnamed'),
      'shortest successful': (..., 'unnamed'),
-     'started': 24,
+     'started': 34,
      'statistics end': datetime.datetime(2006, 8, 10, 15, 44, 22, 211),
      'statistics start': datetime.datetime(2006, 8, 10, 15, ...),
-     'successful': 22,
+     'successful': 32,
      'unknown': 0}
     >>> reactor.stop()

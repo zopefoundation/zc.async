@@ -121,11 +121,16 @@ class DispatcherAgents(zc.async.utils.Dict):
                             job.handleInterrupt,
                             retry_policy_factory=zc.async.job.RetryCommonForever,
                             failure_log_level=logging.CRITICAL)
+                        # we don't make job's parent j because it shouldn't
+                        # really be needed and it would be a pain to clean up
                     elif job.status == zc.async.interfaces.CALLBACKS:
                         j = queue.put(
                             job.resumeCallbacks,
                             retry_policy_factory=zc.async.job.RetryCommonForever,
                             failure_log_level=logging.CRITICAL)
+                        # make job's parent j so that ``queue`` references work
+                        # in callbacks
+                        job.parent = j
                     elif job.status == zc.async.interfaces.COMPLETED:
                         # huh, that's odd.
                         agent.completed.add(job)
@@ -175,7 +180,15 @@ class Dispatchers(zc.dict.Dict):
     def ping(self, uuid):
         da = self[uuid]
         if not da.activated:
-            raise ValueError('UUID is not activated.')
+            zc.async.utils.log.critical(
+                "Dispatcher %r not activated prior to ping. This can indicate "
+                "that the dispatcher's ping_death_interval is set too short, "
+                "or that some transactions in the system are taking too long "
+                "to commit. Activating, to correct the current problem, but "
+                "if the dispatcher was inappropriately viewed as ``dead`` and "
+                "deactivated, you should investigate the cause.",
+                uuid)
+            da.activate()
         now = datetime.datetime.now(pytz.UTC)
         last_ping = da.last_ping.value
         if (last_ping is None or

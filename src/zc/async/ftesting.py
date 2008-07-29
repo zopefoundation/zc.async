@@ -36,13 +36,10 @@ def setUp(
         # zc.async calls.  Of course, if your test
         # intentionally generates CRITICAL log messages, you may not want this;
         # pass ``log_file=None`` to setUp.
-        logger = logging.getLogger('zc.async')
         # stashing this on the dispatcher is a hack, but at least we're doing
         # it on code from the same package.
-        dispatcher._debug_handler = logging.StreamHandler(log_file)
-        logger.setLevel(log_level)
-        logger.addHandler(dispatcher._debug_handler)
-
+        dispatcher._debug_handler = zc.async.testing.print_logs(
+            log_file, log_level)
 
 def tearDown():
     dispatcher = zc.async.dispatcher.get()

@@ -5,13 +5,57 @@
   3.4.2 or newer.  Also added a summary section at the beginning of that file.
 
 - Added logging of critical messages to __stdout__ for ``ftesting.setUp``.
-  This can help discovering problems in callback transactions.
+  This can help discovering problems in callback transactions.  This uses a new
+  helper function , ``print_logs``, in zc.async.testing, which is primarily
+  intended to be used for quick and dirty debugging
 
 - Changed testing.wait_for_result and testing.wait_for_annotation to ignore
   ReadConflictErrors, so they can be used more reliably in tests that use
   MappingStorage, and other storages without MVCC.
 
 - Support <type 'builtin_function_or_method'> for adaptation to Job.
+
+- Add warning about long commits to tips and tricks.
+
+- After complaining about a polling dispatcher that is deactivated not really
+  being dead in the logs, reactivate.  NEEDS TEST
+
+- No longer use intermediate job to implement the success/failure addCallbacks
+  behavior.  Introduce an ICallbackProxy that can be used for this kind of
+  behavior instead.  This change was driven by two desires.
+
+  - Don't log the intermediate result.  It makes logs harder to read with
+    unnecessary duplications of pertinent data hidden within unimportant
+    differences in the log entries.
+
+  - Don't unnecessarily remember errors in success/failure callbacks.  This can
+    cause unnecessary failures in unusual situations.
+
+  The callback proxy accepts callbacks, which are added to the selected job
+  (success or failure) when the job is selected.
+
+  This change introduces some hopefully trivial incompatibilities, which
+  basically come down to the callback being a proxy, not a real job. Use the
+  convenience properties ``success`` and ``failure`` on the proxy to look at
+  the respective jobs. After the proxy is evaluated, the ``job`` attribute
+  will hold the job that was actually run. ``status`` and ``result`` are
+  conveniences to get the status and result of the selected job.
+
+- Add ``parallel`` and ``serial`` convenience functions to zc.async.job to make
+  it trivial to schedule and process decomposed jobs.
+
+- Add ``start`` convenience function to zc.async.configure to make it trivial
+  to start up a common-case configuration of a zc.async dispatcher.  NEEDS TEST
+
+- No longer use protected attributes of callbacks in ``resumeCallbacks``.
+
+- The "local" code is now moved out from the dispatcher module to
+  threadlocal.  This is to recognize that the local code is now modified
+  outside of the dispatcher module, as described in the next bullet.
+
+- Jobs, when called, are responsible for setting the "local" job value.  This
+  means that zc.async.local.getJob() always returns the currently running job,
+  whether it is a top-level job (as before) or a callback (now).
 
 1.3 (2008-07-04)
 ================

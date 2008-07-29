@@ -11,4 +11,4 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-from zc.async.dispatcher import local
+from zc.async.threadlocal import local

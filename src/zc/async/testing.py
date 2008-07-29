@@ -18,6 +18,8 @@ from time import sleep as time_sleep # this import style is intentional, so
 # that test monkeypatching of time.sleep does not affect the usage in this
 # module
 import datetime
+import logging
+import sys
 
 import pytz
 import transaction
@@ -212,7 +214,6 @@ def wait_for_result(job, seconds=6):
     else:
         assert False, 'job never completed'
 
-
 def wait_for_annotation(job, name):
     for i in range(60):
         t = transaction.begin()
@@ -225,3 +226,13 @@ def wait_for_annotation(job, name):
         time_sleep(0.1)
     else:
         assert False, 'annotation never found'
+
+def print_logs(log_file=sys.stdout, log_level=logging.CRITICAL):
+    # really more of a debugging tool
+    logger = logging.getLogger('zc.async')
+    # stashing this on the dispatcher is a hack, but at least we're doing
+    # it on code from the same package.
+    handler = logging.StreamHandler(log_file)
+    logger.setLevel(log_level)
+    logger.addHandler(handler)
+    return handler

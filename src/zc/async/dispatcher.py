@@ -30,83 +30,9 @@ import zope.component
 import zope.bforest.periodic
 import zc.twist
 
+import zc.async
 import zc.async.utils
 import zc.async.interfaces
-
-def _get(reactor, job, name, default, timeout, poll, deferred, start=None):
-    now = time.time()
-    if start is None:
-        start = now
-    if name in job.annotations:
-        res = job.annotations[name]
-    elif start + timeout < now:
-        res = default
-    else:
-        partial = zc.twist.Partial(
-            _get, reactor, job, name, default, timeout, poll, deferred,
-            start)
-        partial.setReactor(reactor)
-        reactor.callLater(min(poll, start + timeout - now), partial)
-        return
-    deferred.setResult(res)
-
-class Result(object):
-
-    result = None
-
-    def __init__(self):
-        self._event = threading.Event()
-
-    def setResult(self, value):
-        self.result = value
-        self._event.set()
-
-    def wait(self, *args):
-        self._event.wait(*args)
-
-class Local(threading.local):
-
-    job = None
-    dispatcher = None
-
-    def getJob(self):
-        return self.job
-
-    def getQueue(self):
-        return self.job.queue
-
-    def getDispatcher(self):
-        return self.dispatcher
-
-    def getReactor(self):
-        return self.dispatcher.reactor
-
-    def setLiveAnnotation(self, name, value, job=None):
-        if self.job is None or self.dispatcher.reactor is None:
-            raise ValueError('not initialized')
-        if job is None:
-            job = self.job
-        partial = zc.twist.Partial(
-            job.annotations.__setitem__, name, value)
-        partial.setReactor(self.dispatcher.reactor)
-        self.dispatcher.reactor.callFromThread(partial)
-
-    def getLiveAnnotation(self, name, default=None, timeout=0,
-                          poll=1, job=None):
-        if self.job is None or self.dispatcher.reactor is None:
-            raise ValueError('not initialized')
-        if job is None:
-            job = self.job
-        deferred = Result()
-        partial = zc.twist.Partial(
-            _get, self.dispatcher.reactor, job, name, default, timeout, poll,
-            deferred)
-        partial.setReactor(self.dispatcher.reactor)
-        self.dispatcher.reactor.callFromThread(partial)
-        deferred.wait(timeout+2)
-        return deferred.result
-
-local = Local()
 
 
 class PollInfo(dict):
@@ -135,7 +61,7 @@ class AgentThreadPool(object):
         return self._size
 
     def perform_thread(self):
-        local.dispatcher = self.dispatcher
+        zc.async.local.dispatcher = self.dispatcher
         conn = self.dispatcher.db.open()
         try:
             job_info = self.queue.get()
@@ -160,7 +86,7 @@ class AgentThreadPool(object):
                             # this setstate should trigger any initial problems
                             # within the try/except retry structure here.
                             local_conn.setstate(job)
-                            local.job = job
+                            # this is handled in job.__call__: local.job = job
                         except ZEO.Exceptions.ClientDisconnected:
                             zc.async.utils.log.info(
                                 'ZEO client disconnected while trying to '
@@ -239,7 +165,7 @@ class AgentThreadPool(object):
                             info['result'][:10000] + '\n[...TRUNCATED...]')
                     info['completed'] = datetime.datetime.utcnow()
                 finally:
-                    local.job = None
+                    zc.async.local.job = None # also in job (here for paranoia)
                     transaction.abort()
                 zc.async.utils.tracelog.info(
                     'completed in thread %d: %s',

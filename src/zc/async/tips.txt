@@ -10,12 +10,22 @@ General Tips and Tricks
   your code into a job for low-conflict tasks and one or more jobs for
   high-conflict tasks, perhaps created in a callback.
 
+* Sometimes you can't avoid long transactions. But *really* try to avoid long
+  commits. Commits hold a lock on the ZODB, and if you end up writing so much
+  in a single transaction that you take noticeable time to write, realize that
+  you are affecting--postponing--every single subsequent commit to the
+  database.
+
 * Callbacks should be quick and reliable. If you want to do something that
   might take a while, put another job in the queue.
 
 * Some tasks are non-transactional.  If you want to do them in a ``Job``, you
   don't want them to be retried!  Use the NeverRetry retry policy for these,
   as described in the `Recovering from Catastrophes`_ section below.
+
+* zc.async works fine with both Python 2.4 and Python 2.5.  Note that building
+  Twisted with Python 2.4 generates a SyntaxError in a test, but as of this
+  writing Twisted 8.1.0 is supported for Python 2.4.
 
 Testing Tips and Tricks
 =======================

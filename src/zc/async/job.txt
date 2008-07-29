@@ -150,9 +150,11 @@ While we are waiting for the result, the status is ACTIVE.
     >>> j.status == zc.async.interfaces.ACTIVE
     True
 
-When we call the inner job, the result will be placed on the outer job.
+While the status is ACTIVE, the result is the inner job. When we call the inner
+job, the result will be placed on the outer job.
 
-    >>> j.result # None
+    >>> j.result # doctest: +ELLIPSIS
+    <zc.async.job.Job (...) ``zc.async.doctest_test.innerCall()``>
     >>> res = ij()
     >>> j.result
     42
@@ -241,12 +243,22 @@ Callbacks
 =========
 
 The job object can also be used to handle return values and exceptions from the
-call. The ``addCallbacks`` method enables the functionality. Its signature is
-(success=None, failure=None). It may be called multiple times, each time adding
-a success and/or failure callable that takes the end result of the original,
-parent job: a value or a zc.async.Failure object, respectively. Failure objects
-are passed to failure callables, and any other results are passed to success
-callables.
+call. The ``addCallback`` and ``addCallbacks`` methods enables the
+functionality.
+
+The ``addCallback`` takes a callable or job as its primary
+argument, and returns a job on which you can add callbacks.
+
+The
+``addCallbacks`` signature begins with (success=None, failure=None), where
+success and failure may be a callable or a job. It returns a job proxy, on
+which you can add callbacks which will be applied to the chosen job (or a
+"no-op" job if the value is ``None``).
+
+The methods may be called multiple times. Each callable used will receive the
+end result of the original, parent job: a value or a zc.async.Failure object,
+respectively. If you use ``addCallbacks``, Failure objects are passed to
+failure callables, and any other results are passed to success callables.
 
 Note that, unlike with Twisted deferred's, the results of callbacks for a given
 job are not chained.  To chain, add a callback to the desired callback.  The
@@ -295,7 +307,7 @@ simultaneously.  This one causes a success...
     ...     print "failure.", f
     ...
     >>> j.addCallbacks(success, failure) # doctest: +ELLIPSIS
-    <zc.async.job.Job ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j()
     success! 15
 
@@ -304,7 +316,7 @@ simultaneously.  This one causes a success...
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, None)
     >>> transaction.commit()
     >>> j.addCallbacks(success, failure) # doctest: +ELLIPSIS
-    <zc.async.job.Job (oid ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j() # doctest: +ELLIPSIS
     failure. [Failure instance: Traceback: exceptions.TypeError...]
 
@@ -319,9 +331,9 @@ simultaneously.  This one causes a success...
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 3)
     >>> transaction.commit()
     >>> j.addCallbacks(success) # doctest: +ELLIPSIS
-    <zc.async.job.Job (oid ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> j.addCallbacks(also_success) # doctest: +ELLIPSIS
-    <zc.async.job.Job (oid ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j()
     success! 15
     also a success! 15
@@ -329,9 +341,9 @@ simultaneously.  This one causes a success...
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, None)
     >>> transaction.commit()
     >>> j.addCallbacks(failure=failure) # doctest: +ELLIPSIS
-    <zc.async.job.Job (oid ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> j.addCallbacks(failure=also_failure) # doctest: +ELLIPSIS
-    <zc.async.job.Job (oid ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j() # doctest: +ELLIPSIS
     failure. [Failure instance: Traceback: exceptions.TypeError...]
     also a failure. [Failure instance: Traceback: exceptions.TypeError...]
@@ -368,7 +380,7 @@ print the result in the ``success`` function.
     >>> transaction.commit()
     >>> j.addCallbacks(zc.async.job.Job(multiply, 4)
     ...               ).addCallbacks(success) # doctest: +ELLIPSIS
-    <zc.async.job.Job (oid ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j()
     success! 60
 
@@ -381,7 +393,7 @@ cleanup (like try...finally).  Here's an example of handling errors.
     >>> transaction.commit()
     >>> j.addCallbacks(
     ...     failure=handle_failure).addCallbacks(success) # doctest: +ELLIPSIS
-    <zc.async.job.Job (oid ...>
+    <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j()
     success! 0
 
@@ -1567,13 +1579,16 @@ except through addCallbacks or addCallback.
     >>> len(j.callbacks)
     1
 
-When you use ``addCallbacks``, the job you get back has a callable with
-the success and failure jobs you passed in as arguments.
+When you use ``addCallbacks``, the callback proxy you get back has ``success``
+and ``failure`` properties to show you the jobs (or ``None``) for the values
+you passed in as arguments.
 
     >>> j.callbacks[0] is j_callback
     True
-    >>> j_callback.args # doctest: +ELLIPSIS
-    [<zc.async.job.Job ... ``zc.async.doctest_test.multiply(5)``>, None]
+    >>> j_callback.success # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``...multiply(5)``>
+    >>> print j_callback.failure
+    None
 
 ``addCallback`` does not have this characteristic.
 
@@ -1774,8 +1789,7 @@ Footnotes
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     starting callback
      <...Job (oid ..., db 'unnamed')
-      ``...success_or_failure(...Job (oid ..., db 'unnamed'),
-                              ...Job (oid ..., db 'unnamed'))``>
+      ``...success()``>
     to
      <...Job (oid ..., db 'unnamed') ``...multiply(5, 3)``>
 
@@ -1790,7 +1804,7 @@ Footnotes
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``zc.async.job.success_or_failure(...)``>
+     ``...success()``>
     succeeded with result:
     None
 
@@ -1806,7 +1820,7 @@ Footnotes
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``zc.async.job.success_or_failure(...)``>
+     ``...failure()``>
     succeeded with result:
     None
 
@@ -1828,7 +1842,7 @@ Footnotes
     ...     assert False, 'could not find log'
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    <...Job...``zc.async.doctest_test.multiply()``> failed with traceback:
+    <...Job...``...multiply()``> failed with traceback:
     *--- Failure #... (pickled) ---
     ...job.py:...
      [ Locals...

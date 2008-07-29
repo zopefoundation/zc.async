@@ -173,25 +173,10 @@ class BadStatusError(Exception):
     This is almost certainly a programmer error."""
 
 
-class IJob(zope.interface.Interface):
+class IAbstractJob(zope.interface.Interface):
 
     parent = zope.interface.Attribute(
         """The current canonical location of the job""")
-
-    callable = zope.interface.Attribute(
-        """The callable object that should be called with *IJob.args and
-        **IJob.kwargs when the IJob is called.  Mutable.""")
-
-    args = zope.interface.Attribute(
-        """a peristent list of the args that should be applied to self.call.
-        May include persistent objects (though note that, if passing a method
-        is desired, it will typicall need to be wrapped in an IJob).""")
-
-    kwargs = zope.interface.Attribute(
-        """a persistent mapping of the kwargs that should be applied to
-        self.call.  May include persistent objects (though note that, if
-        passing a method is desired, it will typicall need to be wrapped
-        in an IJob).""")
 
     status = zope.interface.Attribute(
         """One of constants defined in zc.async.interfaces:
@@ -209,13 +194,6 @@ class IJob(zope.interface.Interface):
         be None.  When COMPLETED, will be a twisted.python.failure.Failure
         describing the call failure or the successful result.""")
 
-    callbacks = zope.interface.Attribute(
-        """A mutable persistent list of the callback jobs added by
-        addCallbacks.""")
-
-    annotations = zope.interface.Attribute(
-        """An OOBTree that is available for metadata use.""")
-
     def addCallbacks(success=None, failure=None):
         """if success or failure is not None, adds a callback job to
         self.callbacks and returns the job.  Otherwise returns self.
@@ -230,6 +208,41 @@ class IJob(zope.interface.Interface):
         addCallback may be called multiple times.  Each will be called
         with the result of this job.  If callback is already in
         COMPLETED state then the callback will be performed immediately."""
+
+    callbacks = zope.interface.Attribute(
+        """A mutable persistent list of the callback jobs added by
+        addCallbacks.""")
+
+
+class ICallbackProxy(IAbstractJob):
+    """A proxy for jobs."""
+
+    job = zope.interface.Attribute(
+        """None, before ``getJob``, then the job calculated by ``getJob``""")
+
+    def getJob(result):
+        """Get the job for the given result."""
+
+
+class IJob(IAbstractJob):
+
+    callable = zope.interface.Attribute(
+        """The callable object that should be called with *IJob.args and
+        **IJob.kwargs when the IJob is called.  Mutable.""")
+
+    args = zope.interface.Attribute(
+        """a peristent list of the args that should be applied to self.call.
+        May include persistent objects (though note that, if passing a method
+        is desired, it will typicall need to be wrapped in an IJob).""")
+
+    kwargs = zope.interface.Attribute(
+        """a persistent mapping of the kwargs that should be applied to
+        self.call.  May include persistent objects (though note that, if
+        passing a method is desired, it will typicall need to be wrapped
+        in an IJob).""")
+
+    annotations = zope.interface.Attribute(
+        """An OOBTree that is available for metadata use.""")
 
     def __call__(*args, **kwargs):
         """call the callable.  Any given args are effectively appended to

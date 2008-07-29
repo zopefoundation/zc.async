@@ -33,6 +33,7 @@ import pytz
 
 import zc.async.interfaces
 import zc.async.utils
+import zc.async
 
 def _repr(obj):
     if isinstance(obj, persistent.Persistent):
@@ -55,6 +56,8 @@ def _repr(obj):
     else:
         return repr(obj)
 
+# this is kept so that legacy databases can keep their references to this
+# function
 def success_or_failure(success, failure, res):
     callable = None
     if isinstance(res, twisted.python.failure.Failure):
@@ -197,6 +200,119 @@ def callback_retry_policy_factory(job):
         res = RetryCommonForever(job)
     return res
 
+def isFailure(value):
+    return isinstance(value, twisted.python.failure.Failure)
+
+def _prepare_callback(callback, failure_log_level=None,
+                      retry_policy_factory=None, parent=None):
+    if not zc.async.interfaces.ICallbackProxy.providedBy(callback):
+        callback = zc.async.interfaces.IJob(callback)
+        if failure_log_level is not None:
+            callback.failure_log_level = failure_log_level
+        elif callback.failure_log_level is None:
+            callback.failure_log_level = logging.CRITICAL
+        if retry_policy_factory is not None:
+            callback.retry_policy_factory = retry_policy_factory
+        elif callback.retry_policy_factory is None:
+            callback.retry_policy_factory = callback_retry_policy_factory
+    callback.parent = parent
+    return callback
+
+class ConditionalCallbackProxy(zc.async.utils.Base):
+
+    zope.interface.implements(zc.async.interfaces.ICallbackProxy)
+
+    job = None
+
+    @property
+    def status(self):
+        # NEW -> (PENDING -> ASSIGNED ->) ACTIVE -> CALLBACKS -> COMPLETED
+        if self.job is None:
+            ob = self.parent
+            while (ob is not None and
+                   zc.async.interfaces.IJob.providedBy(ob)):
+                ob = ob.parent
+            if zc.async.interfaces.IAgent.providedBy(ob):
+                return zc.async.interfaces.ASSIGNED
+            elif zc.async.interfaces.IQueue.providedBy(ob):
+                return zc.async.interfaces.PENDING
+            return zc.async.interfaces.NEW
+        return self.job.status
+
+    @property
+    def result(self):
+        if self.job is None:
+            return None
+        return self.job.result
+
+    def __init__(self, *args, **kwargs):
+        kwargs['parent'] = self
+        default = None
+        if not args:
+            pass
+        elif args[-1] is None:
+            args = args[:-1]
+        elif getattr(args[-1], '__len__', None) is None:
+            default = _prepare_callback(args[-1], **kwargs)
+            args = args[:-1]
+        self.default = default
+        self.conditionals = persistent.list.PersistentList()
+        for condition, job in args:
+            if job is not None:
+                job = _prepare_callback(job, **kwargs)
+            self.conditionals.append((condition, job))
+        self.callbacks = zc.queue.PersistentQueue()
+
+    def getJob(self, result):
+        if self.job is None:
+            for condition, callable in self.conditionals:
+                if condition(result):
+                    break
+            else:
+                callable = self.default
+            if callable is None:
+                callable = _prepare_callback(_transparent, None, None, self)
+            self.job = callable
+        else:
+            callable = self.job
+        while self.callbacks:
+            callable.addCallback(self.callbacks.pull())
+        return callable
+
+    def addCallbacks(self, success=None, failure=None,
+                     failure_log_level=None, retry_policy_factory=None):
+        return self.addCallback(SuccessFailureCallbackProxy(
+            success, failure,
+            failure_log_level=failure_log_level,
+            retry_policy_factory=retry_policy_factory))
+
+    def addCallback(self, callback, failure_log_level=None,
+                    retry_policy_factory=None):
+        callback = _prepare_callback(
+            callback, failure_log_level, retry_policy_factory, self)
+        if self.job is None:
+            self.callbacks.put(callback)
+        else:
+            self.job.addCallback(callback)
+        return callback
+
+
+class SuccessFailureCallbackProxy(ConditionalCallbackProxy):
+
+    @property
+    def success(self):
+        return self.default
+
+    @property
+    def failure(self):
+        return self.conditionals[0][1]
+
+    def __init__(self, success, failure, failure_log_level=None,
+                 retry_policy_factory=None):
+        super(SuccessFailureCallbackProxy, self).__init__(
+            (isFailure, failure), success,
+            failure_log_level=failure_log_level,
+            retry_policy_factory=retry_policy_factory)
 
 class Job(zc.async.utils.Base):
 
@@ -381,62 +497,34 @@ class Job(zc.async.utils.Base):
             self._callable_name = value.__name__
         else:
             self._callable_root, self._callable_name = value, None
-        if zc.async.interfaces.IJob.providedBy(self._callable_root):
+        if (zc.async.interfaces.IJob.providedBy(self._callable_root) and
+            self._callable_root.parent is None):
+            # if the parent is already set, that is probably an agent or
+            # something like that.  Don't override, or else the agent won't
+            # get cleaned out.
             self._callable_root.parent = self
 
     def addCallbacks(self, success=None, failure=None,
                      failure_log_level=None, retry_policy_factory=None):
-        if success is not None or failure is not None:
-            if success is not None:
-                success = zc.async.interfaces.IJob(success)
-                if failure_log_level is not None:
-                    success.failure_log_level = failure_log_level
-                elif success.failure_log_level is None:
-                    success.failure_log_level = logging.CRITICAL
-                if retry_policy_factory is not None:
-                    success.retry_policy_factory = retry_policy_factory
-                elif success.retry_policy_factory is None:
-                    success.retry_policy_factory = (
-                        callback_retry_policy_factory)
-            if failure is not None:
-                failure = zc.async.interfaces.IJob(failure)
-                if failure_log_level is not None:
-                    failure.failure_log_level = failure_log_level
-                elif failure.failure_log_level is None:
-                    failure.failure_log_level = logging.CRITICAL
-                if retry_policy_factory is not None:
-                    failure.retry_policy_factory = retry_policy_factory
-                elif failure.retry_policy_factory is None:
-                    failure.retry_policy_factory = (
-                        callback_retry_policy_factory)
-            res = Job(success_or_failure, success, failure)
-            if success is not None:
-                success.parent = res
-            if failure is not None:
-                failure.parent = res
-            self.addCallback(res)
-        else:
-            res = self
-        return res
+        return self.addCallback(SuccessFailureCallbackProxy(
+            success, failure,
+            failure_log_level=failure_log_level,
+            retry_policy_factory=retry_policy_factory))
 
     def addCallback(self, callback, failure_log_level=None,
                     retry_policy_factory=None):
-        callback = zc.async.interfaces.IJob(callback)
+        callback = _prepare_callback(
+            callback, failure_log_level, retry_policy_factory, self)
         self.callbacks.put(callback)
-        callback.parent = self
         if self._status == zc.async.interfaces.COMPLETED:
-            callback(self.result) # this commits transactions!
+            if zc.async.interfaces.ICallbackProxy.providedBy(callback):
+                call = callback.getJob(self.result)
+            else:
+                call = callback
+            call(self.result) # this commits transactions!
         else:
             self._p_changed = True # to try and fire conflict errors if
             # our reading of self.status has changed beneath us
-        if failure_log_level is not None:
-            callback.failure_log_level = failure_log_level
-        elif callback.failure_log_level is None:
-            callback.failure_log_level = logging.CRITICAL
-        if retry_policy_factory is not None:
-            callback.retry_policy_factory = retry_policy_factory
-        elif callback.retry_policy_factory is None:
-            callback.retry_policy_factory = callback_retry_policy_factory
         return callback
 
     def getRetryPolicy(self):
@@ -503,6 +591,7 @@ class Job(zc.async.utils.Base):
         data_cache = {}
         res = None
         while 1:
+            zc.async.local.job = self # we do this in the loop for paranoia
             try:
                 setup_info = self.setUp()
                 res = self.callable(*effective_args, **effective_kwargs)
@@ -527,6 +616,7 @@ class Job(zc.async.utils.Base):
                     if self is zc.async.utils.never_fail(
                         lambda: self._reschedule(retry, data_cache),
                         identifier, tm):
+                        zc.async.local.job = None
                         return self
                 elif retry:
                     continue
@@ -554,6 +644,7 @@ class Job(zc.async.utils.Base):
                     if self is zc.async.utils.never_fail(
                         lambda: self._reschedule(retry, data_cache),
                         identifier, tm):
+                        zc.async.local.job = None
                         return self
                 elif retry:
                     continue
@@ -593,6 +684,7 @@ class Job(zc.async.utils.Base):
                 self._log_completion(res)
                 identifier = 'performing callbacks of %r' % (self,)
                 zc.async.utils.never_fail(self.resumeCallbacks, identifier, tm)
+            zc.async.local.job = None
             return res
 
     def handleInterrupt(self):
@@ -682,6 +774,7 @@ class Job(zc.async.utils.Base):
         callback = True
         if zc.async.interfaces.IJob.providedBy(res):
             res.addCallback(self._callback)
+            self._result = res # temporary
             callback = False
         elif isinstance(res, twisted.internet.defer.Deferred):
             partial = zc.twist.Partial(self._callback)
@@ -727,6 +820,77 @@ class Job(zc.async.utils.Base):
         if callback:
             self.resumeCallbacks()
 
+    def handleCallbackInterrupt(self, caller):
+        if self._status != zc.async.interfaces.ACTIVE:
+            raise zc.async.interfaces.BadStatusError(
+                'can only handleCallbackInterrupt on a job with ACTIVE status')
+        if caller.status != zc.async.interfaces.CALLBACKS:
+            raise zc.async.interfaces.BadStatusError(
+                'can only handleCallbackInterrupt with caller in CALLBACKS '
+                'status')
+        result = caller.result
+        if self.result is not None:
+            if not zc.async.interfaces.IJob.providedBy(self.result):
+                msg = ('Callback %r is in an apparently insane state: result '
+                       'has been set (%r), the result is not a job, and yet '
+                       'the status is ACTIVE.  This should not be possible.  ')
+                if self.result == result:
+                    zc.async.utils.log.error(
+                        msg + 'Stored result is equivalent to currently '
+                        'received result, so will '
+                        'change status to CALLBACKS and '
+                        'run callbacks, for no clear "right" action.',
+                        self, self.result)
+                    self._status = zc.async.interfaces.CALLBACKS
+                    self._active_end = datetime.datetime.now(pytz.UTC)
+                    self.resumeCallbacks()
+                    return
+                else:
+                    zc.async.utils.log.error(
+                        msg + 'Stored result is not equivalent to currently '
+                        'received result (%r), so will '
+                        '(re?)run this job with new result, for no clear '
+                        '"right" action.',
+                        self, self.result, result)
+                    # fall through
+            elif self.result.status == zc.async.interfaces.COMPLETED:
+                zc.async.utils.log.warning(
+                    'Callback %r is in an apparently insane state: inner job '
+                     'result has been completed, including callbacks, but '
+                     'this job has not been '
+                     'completed.  This should not be possible.  Will set '
+                     'result and run callbacks, for no clear "right" action.')
+                callback = self._set_result(self.result.result)
+                self._log_completion(self.result.result)
+                if callback:
+                    self.resumeCallbacks()
+                return
+            else:
+                return # we are going to hope that the job works; it should,
+                # and there's no way for us to know that it won't here.
+        tm = transaction.interfaces.ITransactionManager(self)
+        retry = self._getRetry('interrupted', tm)
+        istime = isinstance(
+            retry, (datetime.timedelta, datetime.datetime))
+        if istime:
+            zc.async.utils.log.error(
+                'error for IRetryPolicy %r on %r: '
+                'cannot reschedule a callback, only retry.  '
+                'We will retry now, for no clear "right" action.',
+                self.getRetryPolicy(), self)
+        if retry or istime:
+            zc.async.utils.tracelog.debug(
+                'retrying interrupted callback '
+                '%r to %r', self, caller)
+            self._status = zc.async.interfaces.NEW
+            self._active_start = None
+            self(result)
+        else:
+            zc.async.utils.tracelog.debug(
+                'aborting interrupted callback '
+                '%r to %r', self, caller)
+            self.fail(zc.async.interfaces.AbortedError())
+
     def resumeCallbacks(self):
         # should be called within a job that has a RetryCommonForever policy
         if self._status != zc.async.interfaces.CALLBACKS:
@@ -737,8 +901,12 @@ class Job(zc.async.utils.Base):
         length = 0
         while 1:
             for j in callbacks:
-                # TODO yuck: this mucks in callbacks' protected bits
-                if j._status == zc.async.interfaces.NEW:
+                if zc.async.interfaces.ICallbackProxy.providedBy(j):
+                    j = j.getJob(self.result)
+                status = j.status
+                if status in (zc.async.interfaces.NEW,
+                              zc.async.interfaces.ASSIGNED,
+                              zc.async.interfaces.PENDING):
                     if (j.begin_by is not None and
                         (j.begin_after + j.begin_by) <
                         datetime.datetime.now(pytz.UTC)):
@@ -749,28 +917,9 @@ class Job(zc.async.utils.Base):
                         zc.async.utils.tracelog.debug(
                             'starting callback %r to %r', j, self)
                         j(self.result)
-                elif j._status == zc.async.interfaces.ACTIVE:
-                    retry = j._getRetry('interrupted', tm)
-                    istime = isinstance(
-                        retry, (datetime.timedelta, datetime.datetime))
-                    if istime:
-                        zc.async.utils.log.error(
-                            'error for IRetryPolicy %r on %r: '
-                            'cannot reschedule a callback, only retry',
-                            j.getRetryPolicy(), j)
-                    if retry or istime:
-                        zc.async.utils.tracelog.debug(
-                            'retrying interrupted callback '
-                            '%r to %r', j, self)
-                        j._status = zc.async.interfaces.NEW
-                        j._active_start = None
-                        j(self.result)
-                    else:
-                        zc.async.utils.tracelog.debug(
-                            'aborting interrupted callback '
-                            '%r to %r', j, self)
-                        j.fail(zc.async.interfaces.AbortedError())
-                elif j._status == zc.async.interfaces.CALLBACKS:
+                elif status == zc.async.interfaces.ACTIVE:
+                    j.handleCallbackInterrupt(self)
+                elif status == zc.async.interfaces.CALLBACKS:
                     j.resumeCallbacks()
                 # TODO: this shouldn't raise anything we want to catch, right?
                 # now, this should catch all the errors except EXPLOSIVE_ERRORS
@@ -787,3 +936,58 @@ class Job(zc.async.utils.Base):
                     self.parent.jobCompleted(self)
                 tm.commit()
                 return
+
+# conveniences for serial and parallel jobs
+
+def _transparent(*results):
+    return results
+
+def _serial_or_parallel(scheduler, jobs, kw):
+    if kw and (len(kw) > 1 or kw.keys()[0] != 'postprocess'):
+        raise TypeError('only accepts one keyword argument, ``postprocess``')
+    postprocess = zc.async.interfaces.IJob(kw.get('postprocess', _transparent))
+    result = Job(scheduler,
+                 *(zc.async.interfaces.IJob(j) for j in jobs),
+                 **dict(postprocess=postprocess))
+    postprocess.args = result.args # ...I guess this means I bless this muck
+    return result
+
+def _queue_next(main_job, ix=0, ignored_result=None):
+    jobs = main_job.args
+    queue = main_job.queue
+    if ix < len(jobs):
+        next = jobs[ix]
+        queue.put(next)
+        next.addCallback(Job(_queue_next, main_job, ix+1))
+    else:
+        queue.put(main_job.kwargs['postprocess'])
+
+def _schedule_serial(*jobs, **kw):
+    _queue_next(zc.async.local.getJob())
+    return kw['postprocess']
+
+def serial(*jobs, **kw):
+    return _serial_or_parallel(_schedule_serial, jobs, kw)
+
+def _queue_all(main_job, ignored_result=None):
+    jobs = main_job.args
+    queue = main_job.queue
+    complete = True
+    for job in jobs:
+        status = job.status
+        if status == zc.async.interfaces.NEW:
+            queue.put(job)
+            job.addCallback(Job(_queue_all, main_job))
+            complete = False
+        elif status not in (zc.async.interfaces.COMPLETED,
+                            zc.async.interfaces.CALLBACKS):
+            complete = False
+    if complete:
+        queue.put(main_job.kwargs['postprocess'])
+
+def _schedule_parallel(*jobs, **kw):
+    _queue_all(zc.async.local.getJob())
+    return kw['postprocess']
+
+def parallel(*jobs, **kw):
+    return _serial_or_parallel(_schedule_parallel, jobs, kw)
