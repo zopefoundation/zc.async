@@ -182,7 +182,7 @@ processes connect.
 
 Let's start the ZEO Server::
 
-    ./bin/runzeo -a 9999 -f test.fs &
+    $ ./bin/runzeo -a 9999 -f test.fs &
 
 That starts a database server, accessible on port 9999 of your local machine,
 saving the data in the test.fs file.
@@ -260,19 +260,7 @@ A Job
 
 Let's put a job in our queue.
 
-.. class:: handout
-
-    This is a silly example. Imagine instead that this was some really
-    long-running job. Maybe you have lots of these jobs coming in, and you need
-    to have many machines to claim jobs and perform them, so that you can
-    scale. Maybe this job divides itself up into parallel or serial jobs, and
-    this parent job isn't done until all the children jobs run to completion.
-
-    Or maybe this is a silly example.
-
-..
-
-    >>> import time
+>>> import time
     >>> j = q.put(time.time)
     >>> j.result
     >>> j.status
@@ -282,6 +270,17 @@ We have to commit the transaction for the dispatcher to see the job.
 
     >>> import transaction
     >>> transaction.commit()
+
+.. class:: handout
+
+    This is a silly example. Imagine instead that this was some really
+    long-running job. Maybe you have lots of these jobs coming in, and you need
+    to have many machines to claim jobs and perform them, so that you can
+    scale. Maybe this job divides itself up into parallel or serial jobs, and
+    this parent job isn't done until all the children jobs run to completion.
+
+    Or maybe this is a silly example.
+..
 
 A Result
 ========
@@ -319,6 +318,8 @@ RSA keys is actually a reasonable real-world use case for something like this.
 
 Another Result
 ==============
+
+::
 
     >>  j.result
     >>  _ = transaction.begin()
