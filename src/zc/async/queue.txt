@@ -561,7 +561,28 @@ be ``dead``.
     >>> da.dead
     False
 
-Now we'll activate the dispatcher.
+``activate`` activates the dispatcher.  A ``ping`` is not expected until the
+dispatcher is activated, though, to handle unusual circumstances such as the
+dispatcher being wrongfully declared dead ("I'm not dead yet!").
+
+    >>> bool(da.activated)
+    False
+    >>> queue.dispatchers.ping(UUID)
+    >>> bool(da.activated)
+    True
+    >>> print event_logs # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    z...
+    zc.async.events CRITICAL
+      Dispatcher UUID('...') not activated prior to ping. This can indicate
+      that the dispatcher's ping_death_interval is set too short, or that some
+      transactions in the system are taking too long to commit. Activating, to
+      correct the current problem, but if the dispatcher was inappropriately
+      viewed as ``dead`` and deactivated, you should investigate the cause.
+    >>> da.deactivate()
+    >>> bool(da.activated)
+    False
+
+Now we'll activate the dispatcher the proper way.
 
     >>> import datetime
     >>> import pytz

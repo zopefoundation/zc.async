@@ -18,7 +18,7 @@
 - Add warning about long commits to tips and tricks.
 
 - After complaining about a polling dispatcher that is deactivated not really
-  being dead in the logs, reactivate.  NEEDS TEST
+  being dead in the logs, reactivate.
 
 - No longer use intermediate job to implement the success/failure addCallbacks
   behavior.  Introduce an ICallbackProxy that can be used for this kind of
