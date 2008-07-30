@@ -1,0 +1,322 @@
+.. include:: <s5defs.txt>
+
+=========================
+zc.async: An Introduction
+=========================
+
+:Authors: Gary Poster
+:Date:    2008/07/30
+
+.. contents::
+   :class: handout
+
+What?
+=====
+
+- Reliable, easy-to-use, Python tool
+
+- Schedules work across processes and machines
+
+.. class:: handout
+
+    zc.async is an easy-to-use Python tool that schedules work across
+    multiple processes and machines.
+
+For instance...
+===============
+
+...for web apps
+===============
+
+Maybe your web application lets users request the creation of a large PDF, or
+some other expensive task.
+
+...for postponed work
+=====================
+
+Maybe you have a job that needs to be done at a certain time, not right now.
+
+.. class:: handout
+
+    Work is always, minimally, postponed till after your current transaction
+    commits.
+
+    Work can also be scheduled to begin after a certain datetime.  This will
+    be honored as closely as the poll interval and other tasks running at the
+    desired start time allow.
+
+    zc.async does not inherently support recurring tasks, but such patterns can
+    be implemented easily on top of zc.async.  One simple pattern is to have
+    a callback schedule a new task at the next desired time.
+
+...for parallel processing
+==========================
+
+Maybe you have a long-running problem that can be made to complete faster by
+splitting it up into discrete parts, each performed in parallel, across
+multiple machines.
+
+.. class:: handout
+
+    As shown later, the easiest way to accomplish this is to use
+    ``zc.async.job.parallel``. Given three decomposed tasks, ``job_A``,
+    ``job_B``, and ``job_C``; a postprocess task named ``postprocess``; and an
+    instance of a zc.async queue, this line would schedule a composite parallel
+    job:
+
+        >>> queue.put(
+        ...     zc.async.job.parallel(
+        ...         job_A, job_B, job_C, postprocess=postprocess))
+
+...for serial processing
+========================
+
+Maybe you want to decompose and serialize a job.
+
+.. class:: handout
+
+    As shown later, the easiest way to accomplish this is to use
+    ``zc.async.job.serial``.  Given three decomposed tasks, ``job_A``, ``job_B``,
+    and ``job_C``; a postprocess task named ``postprocess``; and an instance
+    of a zc.async queue, this line would schedule a composite serial job:
+
+        >>> queue.put(
+        ...     zc.async.job.serial(
+        ...         job_A, job_B, job_C, postprocess=postprocess))
+
+High-level Features
+===================
+
+- easy to use
+
+- flexible configuration
+
+- reliable
+
+- supports high availability
+
+- good debugging tools
+
+- well-tested
+
+- friendly to testing
+
+.. class:: handout
+
+    zc.async helps you perform those jobs easily, but with a lot of available
+    configuration if you need it. It lets you perform these jobs reliably, with
+    high availability and control over how to handle errors and system
+    interruptions. It gives you good tools to analyze and debug problems in
+    your asynchronous jobs. It is well-tested and has test helpers for you to
+    use and test patterns for you to follow.
+
+An Experiment
+=============
+
+To start, install ``virtualenv``_ and create a virtual environment for our
+experiments.
+
+Install zc.async in the virtual environment.
+
+::
+
+    $ easy_install virtualenv
+    $ virtualenv quickstart
+    $ cd quickstart/
+    $ ./bin/easy_install zc.async
+
+.. _virtualenv: http://pypi.python.org/pypi/virtualenv
+
+Dependencies
+============
+
+This installed the ZODB, Twisted, the basic Zope component architecture, and a
+few smaller packages.
+
+
+.. class:: handout
+
+    ::
+
+        $ ls lib/python2.5/site-packages/
+        Twisted-8.1.0-py2.5-macosx-10.5-i386.egg
+        ZConfig-2.5.1-py2.5.egg
+        ZODB3-3.8.1b5-py2.5-macosx-10.5-i386.egg
+        easy-install.pth
+        pytz-2008c-py2.5.egg
+        rwproperty-1.0-py2.5.egg
+        setuptools-0.6c8-py2.5.egg
+        setuptools.pth
+        uuid-1.30-py2.5.egg
+        zc.async-1.4.0-py2.5.egg
+        zc.dict-1.2.1-py2.5.egg
+        zc.queue-1.1-py2.5.egg
+        zc.twist-1.3-py2.5-macosx-10.5-i386.egg
+        zdaemon-2.0.2-py2.5.egg
+        zope.bforest-1.2-py2.5.egg
+        zope.component-3.4.0-py2.5.egg
+        zope.deferredimport-3.4.0-py2.5.egg
+        zope.deprecation-3.4.0-py2.5.egg
+        zope.event-3.4.0-py2.5.egg
+        zope.i18nmessageid-3.4.3-py2.5-macosx-10.5-i386.egg
+        zope.interface-3.4.1-py2.5-macosx-10.5-i386.egg
+        zope.minmax-1.1.0-py2.5.egg
+        zope.proxy-3.4.1-py2.5-macosx-10.5-i386.egg
+        zope.testing-3.6.0-py2.5.egg
+
+ZEO Server
+==========
+
+zc.async relies on ZEO ("Zope Enterprise Objects") to distribute work.
+
+ZEO has a central database server to which client processes connect.
+
+Let's start the ZEO Server::
+
+    ./bin/runzeo -a 9999 -f test.fs &
+
+That starts a database server, accessible on port 9999 of your local machine,
+saving the data in the test.fs file.
+
+A Client
+========
+
+Now let's start a Python with a client connection to the database server.
+
+Start up ``bin/python`` (not your system python, but the one in virtualenv's
+``quickstart/bin``)::
+
+    $ ./bin/python
+
+Make your database connection.
+
+    >>> import ZEO.ClientStorage
+    >>> import ZODB
+    >>> storage = ZEO.ClientStorage.ClientStorage(('127.0.0.1', 9999))
+    >>> db = ZODB.DB(storage)
+
+Start zc.async
+==============
+
+Now we do some basic configuration.  This first bit installs some default
+adapters.  You might not ever have to worry too much about them.
+
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+
+This second part is policy, and if you ever put zc.async in production, you'll
+want to understand what's going on here.  We'll talk about what's going on here
+a little later.
+
+    >>> zc.async.configure.start(db, poll_interval=1)
+
+The ``poll_interval`` argument means that this instance will poll for new jobs
+every one second.
+
+Now the system is polling for jobs.
+
+The Queue
+=========
+
+The ``start`` function also installed a queue.  To get zc.async to do work, you
+put a job in a queue, and commit the transaction.
+
+First, let's get the queue that we have installed.  We need to open a
+connection to the database.  Then we get the queue.
+
+    >>> conn = db.open()
+    >>> import zc.async.interfaces
+    >>> q = zc.async.interfaces.IQueue(conn)
+
+A Job
+=====
+
+Let's put a job in our queue.  This is a silly example.  Imagine instead that
+this was some really long-running job.  Maybe you have lots of these jobs
+coming in, and you need to have many machines to claim jobs and perform them,
+so that you can scale.  Maybe this job divides itself up into parallel or
+serial jobs, and this parent job isn't done until all the children jobs run to
+completion.
+
+Or maybe this is a silly example.
+
+    >>> import time
+    >>> j = q.put(time.time)
+    >>> j.result
+    >>> j.status
+    u'pending-status'
+
+We have to commit the transaction for the dispatcher to see the job.
+
+    >>> import transaction
+    >>> transaction.commit()
+
+A Result
+========
+
+Now wait a second and then try this.  "transaction.begin" will sync up our
+database with database changes made elsewhere.
+
+    >>> transaction.begin()
+    <transaction._transaction.Transaction object at 0x163ad30>
+    >>> j.result
+    1216179006.856108
+    >>> j.status
+    u'completed-status'
+
+Another Job
+===========
+
+You can also make closures by passing in the job class explicitly.  Generating
+RSA keys is actually a reasonable real-world use case for something like this.
+
+    >>> import subprocess
+    >>> j = q.put(zc.async.job.Job(
+    ...     subprocess.call, ['openssl', 'genrsa', '-out', 'key.pem', '1024']))
+    >>> transaction.commit()
+
+Another Result
+==============
+
+    >>> j.result
+    >>> transaction.begin()
+    <transaction._transaction.Transaction object at 0x15b86b0>
+    >>> j.result
+    0
+    >>> subprocess.call(['ls'])
+    bin        key.pem        test.fs        test.fs.lock        uuid.txt
+    include    lib            test.fs.index  test.fs.tmp
+    >>> subprocess.call(['cat', 'key.pem'])
+    -----BEGIN RSA PRIVATE KEY-----
+    MIICXgIBAAKBgQCYAZW+HjDGJhRHnUlZZWqhrGOxU2K/RhssmcMs0JLnWI2cWmZ+
+    3S1LxlUqTiPcbzqkgyls13+L7jCYkMNVeGwblL/t1qSRBeOEVlOXzB2UQEQ8dDXm
+    FszLaFJ+nuFBYjCTl/sPkclrzk1AQX6vEji82kJG2GUPOyj3owoMN0AF7wIDAQAB
+    AoGAPVfmZmMoq86SQJRpFXqoHbbERLuyDh7suIMVEPDbWCGUhJS26Fu5++p+VCRU
+    tJDuyZVlElelUYM+eVNygPuoJJoaHHl34CS1/Qu5YC2XgNTt5dAUxShU6+M9puGA
+    Kc2x6QwwBCHlCe753MK+VV5RGXgNC/7xNHV0IK3/azD+ZQECQQDGsOv13ux7u4aQ
+    jpNYGgF+iQJyEj67uFlDI395yCw+HSuXXOat/bJLOgSJfOnsHnmsY1BdEu44Q4ON
+    u/ShHlkHAkEAw9mDeDFW0/hGPC7VTia+dvEEcWNo0P5CNiB+67pY/qOGYBW3WgcU
+    iWNXoNLrvm6XVwDXFPqYMlu292oI3qw52QJBAJ6FQwy8GZKyT67/gYD15qFMsF3Q
+    PqrIbrcJGEhSMzIvVbsCjKzeTqSEGmCS/5K50bt+1PwdAWB0RP4MqiTtsHsCQQCr
+    aF2F/jiuACcIWTzaz1H3K23mB0kfUMiGMt6iVU+6XUgoJBl6s6OnsshouvEUlBnk
+    TZnwhHpb6KUz2Ru2NynRAkEAtjnNxNcmFDSOTyYan8PIZ1x0trDWy5hYnC9YD0Ts
+    CEcz6ZbO8zm4AEGI/dqLicZh3bhunhflAovW6WxbNKLENQ==
+    -----END RSA PRIVATE KEY-----
+    0
+
+XXX
+===
+
+Next need to discuss that callables must be picklable, so we need to switch
+from the interpreter to the filesystem.
+
+Talk about callbacks, and how that lets you respond to results.
+
+Talk briefly about failures, show the exceptions, and briefly mention logging
+and debugging.
+
+Start up multiple processes with dispatchers.
+
+Close by referring to production instances needing something like zdaemon
+or supervisor; and to preferring the more declarative zc.buildout style for
+production...which we'll show in our next quickstart! ;-)
