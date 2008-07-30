@@ -13,8 +13,9 @@
 ##############################################################################
 import os
 import unittest
+import re
 
-from zope.testing import doctest, module, loggingsupport
+from zope.testing import doctest, module, loggingsupport, renormalizing
 import zope.component
 import zope.component.testing
 import zope.component.eventtesting
@@ -70,12 +71,12 @@ def test_instanceuuid():
     """This module provides access to a UUID that is intended to uniquely
     identify this software instance.  Read the `msg` value below for more
     information.
-    
+
     The uuid is generated and then stashed in a file.  It only works if
     the INSTANCE_HOME environment variable is set to a folder that has an
     `etc` folder in it--a standard Zope set up.  For this test, we mock it
     up in uuidSetUp and uuidTearDown below.
-    
+
         >>> import zc.async.instanceuuid
         >>> import uuid
         >>> isinstance(zc.async.instanceuuid.UUID, uuid.UUID)
@@ -86,7 +87,7 @@ def test_instanceuuid():
         True
 
     uuid.UUIDs now provide zc.async.interfaces.IUUID
-    
+
         >>> import zc.async.interfaces
         >>> zc.async.interfaces.IUUID.implementedBy(uuid.UUID)
         True
@@ -96,7 +97,7 @@ def test_instanceuuid():
     That's a bit invasive, but now you can register the instance UUID as
     a utility and get it back out as something that provides
     zc.async.interfaces.IUUID.
-    
+
         >>> import zope.component
         >>> zope.component.provideUtility(
         ...     zc.async.instanceuuid.UUID, name='instance')
@@ -114,7 +115,7 @@ def test_long_to_dt():
     and back again.  Dates in the future get smaller and smaller, so
     dates are arranged from newest to oldest in a BTree.  It leaves an
     extra 4 bits at the bottom.  It can convert all possible datetimes.
-    
+
     >>> from zc.async.utils import long_to_dt, dt_to_long
     >>> import datetime
     >>> now = datetime.datetime.now()
@@ -131,6 +132,7 @@ def test_long_to_dt():
     True
     """
 
+
 def test_suite():
     return unittest.TestSuite((
         doctest.DocTestSuite(setUp=uuidSetUp, tearDown=uuidTearDown),
@@ -145,8 +147,11 @@ def test_suite():
             'README_2.txt',
             'catastrophes.txt',
             'ftesting.txt',
+            'QUICKSTART_1_VIRTUALENV.txt',
             setUp=modSetUp, tearDown=modTearDown,
-            optionflags=doctest.INTERPRET_FOOTNOTES),
+            optionflags=doctest.INTERPRET_FOOTNOTES,
+            checker = renormalizing.RENormalizing([ # used by QUICKSTART only
+                (re.compile('\d+\.\d+'), '1216179006.856108')])),
         ))
 
 

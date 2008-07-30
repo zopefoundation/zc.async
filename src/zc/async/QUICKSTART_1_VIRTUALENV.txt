@@ -62,11 +62,13 @@ multiple machines.
     ``zc.async.job.parallel``. Given three decomposed tasks, ``job_A``,
     ``job_B``, and ``job_C``; a postprocess task named ``postprocess``; and an
     instance of a zc.async queue, this line would schedule a composite parallel
-    job:
+    job::
 
-        >>> queue.put(
+        >>  queue.put(
         ...     zc.async.job.parallel(
         ...         job_A, job_B, job_C, postprocess=postprocess))
+
+.. We use ">>" intentionally when we don't want to run these lines as a test.
 
 ...for serial processing
 ========================
@@ -78,9 +80,9 @@ Maybe you want to decompose and serialize a job.
     As shown later, the easiest way to accomplish this is to use
     ``zc.async.job.serial``.  Given three decomposed tasks, ``job_A``, ``job_B``,
     and ``job_C``; a postprocess task named ``postprocess``; and an instance
-    of a zc.async queue, this line would schedule a composite serial job:
+    of a zc.async queue, this line would schedule a composite serial job::
 
-        >>> queue.put(
+        >> queue.put(
         ...     zc.async.job.serial(
         ...         job_A, job_B, job_C, postprocess=postprocess))
 
@@ -113,8 +115,13 @@ High-level Features
 An Experiment
 =============
 
-To start, install ``virtualenv``_ and create a virtual environment for our
+To start, install |virtualenv|_ and create a virtual environment for our
 experiments.
+
+.. class:: handout
+
+    I prefer zc.buildout for production deployments, but virtualenv is very
+    nice for quick experimentation.
 
 Install zc.async in the virtual environment.
 
@@ -124,6 +131,8 @@ Install zc.async in the virtual environment.
     $ virtualenv quickstart
     $ cd quickstart/
     $ ./bin/easy_install zc.async
+
+.. |virtualenv| replace:: ``virtualenv``
 
 .. _virtualenv: http://pypi.python.org/pypi/virtualenv
 
@@ -167,9 +176,9 @@ few smaller packages.
 ZEO Server
 ==========
 
-zc.async relies on ZEO ("Zope Enterprise Objects") to distribute work.
-
-ZEO has a central database server to which client processes connect.
+zc.async relies on a distributed ZODB technology called ZEO ("Zope Enterprise
+Objects") to distribute work. ZEO has a central database server to which client
+processes connect.
 
 Let's start the ZEO Server::
 
@@ -188,15 +197,32 @@ Start up ``bin/python`` (not your system python, but the one in virtualenv's
 
     $ ./bin/python
 
-Make your database connection.
+This will be our single client process.  You might have many.
 
-    >>> import ZEO.ClientStorage
-    >>> import ZODB
-    >>> storage = ZEO.ClientStorage.ClientStorage(('127.0.0.1', 9999))
-    >>> db = ZODB.DB(storage)
+Database Connection
+===================
 
-Start zc.async
-==============
+Connect to the database.
+
+::
+
+    >>  import ZEO.ClientStorage
+    >>  import ZODB
+    >>  storage = ZEO.ClientStorage.ClientStorage(
+    ...     ('127.0.0.1', 9999))
+    >>  db = ZODB.DB(storage)
+
+.. When run as a doctest, this uses a simple FileStorage, rather than a
+   ClientStorage.
+
+    >>> import ZODB.FileStorage
+    >>> storage = ZODB.FileStorage.FileStorage(
+    ...     'zc_async.fs', create=True)
+    >>> from ZODB.DB import DB
+    >>> db = DB(storage)
+
+Start zc.async: Basics
+======================
 
 Now we do some basic configuration.  This first bit installs some default
 adapters.  You might not ever have to worry too much about them.
@@ -204,16 +230,17 @@ adapters.  You might not ever have to worry too much about them.
     >>> import zc.async.configure
     >>> zc.async.configure.base()
 
+Start zc.async: Policy
+======================
+
 This second part is policy, and if you ever put zc.async in production, you'll
 want to understand what's going on here.  We'll talk about what's going on here
 a little later.
 
-    >>> zc.async.configure.start(db, poll_interval=1)
+    >>> zc.async.configure.start(
+    ...     db, poll_interval=1)
 
-The ``poll_interval`` argument means that this instance will poll for new jobs
-every one second.
-
-Now the system is polling for jobs.
+Now the system is polling for jobs every second.
 
 The Queue
 =========
@@ -231,14 +258,19 @@ connection to the database.  Then we get the queue.
 A Job
 =====
 
-Let's put a job in our queue.  This is a silly example.  Imagine instead that
-this was some really long-running job.  Maybe you have lots of these jobs
-coming in, and you need to have many machines to claim jobs and perform them,
-so that you can scale.  Maybe this job divides itself up into parallel or
-serial jobs, and this parent job isn't done until all the children jobs run to
-completion.
+Let's put a job in our queue.
 
-Or maybe this is a silly example.
+.. class:: handout
+
+    This is a silly example. Imagine instead that this was some really
+    long-running job. Maybe you have lots of these jobs coming in, and you need
+    to have many machines to claim jobs and perform them, so that you can
+    scale. Maybe this job divides itself up into parallel or serial jobs, and
+    this parent job isn't done until all the children jobs run to completion.
+
+    Or maybe this is a silly example.
+
+..
 
     >>> import time
     >>> j = q.put(time.time)
@@ -257,8 +289,14 @@ A Result
 Now wait a second and then try this.  "transaction.begin" will sync up our
 database with database changes made elsewhere.
 
-    >>> transaction.begin()
-    <transaction._transaction.Transaction object at 0x163ad30>
+.. This lets us "wait a second".
+
+    >>> import zc.async.testing
+    >>> res = zc.async.testing.wait_for_result(j)
+
+..
+
+    >>> _ = transaction.begin()
     >>> j.result
     1216179006.856108
     >>> j.status
@@ -270,36 +308,26 @@ Another Job
 You can also make closures by passing in the job class explicitly.  Generating
 RSA keys is actually a reasonable real-world use case for something like this.
 
-    >>> import subprocess
-    >>> j = q.put(zc.async.job.Job(
-    ...     subprocess.call, ['openssl', 'genrsa', '-out', 'key.pem', '1024']))
-    >>> transaction.commit()
+::
+
+    >>  import subprocess
+    >>  j = q.put(zc.async.job.Job(
+    ...     subprocess.call,
+    ...     ['openssl', 'genrsa', '-out',
+    ...      'key.pem', '1024']))
+    >>  transaction.commit()
 
 Another Result
 ==============
 
-    >>> j.result
-    >>> transaction.begin()
-    <transaction._transaction.Transaction object at 0x15b86b0>
-    >>> j.result
+    >>  j.result
+    >>  _ = transaction.begin()
+    >>  j.result
     0
-    >>> subprocess.call(['ls'])
-    bin        key.pem        test.fs        test.fs.lock        uuid.txt
-    include    lib            test.fs.index  test.fs.tmp
-    >>> subprocess.call(['cat', 'key.pem'])
+    >>  subprocess.call(['cat', 'key.pem'])
     -----BEGIN RSA PRIVATE KEY-----
     MIICXgIBAAKBgQCYAZW+HjDGJhRHnUlZZWqhrGOxU2K/RhssmcMs0JLnWI2cWmZ+
-    3S1LxlUqTiPcbzqkgyls13+L7jCYkMNVeGwblL/t1qSRBeOEVlOXzB2UQEQ8dDXm
-    FszLaFJ+nuFBYjCTl/sPkclrzk1AQX6vEji82kJG2GUPOyj3owoMN0AF7wIDAQAB
-    AoGAPVfmZmMoq86SQJRpFXqoHbbERLuyDh7suIMVEPDbWCGUhJS26Fu5++p+VCRU
-    tJDuyZVlElelUYM+eVNygPuoJJoaHHl34CS1/Qu5YC2XgNTt5dAUxShU6+M9puGA
-    Kc2x6QwwBCHlCe753MK+VV5RGXgNC/7xNHV0IK3/azD+ZQECQQDGsOv13ux7u4aQ
-    jpNYGgF+iQJyEj67uFlDI395yCw+HSuXXOat/bJLOgSJfOnsHnmsY1BdEu44Q4ON
-    u/ShHlkHAkEAw9mDeDFW0/hGPC7VTia+dvEEcWNo0P5CNiB+67pY/qOGYBW3WgcU
-    iWNXoNLrvm6XVwDXFPqYMlu292oI3qw52QJBAJ6FQwy8GZKyT67/gYD15qFMsF3Q
-    PqrIbrcJGEhSMzIvVbsCjKzeTqSEGmCS/5K50bt+1PwdAWB0RP4MqiTtsHsCQQCr
-    aF2F/jiuACcIWTzaz1H3K23mB0kfUMiGMt6iVU+6XUgoJBl6s6OnsshouvEUlBnk
-    TZnwhHpb6KUz2Ru2NynRAkEAtjnNxNcmFDSOTyYan8PIZ1x0trDWy5hYnC9YD0Ts
+    ...
     CEcz6ZbO8zm4AEGI/dqLicZh3bhunhflAovW6WxbNKLENQ==
     -----END RSA PRIVATE KEY-----
     0
@@ -320,3 +348,11 @@ Start up multiple processes with dispatchers.
 Close by referring to production instances needing something like zdaemon
 or supervisor; and to preferring the more declarative zc.buildout style for
 production...which we'll show in our next quickstart! ;-)
+
+.. Now we are going to stop the reactor.
+
+    >>> import zc.async.dispatcher
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> reactor = dispatcher.reactor
+    >>> reactor.callFromThread(reactor.stop)
+    >>> dispatcher.thread.join(3)

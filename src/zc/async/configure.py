@@ -71,8 +71,10 @@ def base():
 # this function installs a queue named '' (empty string), starts the
 # dispatcher, and installs an agent named 'main', with default values.
 # It is a convenience for quick starts.
-def start(db, poll_interval=5, db_name=None, chooser=None, size=3):
+def start(db, poll_interval=5, db_name=None, agent_chooser=None, agent_size=3):
     zope.component.provideAdapter(zc.async.queue.getDefaultQueue)
+    zope.component.provideAdapter(zc.async.queue.getDefaultQueue,
+                                  adapts=(ZODB.interfaces.IConnection,))
     zope.component.provideHandler(
         zc.async.subscribers.QueueInstaller(db_name=db_name))
     zope.component.provideHandler(
