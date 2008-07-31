@@ -1,5 +1,16 @@
-1.4 (2008-07-30)
-================
+1.4.1 (2008-07-30)
+==================
+
+- The new ``serial`` and ``parallel`` helpers did not allow the the
+  ``postprocess`` argument to be a partial closure, and were being naughty.
+  Fixed.
+
+- Added tests and demos for advanced features of ``serial`` and ``parallel``.
+
+- More tweaks to the new Quickstart S5 document.
+
+1.4.0 (2008-07-30)
+==================
 
 - Mentioned in ftesting.txt that Zope 3 users should uses zope.app.testing
   3.4.2 or newer.  Also added a summary section at the beginning of that file.

@@ -89,6 +89,8 @@ Maybe you want to decompose and serialize a job.
 High-level Features
 ===================
 
+.. class:: incremental
+
 - easy to use
 
 - flexible configuration
@@ -112,8 +114,11 @@ High-level Features
     your asynchronous jobs. It is well-tested and has test helpers for you to
     use and test patterns for you to follow.
 
-An Experiment
-=============
+Let's Experiment!
+=================
+
+Installation with virtualenv
+============================
 
 To start, install |virtualenv|_ and create a virtual environment for our
 experiments.
@@ -123,12 +128,15 @@ experiments.
     I prefer zc.buildout for production deployments, but virtualenv is very
     nice for quick experimentation.
 
-Install zc.async in the virtual environment.
-
 ::
 
     $ easy_install virtualenv
     $ virtualenv quickstart
+
+Install zc.async in the virtual environment.
+
+::
+
     $ cd quickstart/
     $ ./bin/easy_install zc.async
 
@@ -139,9 +147,18 @@ Install zc.async in the virtual environment.
 Dependencies
 ============
 
-This installed the ZODB, Twisted, the basic Zope component architecture, and a
-few smaller packages.
+This installed several packages.
 
+- the ZODB, an object database from the Zope project;
+
+- Twisted, a framework for networked applications;
+
+- the component architecture from the Zope project;
+
+- and a few smaller packages.
+
+All of these, and zc.async, are distributed under BSD-like licenses such as
+LGPL and ZPL.
 
 .. class:: handout
 
@@ -197,7 +214,10 @@ Start up ``bin/python`` (not your system python, but the one in virtualenv's
 
     $ ./bin/python
 
-This will be our single client process.  You might have many.
+This will be our single client process.
+
+You might have many, each connecting to the main database server, and each able
+to perform and/or request zc.async jobs.
 
 Database Connection
 ===================
@@ -240,7 +260,7 @@ a little later.
     >>> zc.async.configure.start(
     ...     db, poll_interval=1)
 
-Now the system is polling for jobs every second.
+Now the system has a ``dispatcher`` polling for jobs every second.
 
 The Queue
 =========
@@ -260,16 +280,14 @@ A Job
 
 Let's put a job in our queue.
 
->>> import time
+    >>> import time
     >>> j = q.put(time.time)
+
+It's not done yet.
+
     >>> j.result
     >>> j.status
     u'pending-status'
-
-We have to commit the transaction for the dispatcher to see the job.
-
-    >>> import transaction
-    >>> transaction.commit()
 
 .. class:: handout
 
@@ -281,6 +299,14 @@ We have to commit the transaction for the dispatcher to see the job.
 
     Or maybe this is a silly example.
 ..
+
+A Transaction
+=============
+
+We have to commit the transaction for the dispatcher to see the job.
+
+    >>> import transaction
+    >>> transaction.commit()
 
 A Result
 ========

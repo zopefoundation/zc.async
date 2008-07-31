@@ -949,7 +949,6 @@ def _serial_or_parallel(scheduler, jobs, kw):
     result = Job(scheduler,
                  *(zc.async.interfaces.IJob(j) for j in jobs),
                  **dict(postprocess=postprocess))
-    postprocess.args = result.args # ...I guess this means I bless this muck
     return result
 
 def _queue_next(main_job, ix=0, ignored_result=None):
@@ -960,7 +959,9 @@ def _queue_next(main_job, ix=0, ignored_result=None):
         queue.put(next)
         next.addCallback(Job(_queue_next, main_job, ix+1))
     else:
-        queue.put(main_job.kwargs['postprocess'])
+        postprocess = main_job.kwargs['postprocess']
+        postprocess.args.extend(jobs)
+        queue.put(postprocess)
 
 def _schedule_serial(*jobs, **kw):
     _queue_next(zc.async.local.getJob())
@@ -983,7 +984,9 @@ def _queue_all(main_job, ignored_result=None):
                             zc.async.interfaces.CALLBACKS):
             complete = False
     if complete:
-        queue.put(main_job.kwargs['postprocess'])
+        postprocess = main_job.kwargs['postprocess']
+        postprocess.args.extend(jobs)
+        queue.put(postprocess)
 
 def _schedule_parallel(*jobs, **kw):
     _queue_all(zc.async.local.getJob())

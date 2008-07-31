@@ -786,6 +786,8 @@ Here's a quick example of the helper function [#define_longer_wait]_.
     >>> job.result
     (0, 1, 2)
 
+[#extra_serial_tricks]_
+
 The ``parallel`` example we use below follows a similar pattern.
 
 Parallelized Work
@@ -838,7 +840,7 @@ Now we just wait for the result.
     >>> job.result
     42
 
-Ta-da!
+Ta-da! [#extra_parallel_tricks]_
 
 Now, how did this work?  Let's look at a simple implementation directly.  We'll
 use a slightly different postprocess, that expects results directly rather than
@@ -1297,6 +1299,128 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
     ...         assert False, 'never completed'
     ...
 
+.. [#extra_serial_tricks] The ``serial`` helper can accept a partial closure
+    for a ``postprocess`` argument.
+
+    >>> def postprocess(extra_info, *jobs):
+    ...     return extra_info, tuple(j.result for j in jobs)
+    ...
+    >>> job = queue.put(zc.async.job.serial(
+    ...     job_zero, job_one, job_two,
+    ...     postprocess=zc.async.job.Job(postprocess, 'foo')))
+    >>> transaction.commit()
+
+    >>> wait_repeatedly()
+    ... # doctest: +ELLIPSIS
+    TIME OUT...
+
+    >>> job.result
+    ('foo', (0, 1, 2))
+
+    The list of jobs can be extended by adding them to the args of the job
+    returned by ``serial`` under these circumstances:
+
+    - before the job has started,
+
+    - by an inner job while it is running, or
+
+    - by any callback added to any inner job *before* that inner job has begun.
+
+    Here's an example.
+
+    >>> def postprocess(*jobs):
+    ...     return [j.result for j in jobs]
+    ...
+    >>> job = queue.put(zc.async.job.serial(postprocess=postprocess))
+    >>> def second_job():
+    ...     return 'second'
+    ...
+    >>> def third_job():
+    ...     return 'third'
+    ...
+    >>> def schedule_third(main_job, ignored):
+    ...     main_job.args.append(zc.async.job.Job(third_job))
+    ...
+    >>> def first_job(main_job):
+    ...     j = zc.async.job.Job(second_job)
+    ...     main_job.args.append(j)
+    ...     j.addCallback(zc.async.job.Job(schedule_third, main_job))
+    ...     return 'first'
+    ...
+    >>> job.args.append(zc.async.job.Job(first_job, job))
+    >>> transaction.commit()
+
+    >>> wait_repeatedly()
+    ... # doctest: +ELLIPSIS
+    TIME OUT...
+
+    >>> job.result
+    ['first', 'second', 'third']
+
+    Be warned, these sort of constructs allow infinite loops!
+
+.. [#extra_parallel_tricks] The ``parallel`` helper can accept a partial closure
+    for a ``postprocess`` argument.
+
+    >>> def postprocess(extra_info, *jobs):
+    ...     return extra_info, sum(j.result for j in jobs)
+    ...
+    >>> job = queue.put(zc.async.job.parallel(
+    ...     job_A, job_B, job_C,
+    ...     postprocess=zc.async.job.Job(postprocess, 'foo')))
+
+    >>> transaction.commit()
+
+    >>> wait_repeatedly()
+    ... # doctest: +ELLIPSIS
+    TIME OUT...
+
+    >>> job.result
+    ('foo', 42)
+
+    The list of jobs can be extended by adding them to the args of the job
+    returned by ``parallel`` under these circumstances:
+
+    - before the job has started,
+
+    - by an inner job while it is running,
+
+    - by any callback added to any inner job *before* that inner job has begun.
+
+    Here's an example.
+
+    >>> def postprocess(*jobs):
+    ...     return [j.result for j in jobs]
+    ...
+    >>> job = queue.put(zc.async.job.parallel(postprocess=postprocess))
+    >>> def second_job():
+    ...     return 'second'
+    ...
+    >>> def third_job():
+    ...     return 'third'
+    ...
+    >>> def schedule_third(main_job, ignored):
+    ...     main_job.args.append(zc.async.job.Job(third_job))
+    ...
+    >>> def first_job(main_job):
+    ...     j = zc.async.job.Job(second_job)
+    ...     main_job.args.append(j)
+    ...     j.addCallback(zc.async.job.Job(schedule_third, main_job))
+    ...     return 'first'
+    ...
+    >>> job.args.append(zc.async.job.Job(first_job, job))
+    >>> transaction.commit()
+
+    >>> wait_repeatedly()
+    ... # doctest: +ELLIPSIS
+    TIME OUT...
+
+    >>> job.result
+    ['first', 'second', 'third']
+
+    As with ``serial``, be warned, these sort of constructs allow infinite
+    loops!
+
 .. [#stop_usage_reactor]
 
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
@@ -1307,9 +1431,9 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
      'shortest active': None,
      'shortest failed': (..., 'unnamed'),
      'shortest successful': (..., 'unnamed'),
-     'started': 34,
+     'started': 54,
      'statistics end': datetime.datetime(2006, 8, 10, 15, 44, 22, 211),
-     'statistics start': datetime.datetime(2006, 8, 10, 15, ...),
-     'successful': 32,
+     'statistics start': datetime.datetime(2006, 8, 10, 16, ...),
+     'successful': 52,
      'unknown': 0}
     >>> reactor.stop()
