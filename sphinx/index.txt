@@ -1,0 +1,86 @@
+``zc.async``
+============
+
+What is it?
+-----------
+
+The ``zc.async`` package provides **an easy-to-use Python tool that schedules
+work across multiple processes and machines.**
+
+For instance...
+
+- *Web apps*: maybe your web application lets users request the creation of a
+  large PDF, or some other expensive task.
+
+- *Postponed work*: maybe you have a job that needs to be done at a certain time,
+  not right now.
+
+- *Parallel processing*: maybe you have a long-running problem that can be made
+  to complete faster by splitting it up into discrete parts, each performed in
+  parallel, across multiple machines.
+
+- *Serial processing*: maybe you want to decompose and serialize a job.
+
+Features include the following:
+
+- easy to use;
+
+- flexible configuration;
+
+- reliable;
+
+- supports high availability;
+
+- good debugging tools;
+
+- well-tested; and
+
+- friendly to testing.
+
+While developed as part of the Zope project, zc.async can be used stand-alone.
+
+How does it work?
+-----------------
+
+The system uses the Zope Object Database (ZODB), a transactional, pickle-based
+Python object database, for communication and coordination among participating
+processes.
+
+zc.async participants can each run in their own process, or share a process
+(run in threads) with other code.
+
+The Twisted framework supplies some code (failures and reactor implementations,
+primarily) and some concepts to the package.
+
+Quick starts
+------------
+
+These quick-starts can help you get a feel for the package.
+
+.. toctree::
+   :maxdepth: 2
+   
+   QUICKSTART_1_VIRTUALENV
+
+Documentation
+-------------
+
+Contents:
+
+.. toctree::
+   :maxdepth: 2
+
+   README
+   README_1
+   README_2
+   README_3
+   tips
+   CHANGES
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+

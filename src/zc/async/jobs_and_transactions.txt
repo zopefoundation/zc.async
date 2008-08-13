@@ -156,10 +156,10 @@ overlapping in time with T1.
     ...
     >>> import zc.async.job
     >>> class Job(zc.async.job.Job):
-    ...     _status = LockedSetter(
-    ...         '_status',
-    ...         lambda o, v: v == zc.async.interfaces.COMPLETED,
-    ...         zc.async.interfaces.NEW)
+    ...     _status_id = LockedSetter(
+    ...         '_status_id',
+    ...         lambda o, v: v == 3,
+    ...         0)
     ...
     >>> called = 0
     >>> def call(res=None):

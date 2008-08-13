@@ -1,6 +1,8 @@
-=============
-Configuration
-=============
+.. _configuration-without-zope-3:
+
+==============================
+Configuration (without Zope 3)
+==============================
 
 This section discusses setting up zc.async without Zope 3. Since Zope 3 is
 ill-defined, we will be more specific: this describes setting up zc.async
@@ -42,7 +44,7 @@ Required Component Registrations
 
 The required registrations can be installed for you by the
 ``zc.async.configure.base`` function. Most other examples in this package,
-such as those in the `Usage`_ section, use this in their
+such as those in the :ref:`usage` section, use this in their
 test setup.
 
 Again, for a quick start, you might just want to use the helper
@@ -178,7 +180,7 @@ All we must have for a client to be able to put jobs in a queue is ... a queue.
 For a quick start, the ``zc.async.subscribers`` module provides a subscriber to
 a DatabaseOpened event that does the right dance. See
 ``multidb_queue_installer`` and ``queue_installer`` in that module, and you can
-see that in use in `Configuration with Zope 3`_. For now, though, we're taking
+see that in use in :ref:`configuration-with-zope-3`. For now, though, we're taking
 things step by step and explaining what's going on.
 
 Dispatchers look for queues in a mapping off the root of the database in
@@ -509,16 +511,15 @@ you need.  Be sure to auto-rotate the trace logs.
 The package supports monitoring using zc.z3monitor, but using this package
 includes more Zope 3 dependencies, so it is not included here. If you would
 like to use it, see monitor.txt in the package and our next section:
-`Configuration with Zope 3`_. Otherwise, if you want to roll your own
+:ref:`configuration-with-zope-3`. Otherwise, if you want to roll your own
 monitoring, glance at monitor.py--you'll see that most of the heavy lifting for
 the monitor support is done in the dispatcher, so it should be pretty easy to
 hook up the basic data another way.
 
     >>> reactor.stop()
 
-.. ......... ..
-.. Footnotes ..
-.. ......... ..
+Footnotes
+=========
 
 .. [#specific_dependencies]  More specifically, as of this writing,
     these are the minimal egg dependencies (including indirect
@@ -585,7 +586,7 @@ hook up the basic data another way.
     - zope.testing
         Testing extensions and helpers.
 
-    The next section, `Configuration With Zope 3`_, still tries to limit
+    The next section, :ref:`configuration-with-zope-3`, still tries to limit
     dependencies--we only rely on additional packages zc.z3monitor, simplejson,
     and zope.app.appsetup ourselves--but as of this writing zope.app.appsetup
     ends up dragging in a large chunk of zope.app.* packages. Hopefully that

@@ -515,14 +515,14 @@ You can also pass in a different error.
 It won't work for failing tasks in ACTIVE or COMPLETED status.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
-    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> j._status_id = 1 # ACTIVE
     >>> transaction.commit()
     >>> j.fail()
     Traceback (most recent call last):
     ...
     BadStatusError: can only call fail on a job with NEW, PENDING, or ASSIGNED status
 
-    >>> j._status = zc.async.interfaces.NEW
+    >>> j._status_id = 0 # NEW
     >>> j.fail()
     >>> j.status == zc.async.interfaces.COMPLETED
     True
@@ -535,7 +535,7 @@ It's a dirty secret that it will work in CALLBACKS status.  This is because we
 need to support retries in the face of internal commits.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
-    >>> j._status = zc.async.interfaces.CALLBACKS
+    >>> j._status_id = 2 # CALLBACKS
     >>> transaction.commit()
     >>> j.fail()
     >>> j.status == zc.async.interfaces.COMPLETED
@@ -1280,7 +1280,7 @@ give an example.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
     >>> queue = j.parent = StubQueue()
-    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> j._status_id = 1 # ACTIVE
     >>> transaction.commit()
     >>> j.handleInterrupt()
     >>> j.status == zc.async.interfaces.PENDING
@@ -1292,7 +1292,7 @@ After 9 interruptions, the default policy will give up after the tenth try.
 
     >>> for i in range(8):
     ...     j.parent = agent
-    ...     j._status = zc.async.interfaces.ACTIVE
+    ...     j._status_id = 1 # ACTIVE
     ...     j.handleInterrupt()
     ...     if j.status != zc.async.interfaces.PENDING:
     ...         print 'error', i, j.status
@@ -1302,7 +1302,7 @@ After 9 interruptions, the default policy will give up after the tenth try.
     ...
     success
     >>> j.parent = agent
-    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> j._status_id = 1 # ACTIVE
     >>> j.handleInterrupt()
     >>> j.status == zc.async.interfaces.COMPLETED
     True
@@ -1318,7 +1318,7 @@ it be rescheduled later in the future.
     >>> queue = j.parent = StubQueue()
     >>> StubRescheduleRetryPolicy._reply = datetime.timedelta(hours=1)
     >>> j.retry_policy_factory = StubRescheduleRetryPolicy
-    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> j._status_id = 1 # ACTIVE
     >>> transaction.commit()
     >>> j.handleInterrupt()
     >>> j.status == zc.async.interfaces.PENDING
@@ -1332,7 +1332,7 @@ it be rescheduled later in the future.
     >>> queue = j.parent = StubQueue()
     >>> j.retry_policy_factory = StubRescheduleRetryPolicy
     >>> StubRescheduleRetryPolicy._reply = datetime.datetime(3000, 1, 1)
-    >>> j._status = zc.async.interfaces.ACTIVE
+    >>> j._status_id = 1 # ACTIVE
     >>> transaction.commit()
     >>> j.handleInterrupt()
     >>> j.status == zc.async.interfaces.PENDING
@@ -1363,15 +1363,15 @@ retry policies directly, indirectly they are often used.
 
     >>> j = root['j'] = zc.async.job.Job(multiply, 5, 2)
     >>> j._result = 10
-    >>> j._status = zc.async.interfaces.CALLBACKS
+    >>> j._status_id = 2 # CALLBACKS
     >>> completed_j = zc.async.job.Job(multiply, 3)
     >>> callbacks_j = zc.async.job.Job(multiply, 4)
     >>> callbacks_j._result = 40
-    >>> callbacks_j._status = zc.async.interfaces.CALLBACKS
+    >>> callbacks_j._status_id = 2 # CALLBACKS
     >>> sub_callbacks_j = callbacks_j.addCallbacks(
     ...     zc.async.job.Job(multiply, 2))
     >>> active_j = zc.async.job.Job(multiply, 5)
-    >>> active_j._status = zc.async.interfaces.ACTIVE
+    >>> active_j._status_id = 1 # ACTIVE
     >>> pending_j = zc.async.job.Job(multiply, 6)
     >>> for _j in completed_j, callbacks_j, active_j, pending_j:
     ...     j.callbacks.put(_j)

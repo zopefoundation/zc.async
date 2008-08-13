@@ -1,124 +1,10 @@
-.. include:: <s5defs.txt>
 
-=========================
-zc.async: An Introduction
-=========================
+==============================
+Quickstart with ``virtualenv``
+==============================
 
-:Authors: Gary Poster
-:Date:    2008/07/30
-
-.. contents::
-   :class: handout
-
-What?
-=====
-
-- Reliable, easy-to-use, Python tool
-
-- Schedules work across processes and machines
-
-.. class:: handout
-
-    zc.async is an easy-to-use Python tool that schedules work across
-    multiple processes and machines.
-
-For instance...
-===============
-
-...for web apps
-===============
-
-Maybe your web application lets users request the creation of a large PDF, or
-some other expensive task.
-
-...for postponed work
-=====================
-
-Maybe you have a job that needs to be done at a certain time, not right now.
-
-.. class:: handout
-
-    Work is always, minimally, postponed till after your current transaction
-    commits.
-
-    Work can also be scheduled to begin after a certain datetime.  This will
-    be honored as closely as the poll interval and other tasks running at the
-    desired start time allow.
-
-    zc.async does not inherently support recurring tasks, but such patterns can
-    be implemented easily on top of zc.async.  One simple pattern is to have
-    a callback schedule a new task at the next desired time.
-
-...for parallel processing
-==========================
-
-Maybe you have a long-running problem that can be made to complete faster by
-splitting it up into discrete parts, each performed in parallel, across
-multiple machines.
-
-.. class:: handout
-
-    As shown later, the easiest way to accomplish this is to use
-    ``zc.async.job.parallel``. Given three decomposed tasks, ``job_A``,
-    ``job_B``, and ``job_C``; a postprocess task named ``postprocess``; and an
-    instance of a zc.async queue, this line would schedule a composite parallel
-    job::
-
-        >>  queue.put(
-        ...     zc.async.job.parallel(
-        ...         job_A, job_B, job_C, postprocess=postprocess))
-
-.. We use ">>" intentionally when we don't want to run these lines as a test.
-
-...for serial processing
-========================
-
-Maybe you want to decompose and serialize a job.
-
-.. class:: handout
-
-    As shown later, the easiest way to accomplish this is to use
-    ``zc.async.job.serial``.  Given three decomposed tasks, ``job_A``, ``job_B``,
-    and ``job_C``; a postprocess task named ``postprocess``; and an instance
-    of a zc.async queue, this line would schedule a composite serial job::
-
-        >> queue.put(
-        ...     zc.async.job.serial(
-        ...         job_A, job_B, job_C, postprocess=postprocess))
-
-High-level Features
-===================
-
-.. class:: incremental
-
-- easy to use
-
-- flexible configuration
-
-- reliable
-
-- supports high availability
-
-- good debugging tools
-
-- well-tested
-
-- friendly to testing
-
-.. class:: handout
-
-    zc.async helps you perform those jobs easily, but with a lot of available
-    configuration if you need it. It lets you perform these jobs reliably, with
-    high availability and control over how to handle errors and system
-    interruptions. It gives you good tools to analyze and debug problems in
-    your asynchronous jobs. It is well-tested and has test helpers for you to
-    use and test patterns for you to follow.
-
-Let's Experiment!
-=================
-
-Installation with virtualenv
-============================
+Installation
+============
 
 To start, install |virtualenv|_ and create a virtual environment for our
 experiments.
@@ -278,7 +164,7 @@ connection to the database.  Then we get the queue.
 A Job
 =====
 
-Let's put a job in our queue.
+Let's put a job in our queue.  This silly example will return the current time.
 
     >>> import time
     >>> j = q.put(time.time)
@@ -358,6 +244,49 @@ Another Result
     CEcz6ZbO8zm4AEGI/dqLicZh3bhunhflAovW6WxbNKLENQ==
     -----END RSA PRIVATE KEY-----
     0
+
+Running Your Own Code
+=====================
+
+We've now seen some simple examples from the standard library.  But how do you
+get your own work done?  How can you debug it?
+
+Let's say we want to write a 
+
+Picklable Callables and Arguments
+=================================
+
+You want a job to have a reference to your own callable, so the job will get
+the work you define performed.
+
+This reference, of the job to your callable, will need to be persisted in the
+database.
+
+Because zc.async uses the ZODB for its persistence mechanism, the ZODB's
+persistence rules are in effect.
+
+Luckily, these are fairly simple.
+
+ZODB Persistence Rules
+======================
+
+- Anything pickleable can be persisted.  Module globals, such as functions,
+  can be pickled, for instance, and will come in handy for our examples.
+
+- Custom classes should typically inherit from persistent.Persistent.
+  Instances of persistent.Persistent subclasses are each stored as a single
+  record in the database, and references to them are handled efficiently.
+
+- Use the transacton module to commit and abort transactions in the ZODB.
+
+- For ZODB documentation see http://www.zope.org/Wikis/ZODB/guide/zodb.html
+
+Make a File
+===========
+
+Make a new Python file.  Let's call it ``example.py``.
+
+
 
 XXX
 ===

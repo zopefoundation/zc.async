@@ -43,7 +43,7 @@ def test_suite():
             setUp=setUp, tearDown=zc.async.tests.modTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),
         doctest.DocFileSuite(
-            'README_3.txt',
+            'README_3a.txt',
             'README_3b.txt',
             setUp=zope.component.testing.setUp,
             tearDown=tearDown,

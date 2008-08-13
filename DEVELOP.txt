@@ -29,3 +29,9 @@ As the name suggests, test the file in a ReST tool to make sure docutils
 parses it correctly.
 
 Once this works, go ahead and ``./bin/py setup.py sdist register upload``.
+
+BUILDING SPHINX DOCS
+
+sphinx-build -b <builder> sphinx sphinx/.build
+
+Then tar the resulting files in the sphinx/.build directory and upload to PyPI.

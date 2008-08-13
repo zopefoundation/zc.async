@@ -1,3 +1,5 @@
+.. _two-database-set-up:
+
 -------------------
 Two Database Set Up
 -------------------
@@ -65,9 +67,8 @@ As before, we can ask for a job to be performed, and get the result.
 Hopefully zc.async will be an easy-to-configure, easy-to-use, and useful tool
 for you! Good luck! [#shutdown]_
 
-.. ......... ..
-.. Footnotes ..
-.. ......... ..
+Footnotes
+=========
 
 .. [#process_multi]
 

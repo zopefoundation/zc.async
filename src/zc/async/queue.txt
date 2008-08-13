@@ -808,8 +808,8 @@ completed jobs will be moved to the completed collection.
     4
     >>> len(queue)
     1
-    >>> jobB._status = zc.async.interfaces.ACTIVE
-    >>> jobC._status = zc.async.interfaces.CALLBACKS
+    >>> jobB._status_id = 1 # ACTIVE
+    >>> jobC._status_id = 2 # CALLBACKS
     >>> jobD()
     42
     >>> jobD.status == zc.async.interfaces.COMPLETED
@@ -924,7 +924,7 @@ returning ``True``. Now let's look at the other two possible responses.
     ...
 
     >>> j = zc.async.job.Job(mock_work)
-    >>> j._status = zc.async.interfaces.ACTIVE # hack internals for test
+    >>> j._status_id = 1 # ACTIVE; hack internals for test
     >>> j.retry_policy_factory = StubRetryPolicy
     >>> j_wrap = queue.put(j.handleInterrupt)
     >>> len(queue)
@@ -947,7 +947,7 @@ returning ``True``. Now let's look at the other two possible responses.
 ...with a timedelta.
 
     >>> j = zc.async.job.Job(mock_work)
-    >>> j._status = zc.async.interfaces.ACTIVE # hack internals for test
+    >>> j._status_id = 1 # ACTIVE; hack internals for test
     >>> StubRetryPolicy._reply = datetime.timedelta(hours=1)
     >>> j.retry_policy_factory = StubRetryPolicy
     >>> j_wrap = queue.put(j.handleInterrupt)
@@ -997,7 +997,7 @@ in the quota if the quota has a greater limit.
     >>> list(quota) == [j]
     True
 
-    >>> j._status = zc.async.interfaces.ACTIVE # fake beginning to call
+    >>> j._status_id = 1 # ACTIVE; fake beginning to call
     >>> alt_agent.remove(j)
     >>> j_wrap = queue.put(j.handleInterrupt)
 
@@ -1075,7 +1075,7 @@ place of the original job in the quota.
     >>> list(quota) == [j2]
     True
 
-    >>> j2._status = zc.async.interfaces.ACTIVE # fake beginning to call
+    >>> j2._status_id = 1 # ACTIVE; fake beginning to call
     >>> alt_agent.remove(j2)
     >>> j2_wrap = queue.put(j2.handleInterrupt)
     >>> j2_wrap is alt_agent.claimJob(

@@ -21,11 +21,20 @@ General Tips and Tricks
 
 * Some tasks are non-transactional.  If you want to do them in a ``Job``, you
   don't want them to be retried!  Use the NeverRetry retry policy for these,
-  as described in the `Recovering from Catastrophes`_ section below.
+  as described in the :ref:`recovering-from-catastrophes` section.
 
 * zc.async works fine with both Python 2.4 and Python 2.5.  Note that building
   Twisted with Python 2.4 generates a SyntaxError in a test, but as of this
   writing Twisted 8.1.0 is supported for Python 2.4.
+
+* Using the ``transaction`` package's before-commit hooks can wreak havoc if
+  your hook causes an exception during commit, and the job uses the zc.async
+  ``RetryCommonForever`` retry policy (which all callbacks use by default).
+  This policy has a contract that it *will* commit, or die trying, so it
+  retries all transactions that have an error on commit, and emits a critical
+  log message every few retries (configurable on the policy).  If the error
+  never goes away, this will retry *forever*.  Make sure critical log messages
+  actually alert someone!
 
 Testing Tips and Tricks
 =======================
@@ -59,8 +68,9 @@ Testing Tips and Tricks
   doctests in this package, but should also be reasonably simple and
   self-explanatory.
 
-.. insert the catastrophes.txt document here
+.. toctree::
+   :maxdepth: 2
 
-.. insert the z3.txt document here
-
-.. insert the ftesting.txt document here.
+   catastrophes
+   z3
+   ftesting

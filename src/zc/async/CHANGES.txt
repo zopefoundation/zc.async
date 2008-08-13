@@ -1,3 +1,21 @@
+=======
+Changes
+=======
+
+1.4.2 (2008-??-??)
+==================
+
+- Documentation improvements.  Converted documentation into Sphinx system.
+
+- Made "other" commit errors for the ``RetryCommonForever`` retry policy have
+  an incremental backoff.  By default, this starts at 0 seconds, and increments
+  by a second to a maximum of 60 seconds.
+
+- Work around a memory leak in zope.i18nmessageid
+  (https://bugs.launchpad.net/zope3/+bug/257657).  The change should be
+  backward-compatible.  It also will produce slightly smaller pickles for Jobs,
+  but that was really not a particular goal.
+
 1.4.1 (2008-07-30)
 ==================
 

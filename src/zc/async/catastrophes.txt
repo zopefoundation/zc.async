@@ -1,3 +1,5 @@
+.. _recovering-from-catastrophes:
+
 Recovering from Catastrophes
 ============================
 
