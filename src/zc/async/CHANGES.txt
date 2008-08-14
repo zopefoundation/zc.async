@@ -16,6 +16,8 @@ Changes
   backward-compatible.  It also will produce slightly smaller pickles for Jobs,
   but that was really not a particular goal.
 
+- Added zc.async.partial.Partial for backward compatibility purposes.
+
 1.4.1 (2008-07-30)
 ==================
 
