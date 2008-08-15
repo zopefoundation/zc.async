@@ -34,7 +34,6 @@ import zc.async
 import zc.async.utils
 import zc.async.interfaces
 
-
 class PollInfo(dict):
     key = None
     @property
@@ -230,7 +229,7 @@ class Dispatcher(object):
     thread = None # this is just a placeholder that other code can use the
     # way that zc.async.subscribers.ThreadedDispatcherInstaller.__call__ does.
 
-    def __init__(self, db, reactor, poll_interval=5, uuid=None, jobs_size=200,
+    def __init__(self, db, reactor=None, poll_interval=5, uuid=None, jobs_size=200,
                  polls_size=400):
         if uuid is None:
             uuid = zope.component.getUtility(zc.async.interfaces.IUUID)
@@ -238,8 +237,7 @@ class Dispatcher(object):
             raise ValueError('dispatcher for this UUID is already registered')
         _dispatchers[uuid] = self
         self.db = db
-        self.reactor = reactor # we may allow the ``reactor`` argument to be
-        # None at some point, to default to the installed Twisted reactor.
+        self._reactor = reactor
         self.poll_interval = poll_interval
         self.UUID = uuid
         # Let's talk about jobs_size and polls_size.
@@ -266,6 +264,15 @@ class Dispatcher(object):
         self._activated = set()
         self.queues = {}
         self.dead_pools = []
+
+    @property
+    def reactor(self):
+        res = self._reactor
+        if res is None:
+            # importing this the first time is kinda slow so we're lazy
+            import twisted.internet.reactor
+            res = self._reactor = twisted.internet.reactor
+        return res
 
     def _getJob(self, agent):
         identifier = (

@@ -1,3 +1,8 @@
+- fix up tips so that it looks better
+- finish quickstart
+- write a zc.buildout quickstart
+- write a grok quickstart
+
 Improvements
 
 - queues should be pluggable like agent with filter

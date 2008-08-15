@@ -133,6 +133,21 @@ class ThreadedDispatcherInstaller(object):
 
 threaded_dispatcher_installer = ThreadedDispatcherInstaller()
 
+class TwistedDispatcherInstaller(object):
+
+    def __init__(self, poll_interval=5):
+        self.poll_interval = poll_interval
+        # This IDatabaseOpenedEvent will be from zope.app.appsetup if that
+        # package is around
+        zope.component.adapter(zc.async.interfaces.IDatabaseOpenedEvent)(self)
+
+    def __call__(self, ev):
+        dispatcher = zc.async.dispatcher.Dispatcher(
+            ev.database, poll_interval=self.poll_interval)
+        dispatcher.activate(threaded=True)
+    
+twisted_dispatcher_installer = TwistedDispatcherInstaller()
+
 class AgentInstaller(object):
 
     def __init__(self, agent_name, chooser=None, size=3, queue_names=None):

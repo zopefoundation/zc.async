@@ -797,8 +797,7 @@ to configure zc.async without Zope 3 [#stop_usage_reactor]_.
 
 .. _next section: :ref:`configuration-without-zope-3`
 
-Footnotes
-=========
+.. rubric:: Footnotes
 
 .. [#usageSetUp] We set up the configuration for our usage examples here.
 

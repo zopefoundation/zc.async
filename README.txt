@@ -4,8 +4,8 @@
 What is it?
 -----------
 
-The ``zc.async`` package provides **a Python tool that schedules work across
-multiple processes and machines.**
+The ``zc.async`` package provides **an easy-to-use Python tool that schedules
+work persistently and reliably across multiple processes and machines.**
 
 For instance...
 

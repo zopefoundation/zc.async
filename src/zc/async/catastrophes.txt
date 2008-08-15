@@ -852,9 +852,7 @@ Other problems--errors when performing or committing jobs--are handled within
 jobs, getting the decisions from retry policies as described above.  These
 are demonstrated in the job.txt document.
 
-.. ......... ..
-.. Footnotes ..
-.. ......... ..
+.. rubric:: Footnotes
 
 .. [#setUp]
 

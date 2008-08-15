@@ -77,7 +77,8 @@ setup(
     zip_safe=False,
     author='Gary Poster',
     author_email='gary@modernsongs.com',
-    description='Schedules work across multiple processes and machines.',
+    description=
+        'Schedule durable tasks across multiple processes and machines.',
     long_description=text(
         'README.txt',
         "=======\nChanges\n=======\n\n",

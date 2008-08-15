@@ -67,8 +67,7 @@ As before, we can ask for a job to be performed, and get the result.
 Hopefully zc.async will be an easy-to-configure, easy-to-use, and useful tool
 for you! Good luck! [#shutdown]_
 
-Footnotes
-=========
+.. rubric:: Footnotes
 
 .. [#process_multi]
 

@@ -3,81 +3,105 @@
 Quickstart with ``virtualenv``
 ==============================
 
+Prerequisites
+=============
+
+------------
 Installation
-============
+------------
 
 To start, install |virtualenv|_ and create a virtual environment for our
 experiments.
 
-.. class:: handout
+.. sidebar:: ``virtualenv`` and ``zc.buildout``
 
-    I prefer zc.buildout for production deployments, but virtualenv is very
-    nice for quick experimentation.
+   I prefer |zc.buildout|_ for production deployments, but |virtualenv|_ is
+   very nice for quick experimentation.  Another quick-start uses
+   |zc.buildout|_.
 
 ::
 
     $ easy_install virtualenv
     $ virtualenv quickstart
 
-Install zc.async in the virtual environment.
+Install |async|_ in the virtual environment.
 
 ::
 
     $ cd quickstart/
     $ ./bin/easy_install zc.async
 
+.. |zc.buildout| replace:: ``zc.buildout``
+
+.. _`zc.buildout`: http://pypi.python.org/pypi/zc.buildout
+
 .. |virtualenv| replace:: ``virtualenv``
 
 .. _virtualenv: http://pypi.python.org/pypi/virtualenv
 
+.. |async| replace:: ``zc.async``
+
+.. _`async`: http://pypi.python.org/pypi/zc.async
+
+------------
 Dependencies
-============
+------------
+
+.. sidebar:: Example Dependencies
+
+   Here's an example listing of the site-packages brought in by a run of this
+   quick-start.
+   
+   ::
+   
+       $ ls lib/python2.5/site-packages/
+       Twisted-8.1.0-py2.5-macosx-10.5-i386.egg
+       ZConfig-2.5.1-py2.5.egg
+       ZODB3-3.8.1b5-py2.5-macosx-10.5-i386.egg
+       easy-install.pth
+       pytz-2008c-py2.5.egg
+       rwproperty-1.0-py2.5.egg
+       setuptools-0.6c8-py2.5.egg
+       setuptools.pth
+       uuid-1.30-py2.5.egg
+       zc.async-1.4.0-py2.5.egg
+       zc.dict-1.2.1-py2.5.egg
+       zc.queue-1.1-py2.5.egg
+       zc.twist-1.3-py2.5-macosx-10.5-i386.egg
+       zdaemon-2.0.2-py2.5.egg
+       zope.bforest-1.2-py2.5.egg
+       zope.component-3.4.0-py2.5.egg
+       zope.deferredimport-3.4.0-py2.5.egg
+       zope.deprecation-3.4.0-py2.5.egg
+       zope.event-3.4.0-py2.5.egg
+       zope.i18nmessageid-3.4.3-py2.5-macosx-10.5-i386.egg
+       zope.interface-3.4.1-py2.5-macosx-10.5-i386.egg
+       zope.minmax-1.1.0-py2.5.egg
+       zope.proxy-3.4.1-py2.5-macosx-10.5-i386.egg
+       zope.testing-3.6.0-py2.5.egg
 
 This installed several packages.
 
-- the ZODB, an object database from the Zope project;
+- the ZODB_, an object database from the Zope project;
 
-- Twisted, a framework for networked applications;
+- Twisted_, a framework for networked applications;
 
 - the component architecture from the Zope project;
 
 - and a few smaller packages.
 
 All of these, and zc.async, are distributed under BSD-like licenses such as
-LGPL and ZPL.
+LGPL and ZPL_.
 
-.. class:: handout
+.. _ZODB: http://pypi.python.org/pypi/ZODB3
 
-    ::
+.. _Twisted: http://pypi.python.org/pypi/Twisted
 
-        $ ls lib/python2.5/site-packages/
-        Twisted-8.1.0-py2.5-macosx-10.5-i386.egg
-        ZConfig-2.5.1-py2.5.egg
-        ZODB3-3.8.1b5-py2.5-macosx-10.5-i386.egg
-        easy-install.pth
-        pytz-2008c-py2.5.egg
-        rwproperty-1.0-py2.5.egg
-        setuptools-0.6c8-py2.5.egg
-        setuptools.pth
-        uuid-1.30-py2.5.egg
-        zc.async-1.4.0-py2.5.egg
-        zc.dict-1.2.1-py2.5.egg
-        zc.queue-1.1-py2.5.egg
-        zc.twist-1.3-py2.5-macosx-10.5-i386.egg
-        zdaemon-2.0.2-py2.5.egg
-        zope.bforest-1.2-py2.5.egg
-        zope.component-3.4.0-py2.5.egg
-        zope.deferredimport-3.4.0-py2.5.egg
-        zope.deprecation-3.4.0-py2.5.egg
-        zope.event-3.4.0-py2.5.egg
-        zope.i18nmessageid-3.4.3-py2.5-macosx-10.5-i386.egg
-        zope.interface-3.4.1-py2.5-macosx-10.5-i386.egg
-        zope.minmax-1.1.0-py2.5.egg
-        zope.proxy-3.4.1-py2.5-macosx-10.5-i386.egg
-        zope.testing-3.6.0-py2.5.egg
+.. _ZPL: http://en.wikipedia.org/wiki/Zope_Public_License
 
+----------
 ZEO Server
-==========
+----------
 
 zc.async relies on a distributed ZODB technology called ZEO ("Zope Enterprise
 Objects") to distribute work. ZEO has a central database server to which client
@@ -90,8 +114,13 @@ Let's start the ZEO Server::
 That starts a database server, accessible on port 9999 of your local machine,
 saving the data in the test.fs file.
 
+
+Starting |async|
+================
+
+--------
 A Client
-========
+--------
 
 Now let's start a Python with a client connection to the database server.
 
@@ -103,10 +132,11 @@ Start up ``bin/python`` (not your system python, but the one in virtualenv's
 This will be our single client process.
 
 You might have many, each connecting to the main database server, and each able
-to perform and/or request zc.async jobs.
+to perform and/or request |async| jobs.
 
+-------------------
 Database Connection
-===================
+-------------------
 
 Connect to the database.
 
@@ -127,8 +157,12 @@ Connect to the database.
     >>> from ZODB.DB import DB
     >>> db = DB(storage)
 
-Start zc.async: Basics
-======================
+-------------
+Start |async|
+-------------
+
+Basics
+------
 
 Now we do some basic configuration.  This first bit installs some default
 adapters.  You might not ever have to worry too much about them.
@@ -136,8 +170,8 @@ adapters.  You might not ever have to worry too much about them.
     >>> import zc.async.configure
     >>> zc.async.configure.base()
 
-Start zc.async: Policy
-======================
+Policy
+------
 
 This second part is policy, and if you ever put zc.async in production, you'll
 want to understand what's going on here.  We'll talk about what's going on here
@@ -148,8 +182,12 @@ a little later.
 
 Now the system has a ``dispatcher`` polling for jobs every second.
 
+Using |async|
+=============
+
+---------
 The Queue
-=========
+---------
 
 The ``start`` function also installed a queue.  To get zc.async to do work, you
 put a job in a queue, and commit the transaction.
@@ -161,8 +199,9 @@ connection to the database.  Then we get the queue.
     >>> import zc.async.interfaces
     >>> q = zc.async.interfaces.IQueue(conn)
 
+-----
 A Job
-=====
+-----
 
 Let's put a job in our queue.  This silly example will return the current time.
 
@@ -175,7 +214,7 @@ It's not done yet.
     >>> j.status
     u'pending-status'
 
-.. class:: handout
+.. sidebar:: A Silly Example
 
     This is a silly example. Imagine instead that this was some really
     long-running job. Maybe you have lots of these jobs coming in, and you need
@@ -186,16 +225,18 @@ It's not done yet.
     Or maybe this is a silly example.
 ..
 
+-------------
 A Transaction
-=============
+-------------
 
 We have to commit the transaction for the dispatcher to see the job.
 
     >>> import transaction
     >>> transaction.commit()
 
+--------
 A Result
-========
+--------
 
 Now wait a second and then try this.  "transaction.begin" will sync up our
 database with database changes made elsewhere.
@@ -213,8 +254,9 @@ database with database changes made elsewhere.
     >>> j.status
     u'completed-status'
 
+-----------
 Another Job
-===========
+-----------
 
 You can also make closures by passing in the job class explicitly.  Generating
 RSA keys is actually a reasonable real-world use case for something like this.
@@ -228,8 +270,8 @@ RSA keys is actually a reasonable real-world use case for something like this.
     ...      'key.pem', '1024']))
     >>  transaction.commit()
 
-Another Result
-==============
+We need to begin the transaction to see the result--which in this case is
+simply ``0``, indicating a successful UNIX process.
 
 ::
 
@@ -237,6 +279,11 @@ Another Result
     >>  _ = transaction.begin()
     >>  j.result
     0
+
+We can open the file to show the result.
+
+::
+
     >>  subprocess.call(['cat', 'key.pem'])
     -----BEGIN RSA PRIVATE KEY-----
     MIICXgIBAAKBgQCYAZW+HjDGJhRHnUlZZWqhrGOxU2K/RhssmcMs0JLnWI2cWmZ+
@@ -248,13 +295,41 @@ Another Result
 Running Your Own Code
 =====================
 
+------------------------
+A Monte Carlo Simulation
+------------------------
+
+.. sidebar:: Another Silly Example
+
+   Monte Carlo simulations are generally better suited to other tasks in
+   real-world use; pi is typically calculated by `far more sophisticated
+   means`_.
+
 We've now seen some simple examples from the standard library.  But how do you
 get your own work done?  How can you debug it?
 
-Let's say we want to write a 
+Let's say we want to write an approach a chestnut of a problem: use a `Monte
+Carlo simulation`_ (read "throwing darts and analyzing the results") to
+`calculate pi`_.  This will use |async| much like the map-reduce approach
+of `Hadoop`_: we will want to distribute the work of running the simulation to
+multiple machines so the result can be done faster.
 
+.. note::
+
+   The ``zc.buildout`` quick-start instead uses |async| to generate PDFs
+   on the fly, if you'd like a different usage example.
+
+.. _`Monte Carlo simulation`: http://en.wikipedia.org/wiki/Monte_Carlo_method
+
+.. _`Hadoop`: http://hadoop.apache.org/core/
+
+.. _`calculate pi`: http://www.eveandersson.com/pi/monte-carlo-circle
+
+.. _`far more sophisticated means`: http://en.wikipedia.org/wiki/Computing_π
+
+---------------------------------
 Picklable Callables and Arguments
-=================================
+---------------------------------
 
 You want a job to have a reference to your own callable, so the job will get
 the work you define performed.
@@ -262,31 +337,88 @@ the work you define performed.
 This reference, of the job to your callable, will need to be persisted in the
 database.
 
+.. sidebar:: ZODB Persistence Rules
+   
+   We don't need these now.  But if you are really curious about ZODB
+   persistence rules, here's a start.
+   
+   - Anything pickleable can be persisted.  Module globals functions, can be
+     pickled (by name), for instance, and will come in handy for our examples.
+   
+   - Custom classes should typically inherit from persistent.Persistent.
+     Instances of persistent.Persistent subclasses are each stored as a single
+     record in the database, and references to them are handled efficiently.
+   
+   - Subclasses of persistent.Persistent produce instances that recognize when
+     their *direct* attributes have been written, and inform the database that
+     they are dirty, for the next committed transaction.  Standard,
+     non-persistent-aware mutables such as lists, sets and dicts do *not* know
+     when they have been changed, and are best avoided, or at least not
+     mutated. A variety of persistent-aware replacements for these types are
+     available.
+   
+   - Use the transaction module to commit and abort transactions in the ZODB.
+   
+   More advanced concerns include the following.
+   
+   - An optimistic implementation of MVCC_ in the ZODB means that you should be
+     careful reading (not writing) one persistent.Persistent instance (record)
+     and writing another persistent.Persistent instance with a value that
+     depends on the first, read value within a transaction.
+   
+   - Concurrent transactions can produce write conflict errors.  Transactions
+     are often automatically retried in |async| and other ZODB-based systems if
+     conflict errors are encountered.  If this is not desired for a given
+     |async| job, it should be given a ``zc.async.job.NeverRetry`` retry
+     policy, as discussed elsewhere in this documentation.
+   
+   For ZODB documentation see http://www.zope.org/Wikis/ZODB/guide/zodb.html
+
 Because zc.async uses the ZODB for its persistence mechanism, the ZODB's
 persistence rules are in effect.
 
 Luckily, these are fairly simple.
 
-ZODB Persistence Rules
-======================
+For now, we'll stay as simple as it gets: if you use *module global functions*
+and *immutables*, and share software across instances, you'll be fine.
 
-- Anything pickleable can be persisted.  Module globals, such as functions,
-  can be pickled, for instance, and will come in handy for our examples.
+ZODB allows a lot more, if you're willing to follow a few more rules, but that
+one rule will get us moving for this quick-start.
 
-- Custom classes should typically inherit from persistent.Persistent.
-  Instances of persistent.Persistent subclasses are each stored as a single
-  record in the database, and references to them are handled efficiently.
+.. _MVCC: http://en.wikipedia.org/wiki/Multiversion_concurrency_control
 
-- Use the transacton module to commit and abort transactions in the ZODB.
-
-- For ZODB documentation see http://www.zope.org/Wikis/ZODB/guide/zodb.html
-
+-----------
 Make a File
-===========
+-----------
 
-Make a new Python file.  Let's call it ``example.py``.
+Make a new Python file.  Let's call it ``pi.py``.
 
+At the top, include the same code we used in the interpreter above.
 
+::
+
+    import ZEO.ClientStorage
+    import ZODB
+    import twisted.internet.reactor
+
+    twisted.internet.reactor.start()
+
+    def generateSample():
+        pass XXX
+
+    def processSamples(*sample_jobs):
+        pass XXX
+
+    if __name__ == '__main__':
+        storage = ZEO.ClientStorage.ClientStorage(
+            ('127.0.0.1', 9999))
+        db = ZODB.DB(storage)
+    
+        import zc.async.configure
+        zc.async.configure.base()
+    
+        zc.async.configure.start(
+            db, poll_interval=1, twisted=True)
 
 XXX
 ===

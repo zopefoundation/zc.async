@@ -118,8 +118,7 @@ responsible for seeing what jobs its agents want to do from the queue,
 and providing threads and connections for the work to be done.  The
 dispatcher then asks the reactor to call itself again in a few seconds.
 
-Footnotes
-=========
+.. rubric:: Footnotes
 
 .. [#async_history] The first generation, ``zasync``, had the following goals:
 

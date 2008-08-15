@@ -518,8 +518,7 @@ hook up the basic data another way.
 
     >>> reactor.stop()
 
-Footnotes
-=========
+.. rubric:: Footnotes
 
 .. [#specific_dependencies]  More specifically, as of this writing,
     these are the minimal egg dependencies (including indirect
@@ -727,6 +726,6 @@ Footnotes
 
     >>> import zc.async.testing
     >>> reactor = zc.async.testing.Reactor()
-    >>> dispatcher.reactor = reactor
+    >>> dispatcher._reactor = reactor
     >>> dispatcher.activate()
     >>> reactor.start()

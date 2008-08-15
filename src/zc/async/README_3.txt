@@ -51,8 +51,7 @@ as will be more appropriate for typical production usage.
    README_3a
    README_3b
 
-Footnotes
-=========
+.. rubric:: Footnotes
 
 .. [#extras_require] The "[z3]" is an "extra", defined in zc.async's setup.py
     in ``extras_require``. It pulls along zc.z3monitor and simplejson in

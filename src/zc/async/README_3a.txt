@@ -187,8 +187,7 @@ Now we'll "shut down" with a CTRL-C, or SIGINT, and clean up.
 
 These instructions are very similar to the :ref:`two-database-set-up`.
 
-Footnotes
-=========
+.. rubric:: Footnotes
 
 .. [#get_vals]
 

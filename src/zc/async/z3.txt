@@ -92,6 +92,7 @@ Let's illustrate.
     >>> print zope.app.component.hooks.getSite()
     None
 
+.. rubric:: Footnotes
 
 .. [#zope3job_database_setup]
 
