@@ -1,0 +1,4 @@
+include src/zc/async *.txt
+exclude MANIFEST.in TEST_THIS_REST_BEFORE_REGISTERING.txt
+prune sphinx
+prune bootstrap

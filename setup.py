@@ -18,6 +18,7 @@ from setuptools import setup, find_packages
 try:
     import docutils
 except ImportError:
+    docutils = None
     def validateReST(text):
         return ''
 else:
@@ -71,7 +72,8 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.4.2a1',
+    version='1.4.2a2',
+    namespace_packages=['zc'],
     packages=find_packages('src'),
     package_dir={'':'src'},
     zip_safe=False,
@@ -81,9 +83,8 @@ setup(
         'Schedule durable tasks across multiple processes and machines.',
     long_description=text(
         'README.txt',
-        "=======\nChanges\n=======\n\n",
         'src/zc/async/CHANGES.txt',
-        out=True),
+        out=(docutils is not None)),
     license='ZPL',
     install_requires=[
         'ZODB3',
@@ -113,5 +114,4 @@ setup(
             'zope.app.component',
             'simplejson',
             ]},
-    include_package_data=True,
     )

@@ -1,8 +1,9 @@
 ``zc.async``
-============
+~~~~~~~~~~~~
 
+===========
 What is it?
------------
+===========
 
 The ``zc.async`` package provides **an easy-to-use Python tool that schedules
 work persistently and reliably across multiple processes and machines.**
@@ -39,8 +40,9 @@ High-level features include the following:
 
 While developed as part of the Zope project, zc.async can be used stand-alone.
 
+=================
 How does it work?
------------------
+=================
 
 The system uses the Zope Object Database (ZODB), a transactional, pickle-based
 Python object database, for communication and coordination among participating

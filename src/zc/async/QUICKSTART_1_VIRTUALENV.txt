@@ -342,7 +342,7 @@ database.
    We don't need these now.  But if you are really curious about ZODB
    persistence rules, here's a start.
    
-   - Anything pickleable can be persisted.  Module globals functions, can be
+   - Anything pickleable can be persisted.  Module global functions can be
      pickled (by name), for instance, and will come in handy for our examples.
    
    - Custom classes should typically inherit from persistent.Persistent.
