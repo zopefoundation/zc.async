@@ -438,19 +438,21 @@ class Dispatcher(object):
             self.reactor.callLater(self.poll_interval, self.directPoll)
 
     def _inThreadPoll(self, deferred):
+        self.conn = self.db.open()
         try:
             self.poll()
         finally:
+            self.conn.close()
             self.reactor.callFromThread(deferred.callback, None)
 
     def threadedPoll(self):
         if not self.activated:
             return
         deferred = twisted.internet.defer.Deferred()
-        self.reactor.callInThread(self._inThreadPoll, deferred)
         deferred.addCallback(
             lambda result: self.reactor.callLater(
                 self.poll_interval, self.threadedPoll))
+        self.reactor.callInThread(self._inThreadPoll, deferred)
 
     def activate(self, threaded=False):
         if self.activated:
@@ -463,8 +465,9 @@ class Dispatcher(object):
         self.jobs.clear()
         # increase pool size to account for the dispatcher poll
         self.db.setPoolSize(self.db.getPoolSize() + 1)
-        self.conn = self.db.open() # we keep the same connection for all
-        # polls as an optimization
+        if not threaded:
+            self.conn = self.db.open() # we keep the same connection for all
+            # polls as an optimization
         if threaded:
             self.reactor.callWhenRunning(self.threadedPoll)
         else:

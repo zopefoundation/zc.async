@@ -27,9 +27,13 @@ dispatchers, each in its own software instance, to connect to a single
 database to do work.
 
 In order to decide where to look for this file (or to create it, if
-necessary), the module looks in ``os.environ['ZC_ASYNC_UUID']`` for a file
-name.  If you are using Zope 3, you can set this in a zdaemon environment
-section of your zdaemon.conf.
+necessary), the module looks in ``os.environ['ZC_ASYNC_UUID']`` for a
+file name.
+
+If you are using zdaemon (http://pypi.python.org/pypi/zdaemon) to
+daemonize your process, you can set this in a zdaemon environment section
+of your zdaemon.conf. Supervisor (http://supervisord.org/) also provides
+this functionality. Other similar tools probably do as well.
 
 If the ``ZC_ASYNC_UUID`` is not found in the environment, it will use
 ``os.path.join(os.getgwd(), 'uuid.txt')`` as the file name.

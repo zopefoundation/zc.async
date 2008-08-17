@@ -2,6 +2,8 @@
 - finish quickstart
 - write a zc.buildout quickstart
 - write a grok quickstart
+- write test for using installed twisted reactor
+- write test for interrupt retry of parallel/serial
 
 Improvements
 

@@ -869,3 +869,8 @@ div.sidebar p.sidebar-title {
 div.sidebar p.sidebar-title tt {
 	background: transparent;
 }
+
+div#a-job div.highlight,
+div#make-a-file div.highlight {
+	background-color: #fff;
+}

@@ -985,8 +985,10 @@ def _queue_next(main_job, ix=0, ignored_result=None):
         next.addCallback(Job(_queue_next, main_job, ix+1))
     else:
         postprocess = main_job.kwargs['postprocess']
-        postprocess.args.extend(jobs)
-        queue.put(postprocess)
+        if postprocess.status == zc.async.interfaces.NEW:
+            # will not be NEW if this is a retry
+            postprocess.args.extend(jobs)
+            queue.put(postprocess)
 
 def _schedule_serial(*jobs, **kw):
     _queue_next(zc.async.local.getJob())
@@ -1010,8 +1012,10 @@ def _queue_all(main_job, ignored_result=None):
             complete = False
     if complete:
         postprocess = main_job.kwargs['postprocess']
-        postprocess.args.extend(jobs)
-        queue.put(postprocess)
+        if postprocess.status == zc.async.interfaces.NEW:
+            # will not be NEW if this is a retry
+            postprocess.args.extend(jobs)
+            queue.put(postprocess)
 
 def _schedule_parallel(*jobs, **kw):
     _queue_all(zc.async.local.getJob())
