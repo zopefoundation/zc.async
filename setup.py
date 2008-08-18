@@ -72,10 +72,11 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.4.2a3',
+    version='1.4.2a4',
     namespace_packages=['zc'],
     packages=find_packages('src'),
     package_dir={'':'src'},
+    package_data = {'': ['*.py', '*.txt', '*.zcml']},
     zip_safe=False,
     author='Gary Poster',
     author_email='gary@modernsongs.com',
