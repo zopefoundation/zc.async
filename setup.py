@@ -72,11 +72,11 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.4.2a4',
+    version='1.4.2a5',
     namespace_packages=['zc'],
     packages=find_packages('src'),
     package_dir={'':'src'},
-    package_data = {'': ['*.py', '*.txt', '*.zcml']},
+    package_data = {'': ['*.txt', '*.zcml']},
     zip_safe=False,
     author='Gary Poster',
     author_email='gary@modernsongs.com',
@@ -115,4 +115,5 @@ setup(
             'zope.app.component',
             'simplejson',
             ]},
+    url='http://packages.python.org/zc.async'
     )

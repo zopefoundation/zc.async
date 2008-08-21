@@ -1,4 +1,3 @@
-include src/zc/async *.txt
-exclude MANIFEST.in TEST_THIS_REST_BEFORE_REGISTERING.txt
+exclude MANIFEST.in TEST_THIS_REST_BEFORE_REGISTERING.txt buildout.cfg
 prune sphinx
 prune bootstrap
