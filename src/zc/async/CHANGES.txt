@@ -18,7 +18,7 @@ Changes
 
 - Added zc.async.partial.Partial for backward compatibility purposes.
 
-- Fix support for Twisted installed reactor XXX NEEDS TEST
+- Fix support for Twisted installed reactor
 
 - Fix retry behavior for parallel and serial jobs XXX NEEDS TEST
 
@@ -32,7 +32,7 @@ Changes
 1.4.1 (2008-07-30)
 ==================
 
-- The new ``serial`` and ``parallel`` helpers did not allow the the
+- The new ``serial`` and ``parallel`` helpers did not allow the
   ``postprocess`` argument to be a partial closure, and were being naughty.
   Fixed.
 

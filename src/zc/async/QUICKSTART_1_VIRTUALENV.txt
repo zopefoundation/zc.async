@@ -1,3 +1,4 @@
+.. _quickstart-with-virtualenv:
 
 ==============================
 Quickstart with ``virtualenv``
@@ -328,11 +329,6 @@ Carlo simulation`_ (read "throwing darts and analyzing the results") to
 `calculate pi`_.  This will use |async| much like the map-reduce approach
 of `Hadoop`_: we will want to distribute the work of running the simulation to
 multiple machines so the result can be done faster.
-
-.. note::
-
-   The ``zc.buildout`` quick-start instead uses |async| to generate PDFs
-   on the fly, if you'd like a different usage example.
 
 .. _`Monte Carlo simulation`: http://en.wikipedia.org/wiki/Monte_Carlo_method
 

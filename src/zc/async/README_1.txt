@@ -792,10 +792,11 @@ making network calls using Twisted or zc.ngi, for instance.
 Conclusion
 ==========
 
-This concludes our discussion of zc.async usage. The `next section`_ shows how
-to configure zc.async without Zope 3 [#stop_usage_reactor]_.
+This concludes our discussion of zc.async usage. The :ref:`next section
+<configuration-without-zope-3>` shows how to configure zc.async without
+Zope 3 [#stop_usage_reactor]_.
 
-.. _next section: :ref:`configuration-without-zope-3`
+.. _`next section`: :ref:`configuration-without-zope-3`
 
 .. rubric:: Footnotes
 

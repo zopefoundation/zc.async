@@ -1,0 +1,43 @@
+This is a regression test to show that the main, installed Twisted reactor
+can be used with the dispatcher.
+
+    >>> import ZODB.FileStorage
+    >>> storage = ZODB.FileStorage.FileStorage(
+    ...     'zc_async.fs', create=True)
+    >>> from ZODB.DB import DB
+    >>> db = DB(storage)
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+    >>> zc.async.configure.start(db, poll_interval=0.1, twisted=True)
+    >>> def do_work():
+    ...     return 42
+    ...
+    >>> import twisted.internet.reactor
+    >>> def stop_reactor(result):
+    ...     twisted.internet.reactor.callFromThread(
+    ...         twisted.internet.reactor.stop)
+    ...
+    >>> import zc.async.queue
+    >>> import zc.async.instanceuuid
+    >>> oid = None
+    >>> import transaction
+    >>> def install_job(db):
+    ...     conn = db.open()
+    ...     try:
+    ...         q = zc.async.queue.getDefaultQueue(conn)
+    ...         j = q.put(do_work)
+    ...         j.addCallback(stop_reactor)
+    ...         transaction.commit()
+    ...         global oid
+    ...         oid = j._p_oid
+    ...     finally:
+    ...         transaction.abort()
+    ...         conn.close()
+    ...
+    >>> ignore = twisted.internet.reactor.callWhenRunning(install_job, db)
+    >>> twisted.internet.reactor.run()
+    >>> conn = db.open()
+    >>> j = conn.get(oid)
+    >>> import zc.async.testing
+    >>> zc.async.testing.wait_for_result(j)
+    42
