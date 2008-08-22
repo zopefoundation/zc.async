@@ -473,7 +473,8 @@ Use the following for the file content.
     The last code block should look similar to our previous example of starting
     up a dispatcher, except this one uses the main, installed Twisted reactor,
     rather than a threaded instance.  It creates the database, configures
-    zc.async, and starts the reactor.
+    zc.async, and starts the reactor.  We use a short poll_interval so we can
+    have a perceptually snappy response in this quick start.
 
 ::
 
@@ -507,7 +508,7 @@ Use the following for the file content.
         db = ZODB.DB(storage)
         zc.async.configure.base()
         zc.async.configure.start(
-            db, poll_interval=1, twisted=True)
+            db, poll_interval=0.1, twisted=True)
         twisted.internet.reactor.run()
 
 .. We'll need these defined when we run this as a test.
@@ -680,20 +681,23 @@ job at a time.
 We will also reconfigure the existing agent to accept up to three of
 anything *except* ``generate_sample``.
 
-We'll do that in our file.  Here's the revised version.  The only change is
-in the imports and in the ``if __name__ == '__main__':`` block.
+We'll do that in our file.  Here's the revised version.  The only changes
+are the imports, the three new functions, and setting up
+``install_agent`` in the ``if __name__ == '__main__':`` block.
 
 .. sidebar:: Code Walkthrough for Changes
 
    We import three new modules from |async|, :mod:zc.async.queue,
-   :mod:zc.async.instanceuuid, and :mod:zc.async.agent.  The ``agent``
-   implementation uses a function called a
+   :mod:zc.async.instanceuuid, and :mod:zc.async.agent.  The
+   :class:`~zc.async.interfaces.IAgent`
+   implementation (:class:`zc.async.agent.Agent`) uses a function called a
    :attr:`~zc.async.agent.Agent.chooser` to determine its
    policy for choosing agents.  We define two chooser functions, one for
    each agent: ``choose_generate_sample`` and ``choose_another``.  Then
-   we set up the old agent to use ``choose_another``, and create a new
-   agent of ``size=1`` with the ``choose_generate_sample`` chooser. 
-   That's it.
+   we have a function ``install_agent`` to set up the old agent to use
+   ``choose_another``, and create a new agent of ``size=1`` with the
+   ``choose_generate_sample`` chooser.  We make sure this function is
+   installed to run when the Twisted reactor starts. That's it.
    
    It's important to note that the references to these functions are
    persistent, and by name.  If you change the location or name of these
@@ -717,24 +721,24 @@ in the imports and in the ``if __name__ == '__main__':`` block.
 
     import random
     import math
-
+    
     import ZEO.ClientStorage
     import ZODB
     import transaction
     import twisted.internet.reactor
-
+    
     import zc.async.configure
     import zc.async.queue
     import zc.async.instanceuuid
     import zc.async.agent
-
+    
     def generate_sample(size=100000):
         count = 0
         for i in range(size):
             if math.hypot(random.random(), random.random()) < 1:
                 count += 1
         return count, size
-
+    
     def process_samples(*sample_jobs):
         count = 0 
         size = 0
@@ -742,32 +746,42 @@ in the imports and in the ``if __name__ == '__main__':`` block.
             count += j.result[0]
             size += j.result[1]
         return 4.0 * count / size
-
+    
     def choose_generate_sample(agent):
-        return return agent.queue.claim(
-            lambda j: j.callable == generate_sample)
-
+        return agent.queue.claim(
+            lambda j: j.callable.__name__ == 'generate_sample')
+    
     def choose_another(agent):
-        return return agent.queue.claim(
-            lambda j: j.callable != generate_sample)
-
+        return agent.queue.claim(
+            lambda j: j.callable.__name__ != 'generate_sample')
+    
+    def install_agent(db):
+        conn = db.open()
+        try:
+            q = zc.async.queue.getDefaultQueue(conn)
+            try:
+                dispatcher = q.dispatchers[zc.async.instanceuuid.UUID]
+            except KeyError:
+                twisted.internet.reactor.callLater(0.05, install_agent, db)
+            else:
+                if 'generate_sample' not in dispatcher:
+                    agent = dispatcher['main']
+                    agent.chooser = choose_another
+                    dispatcher['generate_sample'] = zc.async.agent.Agent(
+                        choose_generate_sample, 1)
+                    transaction.commit()
+        finally:
+            transaction.abort()
+            conn.close()
+    
     if __name__ == '__main__':
         storage = ZEO.ClientStorage.ClientStorage(
             ('127.0.0.1', 9999))
         db = ZODB.DB(storage)
         zc.async.configure.base()
         zc.async.configure.start(
-            db, poll_interval=1, twisted=True)
-        conn = db.open()
-        q = zc.async.queue.getDefaultQueue(conn)
-        dispatcher = q.dispatchers[zc.async.instanceuuid.UUID]
-        if 'generate_sample' not in dispatcher:
-            agent = dispatcher['main']
-            agent.chooser = choose_another
-            dispatcher['generate_sample'] = zc.async.agent.Agent(
-                choose_generate_sample, 1)
-            transaction.commit()
-        conn.close()
+            db, poll_interval=0.1, twisted=True)
+        twisted.internet.reactor.callWhenRunning(install_agent, db)
         twisted.internet.reactor.run()
 
 .. _`talent agent`: http://en.wikipedia.org/wiki/Talent_agent
@@ -816,9 +830,11 @@ And now, our test.
     zc.async.configure.base()
     import pi
     import zc.async.job
+    import zc.async.queue
+    q = zc.async.queue.getDefaultQueue(conn)
     j = q.put(zc.async.job.parallel(
-        zc.async.job.Job(pi.generate_sample, 500000),
-        zc.async.job.Job(pi.generate_sample, size=500000),
+        zc.async.job.Job(pi.generate_sample, 5000000),
+        zc.async.job.Job(pi.generate_sample, size=5000000),
         postprocess=pi.process_samples))
     import transaction
     transaction.commit()
@@ -838,7 +854,7 @@ the same number of samples, but not in parallel.
 ::
 
     j2 = q.put(zc.async.job.parallel(
-        zc.async.job.Job(pi.generate_sample, 1000000),
+        zc.async.job.Job(pi.generate_sample, 10000000),
         postprocess=pi.process_samples))
     transaction.commit()
     _ = transaction.begin()
@@ -851,7 +867,9 @@ Once both jobs are complete, compare their run-time.
     j.active_end - j.active_start
     j2.active_end - j2.active_start
 
-Even in this simple, short example, we ran XXX faster.
+On my machine, even in this simple, short example, running in parallel
+with a job per processor/core took 7.8 seconds, while running all in one
+process took 13.4 seconds.
 
 Other Configuration
 -------------------
