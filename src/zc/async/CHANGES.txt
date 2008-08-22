@@ -22,9 +22,12 @@ Changes
 
 - Fix retry behavior for parallel and serial jobs XXX NEEDS TEST
 
-- tweaked the uuid.txt to mention zdaemon/supervisor rather than Zope 3.
+- Tweaked the uuid.txt to mention zdaemon/supervisor rather than Zope 3.
 
-- fixed some bugs in egg creation
+- Fixed some bugs in egg creation
+
+- Changed quotas to not use a container that has conflict resolution, since
+  these values should be a strict maximum.
 
 1.4.1 (2008-07-30)
 ==================

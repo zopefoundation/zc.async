@@ -209,23 +209,32 @@ class Dispatchers(zc.dict.Dict):
 
 
 class Quota(zc.async.utils.Base):
+    # this implementation is reasonable for relatively small (say, size<100)
+    # quotas.
 
     zope.interface.implements(zc.async.interfaces.IQuota)
 
+    _data = ()
+
     def __init__(self, name, size):
-        self._data = zc.queue.Queue()
         self.name = name
         self.size = size
 
     def clean(self):
         now = datetime.datetime.now(pytz.UTC)
-        for i, job in enumerate(reversed(self._data)):
+        changed = False
+        new = []
+        for job in self._data:
             status = job.status
             if status in (zc.async.interfaces.CALLBACKS,
                           zc.async.interfaces.COMPLETED) or (
                 status == zc.async.interfaces.PENDING and
                 job.begin_after > now): # for a rescheduled task
-                self._data.pull(-1-i)
+                changed = True # remove from quota
+            else:
+                new.append(job)
+        if changed:
+            self._data = tuple(new)
 
     @property
     def filled(self):
@@ -246,7 +255,8 @@ class Quota(zc.async.utils.Base):
             raise ValueError('quota name must be in quota_names')
         if self.filled:
             raise ValueError('Quota is filled')
-        self._data.put(item)
+        # casting self._data to tuple for legacy instances; no-op for tuples
+        self._data = tuple(self._data) + (item,)
 
     for nm in ('__len__', '__iter__', '__getitem__', '__nonzero__', 'get'):
         locals()[nm] = zc.async.utils.simpleWrapper(nm)
