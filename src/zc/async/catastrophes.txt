@@ -513,7 +513,7 @@ Here we start a job.
     >>> transaction.commit()
     >>> dispatcher = zc.async.dispatcher.get()
     >>> poll = zc.async.testing.get_poll(dispatcher)
-    >>> wait_for_start(job)
+    >>> zc.async.testing.wait_for_start(job)
 
 In this scenario, ``wait_for_me`` is a job that, the first time it is run, will
 "unexpectedly" be lost while the dispatcher stops working. ``handle_result``
@@ -525,7 +525,7 @@ let's give the dispatcher a graceful exit. The dispatcher gets a chance to
 clean up its dispatcher agents, and job.handleInterrupt() goes into the queue.
 
     >>> dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
-    >>> wait_to_deactivate(dispatcher)
+    >>> zc.async.testing.wait_for_deactivation(dispatcher)
     >>> _ = transaction.begin()
     >>> job.status == zc.async.interfaces.ACTIVE
     True
@@ -586,7 +586,7 @@ So, first we start a long-running job in the dispatcher.
     >>> transaction.commit()
     >>> dispatcher = zc.async.dispatcher.get()
     >>> poll = zc.async.testing.get_poll(dispatcher)
-    >>> wait_for_start(job)
+    >>> zc.async.testing.wait_for_start(job)
 
 Now we'll "crash" the dispatcher.
 
@@ -679,11 +679,10 @@ To speed up the realization of our dispatcher that the previous activation is
     0
     >>> import datetime
     >>> da.ping_death_interval = datetime.timedelta(seconds=1)
-    >>> da.dead
-    True
+    >>> transaction.commit()
+    >>> zc.async.testing.wait_for_death(da)
     >>> bool(da.activated)
     True
-    >>> transaction.commit()
 
 After the next poll, the dispatcher will have cleaned up its old tasks in the
 same way we saw in the previous example. The job's ``handleInterrupt`` method
@@ -747,7 +746,7 @@ So, first we start a long-running job in the dispatcher as before.
     >>> transaction.commit()
     >>> dispatcher = zc.async.dispatcher.get()
     >>> poll = zc.async.testing.get_poll(dispatcher)
-    >>> wait_for_start(job)
+    >>> zc.async.testing.wait_for_start(job, seconds=30) # XXX not sure why so long
 
 Now we'll start up an alternate dispatcher.
 
@@ -764,6 +763,7 @@ around to cleaning up.
 
     >>> da.ping_death_interval = datetime.timedelta(seconds=60)
     >>> transaction.commit()
+    >>> 
 
 Now we'll "crash" the dispatcher.
 
@@ -771,6 +771,8 @@ Now we'll "crash" the dispatcher.
     ...                              # cleanup
     >>> dispatcher.reactor.callFromThread(dispatcher.reactor.crash)
     >>> dispatcher.thread.join(3)
+    >>> dispatcher.thread.isAlive()
+    False
 
 As discussed in the previous example, the polling hasn't timed out yet, so the
 alternate dispatcher can't know that the first one is dead. Therefore, the job
@@ -808,11 +810,10 @@ we'll set the ping_death_interval back down to just one second.
     datetime.timedelta(0, 60)
     >>> import datetime
     >>> da.ping_death_interval = datetime.timedelta(seconds=1)
-    >>> da.dead
-    True
+    >>> transaction.commit()
+    >>> zc.async.testing.wait_for_death(da)
     >>> bool(da.activated)
     True
-    >>> transaction.commit()
 
 After the second dispatcher gets a poll--a chance to notice--it will have
 cleaned up the first dispatcher's old tasks in the same way we saw in the
@@ -877,25 +878,6 @@ are demonstrated in the job.txt document.
     >>> zope.event.notify(zc.async.interfaces.DatabaseOpened(db))
     >>> import transaction
     >>> _ = transaction.begin()
-
-    >>> from time import sleep as time_sleep # we import in this manner so
-    ... # that our testing monkey-patch of time.sleep does not affect our tests
-    >>> def wait_for_start(job):
-    ...     for i in range(60):
-    ...         t = transaction.begin()
-    ...         if job.status == zc.async.interfaces.ACTIVE:
-    ...             break
-    ...         time_sleep(0.1)
-    ...     else:
-    ...         assert False, 'job never started'
-
-    >>> def wait_to_deactivate(dispatcher):
-    ...     for i in range(60):
-    ...         if dispatcher.activated == False:
-    ...             break
-    ...         time_sleep(0.1)
-    ...     else:
-    ...         assert False, 'dispatcher never deactivated'
 
 .. [#cleanup1]
 

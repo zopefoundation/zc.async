@@ -295,6 +295,7 @@ in it now. We can get some information about that job from the dispatcher.
      'failed': False,
      'poll id': ...,
      'quota names': (),
+     'reassigned': False,
      'result': '42',
      'started': datetime.datetime(...),
      'thread': ...}
@@ -412,6 +413,40 @@ zc.async.testing.
     >>> wait_for_result(job4)
     "reply is 'HIYA'.  Locally it is MISSING."
 
+Sometimes, hopefully rarely-to-never, the dispatcher polls don't happen
+frequently enough.  This might happen with a very long database commit, for
+instance, that locks out other changes until it is done.  In this case, a
+dispatcher is incorrectly regarded as dead (see ``catastrophes.txt`` for a
+detailed discussion).  The dispatcher polls before it gets jobs, which
+informs the queue that it is not actually dead.  Then the agent is still
+willing to claim jobs.
+
+    >>> job5 = queue.put(zc.async.job.Job(operator.mod, 85, 43))
+    >>> da = queue.dispatchers[zc.async.instanceuuid.UUID]
+    >>> import pytz
+    >>> da.activated = da.last_ping.value = (datetime.datetime.now(pytz.UTC) -
+    ...                                      datetime.timedelta(days=365))
+    >>> da.dead
+    True
+    >>> da.deactivate()
+    >>> bool(da.activated)
+    False
+    >>> transaction.commit()
+    >>> ignore = get_poll(dispatcher)
+    >>> ignore = transaction.begin()
+    >>> bool(da.activated)
+    True
+    >>> evs = eventtesting.getEvents(
+    ...     zc.async.interfaces.IDispatcherReactivated)
+    >>> evs # doctest: +ELLIPSIS
+    [<zc.async.interfaces.DispatcherReactivated object at ...>]
+    >>> evs[0].object._p_oid == da._p_oid
+    True
+    >>> job5.status != zc.async.interfaces.PENDING
+    True
+    >>> wait_for_result(job5)
+    42
+
 We can analyze the work the dispatcher has done. The records for this generally
 only go back about ten or twelve minutes--just enough to get a feel for the
 current health of the dispatcher. Use the log if you want more long-term
@@ -425,10 +460,10 @@ analysis.
      'shortest active': None,
      'shortest failed': (..., 'unnamed'),
      'shortest successful': (..., 'unnamed'),
-     'started': 8,
+     'started': 9,
      'statistics end': datetime.datetime(...),
      'statistics start': datetime.datetime(...),
-     'successful': 6,
+     'successful': 7,
      'unknown': 0}
 
 We can get a report on the reactor's status.

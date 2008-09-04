@@ -591,15 +591,19 @@ class Job(zc.async.utils.Base):
                 policy, self, call_name)
             return None
         identifier = 'getting result for %s retry for %r' % (call_name, self)
-        return zc.async.utils.never_fail(lambda: call(*args), identifier, tm)
+        res = zc.async.utils.never_fail(lambda: call(*args), identifier, tm)
+        self._check_reassigned((zc.async.interfaces.ACTIVE,)) # will raise
+        # exception if necessary
+        return res
 
     def __call__(self, *args, **kwargs):
-        if self.status not in (zc.async.interfaces.NEW,
-                               zc.async.interfaces.ASSIGNED):
+        statuses = (zc.async.interfaces.NEW, zc.async.interfaces.ASSIGNED)
+        if self.status not in statuses:
             raise zc.async.interfaces.BadStatusError(
                 'can only call a job with NEW or ASSIGNED status')
         tm = transaction.interfaces.ITransactionManager(self)
         def prepare():
+            self._check_reassigned(statuses)
             self._status_id = 1 # ACTIVE
             self._active_start = datetime.datetime.now(pytz.UTC)
             effective_args = list(args)
@@ -692,6 +696,7 @@ class Job(zc.async.utils.Base):
                         self, res)
                 res = failure
                 def complete():
+                    self._check_reassigned((zc.async.interfaces.ACTIVE,))
                     self._result = res
                     self._status_id = 2 # CALLBACKS
                     self._active_end = datetime.datetime.now(pytz.UTC)
@@ -794,6 +799,31 @@ class Job(zc.async.utils.Base):
                 queue.put(self, begin_after=now+when)
         return self
 
+    def _check_reassigned(self, expected_statuses):
+        agent = self.agent
+        res = self.status not in expected_statuses or (
+            zc.async.interfaces.IAgent.providedBy(agent) and
+            not zc.async.interfaces.IJob.providedBy(self._result) and
+            zc.async.local.getAgentName() is not None and
+            (zc.async.local.getAgentName() != agent.name or
+             zc.async.local.getDispatcher().UUID != agent.parent.UUID))
+        if res:
+            # the only known scenario for this to occur is the following.
+            # agent took job.  dispatcher gave it to a thread.  While
+            # performing the job, the poll was unable to write to the db,
+            # perhaps because of a database disconnect or because of a
+            # too-long commit in another process or thread.  Therefore,
+            # A sibling has noticed that this agent seems to have died
+            # and put this job back in the queue, where it has been claimed
+            # by another process/agent.
+            # It's debatable whether this is CRITICAL or ERROR level.  We'll
+            # go with ERROR for now.
+            zc.async.utils.log.error(
+                'Job %r was reassigned.  Likely cause was that polling was '
+                'unable to occur as regularly as expected, perhaps because of '
+                'long commit times in the application.', self)
+            raise zc.async.interfaces.ReassignedError()
+
     def _set_result(self, res, tm, data_cache=None):
         # returns whether to call ``resumeCallbacks``
         callback = True
@@ -814,7 +844,8 @@ class Job(zc.async.utils.Base):
             self._active_end = datetime.datetime.now(pytz.UTC)
         if self._retry_policy is not None and data_cache:
             self._retry_policy.updateData(data_cache)
-        tm.commit()
+        tm.commit() # this should raise a ConflictError if the job has been
+        # reassigned.
         return callback
 
     def _log_completion(self, res):
@@ -921,11 +952,13 @@ class Job(zc.async.utils.Base):
         if self.status != zc.async.interfaces.CALLBACKS:
             raise zc.async.interfaces.BadStatusError(
                 'can only resumeCallbacks on a job with CALLBACKS status')
+        self._check_reassigned((zc.async.interfaces.CALLBACKS,))
         callbacks = list(self.callbacks)
         tm = transaction.interfaces.ITransactionManager(self)
         length = 0
         while 1:
             for j in callbacks:
+                self._check_reassigned((zc.async.interfaces.CALLBACKS,))
                 if zc.async.interfaces.ICallbackProxy.providedBy(j):
                     j = j.getJob(self.result)
                 status = j.status
@@ -991,7 +1024,12 @@ def _queue_next(main_job, ix=0, ignored_result=None):
             queue.put(postprocess)
 
 def _schedule_serial(*jobs, **kw):
-    _queue_next(zc.async.local.getJob())
+    for ix, job in enumerate(jobs): # important for interrupts
+        if job.status == zc.async.interfaces.NEW:
+            break
+    else:
+        ix += 1
+    _queue_next(zc.async.local.getJob(), ix)
     return kw['postprocess']
 
 def serial(*jobs, **kw):

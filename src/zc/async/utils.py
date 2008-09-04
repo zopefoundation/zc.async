@@ -26,8 +26,11 @@ import zc.dict
 import pytz
 import zope.bforest.periodic
 
+import zc.async.interfaces
 
-EXPLOSIVE_ERRORS = (SystemExit, KeyboardInterrupt)
+
+EXPLOSIVE_ERRORS = (SystemExit, KeyboardInterrupt,
+                    zc.async.interfaces.ReassignedError)
 
 SYSTEM_ERRORS = (ZEO.Exceptions.ClientDisconnected,
                  ZODB.POSException.POSKeyError)
@@ -244,7 +247,6 @@ def never_fail(call, identifier, tm):
             tm.abort()
             backoff_ct += 1
             if backoff_ct == 1:
-                # import pdb; pdb.set_trace()
                 log.log(level,
                         'first error while %s; will continue in %d seconds',
                         identifier, backoff, exc_info=True)

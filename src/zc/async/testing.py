@@ -201,6 +201,32 @@ def get_poll(dispatcher, count=None, seconds=6):
     else:
         assert False, 'no poll!'
 
+def wait_for_start(job, seconds=6):
+    for i in range(seconds * 10):
+        t = transaction.begin()
+        if job.status == zc.async.interfaces.ACTIVE:
+            break
+        time_sleep(0.1)
+    else:
+        assert False, 'job never started (%s)' % (job.status,)
+
+def wait_for_deactivation(dispatcher, seconds=6):
+    for i in range(seconds * 10):
+        if dispatcher.activated == False:
+            break
+        time_sleep(0.1)
+    else:
+        assert False, 'dispatcher never deactivated'
+
+def wait_for_death(da, seconds=6):
+    for i in range(seconds * 10):
+        _ = transaction.begin()
+        if da.dead:
+            break
+        time_sleep(0.1)
+    else:
+        assert False, 'dispatcher agent never died'
+
 def wait_for_result(job, seconds=6):
     for i in range(seconds * 10):
         t = transaction.begin()

@@ -142,6 +142,12 @@ class IDispatcherDeactivated(IObjectEvent):
 class DispatcherDeactivated(AbstractObjectEvent):
     zope.interface.implements(IDispatcherDeactivated)
 
+class IDispatcherReactivated(IObjectEvent):
+    """Dispatcher was reactivated after mistaken deactivation"""
+
+class DispatcherReactivated(AbstractObjectEvent):
+    zope.interface.implements(IDispatcherReactivated)
+
 class IObjectAdded(IObjectEvent):
     """Object was added to the database"""
 
@@ -171,6 +177,13 @@ class TimeoutError(Exception):
 class BadStatusError(Exception):
     """The job is not in the status it should be for the call being made.
     This is almost certainly a programmer error."""
+
+
+class ReassignedError(Exception):
+    """The job has been reassigned to another process.
+    
+    This should only happen when a polling timeout has made a not-dead process
+    appear to be dead to a sibling."""
 
 
 class IAbstractJob(zope.interface.Interface):

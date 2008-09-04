@@ -5,6 +5,11 @@ Tips and Tricks
 General Tips and Tricks
 =======================
 
+* If you have multiple machines working as zc.async dispatchers, it is
+  strongly suggested that you get the associated servers connected to a shared
+  time server.  You generally don't want your machines to disagree by more than
+  a few seconds.
+
 * Avoid long transactions if possible.  Really try to avoid long transactions
   involving frequently written objects.  One possible strategy is to divide up
   your code into a job for low-conflict tasks and one or more jobs for

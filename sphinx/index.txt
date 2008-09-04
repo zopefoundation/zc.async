@@ -93,9 +93,7 @@ These quick-starts can help you get a feel for the package.
    :maxdepth: 1
    
    QUICKSTART_1_VIRTUALENV
-
-XXX QUICKSTART_ZC_BUILDOUT
-XXX QUICKSTART_GROK
+   QUICKSTART_2_GROK
 
 Documentation
 -------------

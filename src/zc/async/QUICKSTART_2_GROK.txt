@@ -1,0 +1,183 @@
+=====================
+Quickstart with Grok_
+=====================
+
+Goals
+=====
+
+In this quickstart, we will use zc.async to make a small web application that
+XXX
+
+XXX For simplicity, we'll assume that we are making several instances on the
+same machine, such as you might do with a few processors at your disposal.  To
+get the true advantage of high availability in production, you'd want at least
+two boxes, with a deployment of a ZEO server (or equivalent, for RelStorage),
+some kind of redundancy for your database (ZRS, slony) and instructions for
+each box on how to connect to the ZEO primary.
+
+This quickstart builds on the :ref:`quickstart-with-virtualenv`.  I suggest you
+read that through before this one.  
+
+- That previous quickstart introduces |async| through the Python interpreter
+  for a very casual and quick start.  
+
+- It also is more "pure-Python" with very little understanding needed of
+  additional frameworks to follow and use the examples.
+
+This quickstart instead uses the following somewhat "heavier" technologies.
+
+- |zc.buildout|_ is a way of producing repeatable software build-outs, for
+  development and conceivably for deployment.  It is written in Python, but is
+  not Python-specific, and it has found use as a ``make`` replacement for many
+  projects.
+
+- Grok_ is a web framework emerging from "Zope 3" technologies.  From their
+  website:
+  
+    Grok is a web application framework for Python developers. It is aimed at
+    both beginners and very experienced web developers. Grok has an emphasis on
+    agile development. Grok is easy and powerful.
+
+This guide, then, takes a somewhat slower definition of "quick" for its
+"quickstart", in exchange for more guidance and care with a view towards
+production-readiness.
+
+.. _Grok: http://grok.zope.org/
+
+.. |async| replace:: ``zc.async``
+
+.. _`async`: http://pypi.python.org/pypi/zc.async
+
+.. |zc.buildout| replace:: ``zc.buildout``
+
+.. _`zc.buildout`: http://pypi.python.org/pypi/zc.buildout
+
+Prerequisites
+=============
+
+.. sidebar:: Building Python 2.4.5 on OS X Leopard
+
+   Unfortunately, building a clean, standalone workable Python 2.4.5 on OS X is
+   not obvious.  This is what I recommend, if you are working on that platform.
+   
+   First you need macports.  Go to macports.org and download the newest
+   version.  It doesn't seem to set up the manual path correctly, so after the
+   installation add this to your ~/.profile (or in a similar place)::
+   
+    export MANPATH=/opt/local/man:$MANPATH
+   
+   You'll need a new terminal session (or other shell magic if you know it) for
+   these changes to take effect.  The easiest thing to do is close the shell
+   you are working in and open a new one.
+
+   Download a source distribution of Python 2.4.5.  You may have your own
+   approach as to where to put things, but I'll go with this pattern in this
+   document: ~/src will hold expanded source trees, ~/opt will hold our local
+   Python, and we'll develop in ~/dev.
+   
+   We will want readline and need zlib from macports.
+
+   ::
+
+    $ sudo port -c install readline
+    $ sudo port -c install zlib
+   
+   Now we'll do the usual dance, with a couple of ugly extra steps.
+
+   **Note: replace ``/Users/gary/opt/py`` in the below with your own desired
+   location!**
+
+   ::
+
+    $ MACOSX_DEPLOYMENT_TARGET=10.5 ./configure \
+      --prefix=/Users/gary/opt/py \
+      LDFLAGS=-L/opt/local/lib \
+      OPT=-I/opt/local/include
+    $ make
+    $ make install
+
+   Now, given my ``--prefix``, I'll find my python in
+   ``/Users/gary/opt/py/bin/python``.
+
+Grok requires Python 2.4.  Moreover, for more repeatable installations, many
+developers strongly recommend using a "clean", non-system Python, to reduce the
+probability of unnecessary or spurious problems (in your software *or* in your
+system!).  Therefore, consider building your own Python 2.4 for your
+development.
+
+We'll also expect that your Python has |easy_install|_.  If it doesn't, you can
+just download `ez_setup.py`_ and then run it with your local, development
+Python (e.g., ``~/opt/py/bin/python ez_setup.py``). This will install the
+easy_install command for your development Python in the same bin directory as
+your Python (e.g., ``~/opt/py/bin/easy_install``).
+
+.. |easy_install| replace:: ``easy_install``
+
+.. _`easy_install`: http://peak.telecommunity.com/DevCenter/EasyInstall
+
+.. _`ez_setup.py`: http://peak.telecommunity.com/dist/ez_setup.py
+
+grokproject_
+============
+
+.. sidebar:: |zc.buildout| Conveniences
+
+   You may want to consider the following conveniences if you are building many
+   projects with |zc.buildout|.  They make zc.buildout keep two shared
+   collections across all of your zc.buildout projects.  This can significantly
+   speed up the time to buildout new applications.  One shared collection is a
+   download cache of source distributions and eggs.  The other is an egg cache
+   only, for both the downloaded eggs and the eggs generated on your machine.
+   
+   In your home directory, make a ``.buildout`` directory.  In that directory,
+   make two sub-directories, ``eggs`` and ``download-cache``.  Also in
+   ``.buildout``, create a file named ``default.cfg`` with the following
+   content, where ``/Users/gary`` is replaced with the path to your home
+   directory::
+
+    [buildout]
+    eggs-directory=/Users/gary/.buildout/eggs
+    download-cache=/Users/gary/.buildout/download-cache
+
+   There are many other possible settings to make here (for instance, we could
+   specify the clean Python you built here), but these are all I
+   currently bother with.
+
+   It is also worth mentioning that, as of this writing, setuptools builds eggs
+   in such a way as to confuse the Python debugger.  If you use the Python
+   debugger and discover that you want to see the lines in an egg and can't,
+   the following line (or something like it) will help for non-zipped eggs::
+   
+    find ~/.buildout/eggs-aside/ -name '*.pyc' -exec rm {} \;
+
+Grok has a pleasantly convenient way to start a project.  It is called
+grokproject_.  Use your local Python's ``easy_install`` to install it.  For
+instance, I might type ``~/opt/py/bin/easy_install grokproject``.
+
+After it runs, it should have installed the ``grokproject`` command in the same
+bin directory as your local Python (e.g., ``~/opt/py/bin/grokproject``).
+
+.. _grokproject: http://pypi.python.org/pypi/grokproject
+
+Skeleton
+========
+
+Now we will use grokproject_ to make a skeleton of our package.  Let's just
+call the project "quickstart".  Go to a directory in which you want to develop
+our package.  Then use the newly installed ``grokproject`` command to create
+
+XXX
+
+- include zc.async in setup.py; mention versions.cfg
+
+- set up ZEO
+
+- set up multiple instances
+
+- zope.app.testing = 3.4.1 -> 3.4.2
+
+- set up interpreter
+
+- set up z3monitor
+
+- make separate debug instance

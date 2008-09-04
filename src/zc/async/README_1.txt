@@ -970,6 +970,7 @@ Zope 3 [#stop_usage_reactor]_.
      'failed': False,
      'poll id': ...,
      'quota names': (),
+     'reassigned': False,
      'result': None,
      'started': datetime.datetime(...),
      'thread': ...}
@@ -1011,6 +1012,7 @@ Zope 3 [#stop_usage_reactor]_.
      'failed': False,
      'poll id': ...,
      'quota names': (),
+     'reassigned': False,
      'result': '42',
      'started': datetime.datetime(...),
      'thread': ...}
@@ -1164,6 +1166,14 @@ Zope 3 [#stop_usage_reactor]_.
 
 .. [#stop_usage_reactor]
 
+    >>> reactor.stop()
+    >>> zc.async.testing.wait_for_deactivation(dispatcher)
+    >>> for queue_pools in dispatcher.queues.values():
+    ...     for name, pool in queue_pools.items():
+    ...         pool.setSize(0)
+    ...         for thread in pool.threads:
+    ...             thread.join(3)
+    ...
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
     {'failed': 2,
      'longest active': None,
@@ -1177,4 +1187,3 @@ Zope 3 [#stop_usage_reactor]_.
      'statistics start': datetime.datetime(2006, 8, 10, 16, ...),
      'successful': 52,
      'unknown': 0}
-    >>> reactor.stop()

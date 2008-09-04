@@ -55,6 +55,7 @@ class Local(threading.local):
 
     job = None
     dispatcher = None
+    name = None
 
     def getJob(self):
         return self.job
@@ -67,6 +68,9 @@ class Local(threading.local):
 
     def getReactor(self):
         return self.dispatcher.reactor
+
+    def getAgentName(self):
+        return self.name
 
     def setLiveAnnotation(self, name, value, job=None):
         if self.job is None or self.dispatcher.reactor is None:

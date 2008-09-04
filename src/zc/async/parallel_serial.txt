@@ -1,0 +1,234 @@
+The ``parallel`` and ``serial`` helpers are described in README_1.txt, the
+usage document.  This document is a maintainer/test document meant to show
+how ``parallel`` and ``serial`` behave when they are interrupted.
+
+The two scenarios we want to show, for each helper, are an interruption during
+a composite job, and an introduction during the postprocess.
+
+First, we set up a world and some components for the test scenario.  You might
+want to try skipping to the next text block, if you are reading this through
+the first time, so you can get a broad idea of what is going on.
+
+    >>> import ZODB.FileStorage
+    >>> storage = ZODB.FileStorage.FileStorage(
+    ...     'zc_async.fs', create=True)
+    >>> from ZODB.DB import DB
+    >>> db = DB(storage)
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+    >>> zc.async.configure.start(db, poll_interval=0.1)
+    >>> conn = db.open()
+    >>> import zc.async.interfaces
+    >>> queue = zc.async.interfaces.IQueue(conn)
+
+    >>> import zc.async.job
+    >>> import transaction
+    >>> import threading
+    >>> def normal_component():
+    ...     return 25
+    >>> component_lock = threading.Lock()
+    >>> component_lock.acquire()
+    True
+    >>> component_fail_flag = True
+    >>> def pause_component():
+    ...     global component_fail_flag
+    ...     if component_fail_flag:
+    ...         component_fail_flag = False
+    ...         component_lock.acquire()
+    ...         component_lock.release() # so we can use the same lock again later
+    ...         raise SystemExit() # this will cause the worker thread to exit
+    ...     else:
+    ...         component_lock.acquire() # for the next run
+    ...         component_fail_flag = True # for the next run
+    ...         return 17
+    ...
+    >>> postprocess_lock = threading.Lock()
+    >>> postprocess_lock.acquire()
+    True
+    >>> postprocess_fail_flag = True
+    >>> def pause_postprocess(job1, job2):
+    ...     global postprocess_fail_flag
+    ...     if postprocess_fail_flag:
+    ...         postprocess_fail_flag = False
+    ...         postprocess_lock.acquire()
+    ...         postprocess_lock.release() # so we can use the same lock again later
+    ...         raise SystemExit() # this will cause the worker thread to exit
+    ...     else:
+    ...         postprocess_lock.acquire() # for the next run
+    ...         postprocess_fail_flag = True # for the next run
+    ...         return job1.result + job2.result
+    ...
+    >>> def stop_dispatcher(dispatcher, lock=None):
+    ...     dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+    ...     zc.async.testing.wait_for_deactivation(dispatcher)
+    ...     dispatcher.thread.join(3)
+    ...     if lock is not None:
+    ...         lock.release()
+    ...     for queue_pools in dispatcher.queues.values():
+    ...         for name, pool in queue_pools.items():
+    ...             pool.setSize(0)
+    ...             for thread in pool.threads:
+    ...                 thread.join(3)
+    ...
+
+First we'll test ``serial``.  We stop the worker once while it is working on
+one of the serialized jobs, and once while it is working on the postprocess.
+Both examples use two soft interrupts (i.e., with clean shut-down; see
+catastrophes.txt).
+
+We create a job with two parts, the second of which will be interrupted; and
+a postprocess, which will also be interrupted.  We let it run through the first
+inner job, and start the second.
+
+    >>> job = queue.put(zc.async.job.serial(normal_component, pause_component,
+    ...             postprocess=pause_postprocess))
+    >>> transaction.commit()
+    >>> import zc.async.testing
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> zc.async.testing.wait_for_start(job.args[1])
+
+We interrupt the dispatcher.  Because it is a clean shut-down, we have two
+``handleInterrupt`` jobs waiting afterwards.  One is for the main job
+(``schedule_serial``), and the other is for the second inner job
+(``pause_component``).
+
+    >>> stop_dispatcher(dispatcher, component_lock) # INTERRUPT 1
+
+    >>> _ = transaction.begin()
+    >>> job.status == zc.async.interfaces.ACTIVE
+    True
+    >>> job.args[1].status == zc.async.interfaces.ACTIVE
+    True
+    >>> len(queue)
+    2
+    >>> queue[0] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[1] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[0].callable # doctest: +ELLIPSIS
+    <bound method Job.handleInterrupt of <...Job... ``...schedule_serial...``>>
+    >>> queue[1].callable # doctest: +ELLIPSIS
+    <bound method Job.handleInterrupt of <...Job... ``...pause_component()``>>
+
+We start up the dispatcher again (actually, it is a new one, but it is
+effectively the same in terms of its UUID).
+
+    >>> zc.async.dispatcher.clear()
+    >>> zc.async.subscribers.ThreadedDispatcherInstaller(
+    ...         poll_interval=0.1)(zc.async.interfaces.DatabaseOpened(db))
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> zc.async.testing.wait_for_start(job.kwargs['postprocess'])
+
+We interrupt the dispatcher again.  Now the postprocessing was interrupted.
+
+    >>> stop_dispatcher(dispatcher, postprocess_lock) # INTERRUPT 2
+
+    >>> _ = transaction.begin()
+    >>> job.status == zc.async.interfaces.ACTIVE
+    True
+    >>> job.kwargs['postprocess'].status == zc.async.interfaces.ACTIVE
+    True
+    >>> len(queue)
+    2
+    >>> queue[0] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[1] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[0].callable # doctest: +ELLIPSIS
+    <bound method Job.handleInterrupt of <...Job... ``...schedule_serial...``>>
+    >>> queue[1].callable # doctest: +ELLIPSIS
+    <...method Job.handleInterrupt of <...Job... ``...pause_postprocess(...``>>
+
+Finally we restart without subsequent interruptions.  The job runs
+successfully to completion.
+
+    >>> zc.async.dispatcher.clear()
+    >>> zc.async.subscribers.ThreadedDispatcherInstaller(
+    ...         poll_interval=0.1)(zc.async.interfaces.DatabaseOpened(db))
+    >>> dispatcher = zc.async.dispatcher.get()
+
+    >>> zc.async.testing.wait_for_result(job)
+    42
+
+Now we'll do the same thing for ``parallel``.  You'll notice that this is
+virtually identical, other than a slightly different set up.
+
+We create a job with two parts, the second of which will be interrupted; and
+a postprocess, which will also be interrupted.  We let it run through the first
+inner job, and start the second.
+
+    >>> job = queue.put(zc.async.job.parallel(
+    ...     pause_component, normal_component, postprocess=pause_postprocess))
+    >>> transaction.commit()
+    >>> import zc.async.testing
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> zc.async.testing.wait_for_result(job.args[1])
+    25
+    >>> zc.async.testing.wait_for_start(job.args[0])
+
+We interrupt the dispatcher.  Because it is a clean shut-down, we have two
+``handleInterrupt`` jobs waiting afterwards.  One is for the main job
+(``schedule_serial``), and the other is for the second inner job
+(``pause_component``).
+
+    >>> stop_dispatcher(dispatcher, component_lock) # INTERRUPT 1
+
+    >>> _ = transaction.begin()
+    >>> job.status == zc.async.interfaces.ACTIVE
+    True
+    >>> job.args[0].status == zc.async.interfaces.ACTIVE
+    True
+    >>> len(queue)
+    2
+    >>> queue[0] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[1] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[0].callable # doctest: +ELLIPSIS
+    <bound method Job.handleInterrupt of <...Job... ``...schedule_parallel...``>>
+    >>> queue[1].callable # doctest: +ELLIPSIS
+    <bound method Job.handleInterrupt of <...Job... ``...pause_component()``>>
+
+We start up the dispatcher again (actually, it is a new one, but it is
+effectively the same in terms of its UUID).
+
+    >>> zc.async.dispatcher.clear()
+    >>> zc.async.subscribers.ThreadedDispatcherInstaller(
+    ...         poll_interval=0.1)(zc.async.interfaces.DatabaseOpened(db))
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> zc.async.testing.wait_for_start(job.kwargs['postprocess'])
+
+We interrupt the dispatcher again.  Now the postprocessing was interrupted.
+
+    >>> stop_dispatcher(dispatcher, postprocess_lock) # INTERRUPT 2
+
+    >>> _ = transaction.begin()
+    >>> job.status == zc.async.interfaces.ACTIVE
+    True
+    >>> job.kwargs['postprocess'].status == zc.async.interfaces.ACTIVE
+    True
+    >>> len(queue)
+    2
+    >>> queue[0] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[1] # doctest: +ELLIPSIS
+    <zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``>
+    >>> queue[0].callable # doctest: +ELLIPSIS
+    <bound method Job.handleInterrupt of <...Job... ``...schedule_parallel...``>>
+    >>> queue[1].callable # doctest: +ELLIPSIS
+    <...method Job.handleInterrupt of <...Job... ``...pause_postprocess(...``>>
+
+Finally we restart without subsequent interruptions.  The job runs
+successfully to completion.
+
+    >>> zc.async.dispatcher.clear()
+    >>> zc.async.subscribers.ThreadedDispatcherInstaller(
+    ...         poll_interval=0.1)(zc.async.interfaces.DatabaseOpened(db))
+    >>> dispatcher = zc.async.dispatcher.get()
+
+    >>> zc.async.testing.wait_for_result(job)
+    42
+
+Shut down.
+
+    >>> stop_dispatcher(dispatcher)

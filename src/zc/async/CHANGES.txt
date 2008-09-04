@@ -2,7 +2,7 @@
 Changes
 =======
 
-1.4.2 (2008-??-??)
+1.5.0 (2008-??-??)
 ==================
 
 - Documentation improvements.  Converted documentation into Sphinx system.
@@ -18,16 +18,44 @@ Changes
 
 - Added zc.async.partial.Partial for backward compatibility purposes.
 
-- Fix support for Twisted installed reactor
+- Fix support for Twisted installed reactor.
 
-- Fix retry behavior for parallel and serial jobs XXX NEEDS TEST
+- Fix retry behavior for parallel and serial jobs
 
 - Tweaked the uuid.txt to mention zdaemon/supervisor rather than Zope 3.
 
-- Fixed some bugs in egg creation
+- Fixed some bugs in egg creation.
 
 - Changed quotas to not use a container that has conflict resolution, since
   these values should be a strict maximum.
+
+- We only want to claim a job if we are activated.   Make the agent check the
+  ``activated`` and ``dead`` attributes of the parent dispatcher before
+  claiming.
+
+- When activating, also clean out jobs from the dispatcher's agents, just as
+  with deactivating.  This should protect from unusual race conditions in
+  which the dispatcher got a job after being deactivated.
+
+- Change dispatcher to ping before claiming jobs.
+
+- when a ping reactivates a dispatcher, use new method ``reactivate`` rather
+  than ``activate``.  This fires a new ``DispatcherReactivated`` event.
+
+- It's still theoretically possible (for instance, with a
+  badly-behaved long commit that causes a sibling to believe that the
+  process is dead) that an async worker process would be working on a
+  job that it shouldn't be.  For instance, the job has been taken away,
+  and is another process' responsibility now.  Now, whenever a
+  process is about to start any work (especially a retry), it should
+  double-check that the job is registered as being performed by itself.
+  If not, the process should abort the transaction, make an error
+  log, and give up on the job.  Write conflict errors on the job should
+  protect us from the edge cases in this story.  XXX test
+
+- Make ftesting try to join worker threads, in addition to polling thread,
+  to try to eliminate intermittent test-runner warnings in ftests that a
+  thread is left behind.  XXX test
 
 1.4.1 (2008-07-30)
 ==================

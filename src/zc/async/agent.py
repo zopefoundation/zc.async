@@ -69,6 +69,16 @@ class Agent(zc.async.utils.Base):
         return res
 
     def claimJob(self):
+        if not self.parent.activated or self.parent.dead:
+            # we don't want to claim a job unless we are activated.
+            # Normally, this should be the case, but in unusual
+            # circumstances, such as very long commits causing the
+            # ping to not be able to commit, we might get in this
+            # unfortunate circumstance.
+            # TODO: we would like to have a read conflict error if we read
+            # activated but it changed beneath us.  If the ZODB grows a gesture
+            # to cause this, use it.
+            return None
         if len(self._data) < self.size:
             res = self.chooser(self)
             if res is not None:

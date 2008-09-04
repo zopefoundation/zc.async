@@ -91,6 +91,7 @@ setup(
         'ZODB3',
         'pytz',
         'rwproperty',
+        'setuptools',
         'uuid',
         'zc.queue',
         'zc.dict>=1.2.1',
@@ -115,5 +116,12 @@ setup(
             'zope.app.component',
             'simplejson',
             ]},
-    url='http://packages.python.org/zc.async'
+    url='http://packages.python.org/zc.async',
+    classifiers=[
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: Zope Public License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python",
+        "Framework :: ZODB"],
     )

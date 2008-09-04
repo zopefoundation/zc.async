@@ -143,6 +143,7 @@ def test_suite():
             'agent.txt',
             'dispatcher.txt',
             'subscribers.txt',
+            'parallel_serial.txt',
             'twisted.txt',
             'README_1.txt',
             'README_2.txt',

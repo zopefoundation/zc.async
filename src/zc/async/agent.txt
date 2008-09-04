@@ -94,6 +94,36 @@ Now we can claim another job.
     >>> len(agent)
     3
 
+An agent may not claim a job if its parent is considered deactivated or dead.
+This is a safeguard for unlikely situations in which a parent dispatcher has
+been incorrectly labeled as dead because of ping times (see catastrophes.txt
+for details).
+
+    >>> da.deactivate()
+    >>> len(agent)
+    0
+    >>> bool(da.activated)
+    False
+    >>> print agent.claimJob()
+    None
+    >>> da.activate()
+    >>> import datetime
+    >>> import pytz
+    >>> da.activated = da.last_ping.value = (datetime.datetime.now(pytz.UTC) -
+    ...                                      datetime.timedelta(days=365))
+    >>> bool(da.activated)
+    True
+    >>> da.dead
+    True
+    >>> print agent.claimJob()
+    None
+    >>> da.deactivate()
+    >>> da.activate()
+    >>> agent.claimJob() is job5
+    True
+    >>> len(agent)
+    1
+
 This particular agent invites you to provide a function to choose jobs.
 The default one simply chooses the first available job in the queue.
 

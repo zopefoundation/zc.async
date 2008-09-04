@@ -605,8 +605,8 @@ This also fired an event.
     >>> evs[0].object is da
     True
 
-Now a dispatcher should iterate over agents and look for jobs.  There are
-not any agents at the moment.
+Now, after activation, a dispatcher should iterate over agents and look for
+jobs.  There are not any agents at the moment.
 
     >>> len(da)
     0
@@ -836,17 +836,37 @@ completed jobs will be moved to the completed collection.
     >>> alt_agent.completed.first() is jobD
     True
 
+Activating a dispatcher also cleans out active jobs from its agents. Doing
+it on activation is a fail-safe: normally, agents should not have jobs in
+them after deactivation.
+
+    >>> alt_agent.claimJob() is jobE
+    True
+    >>> len(alt_agent)
+    1
+    >>> alt_da.activate()
+    >>> len(alt_agent)
+    0
+    >>> queue[0] is jobA
+    True
+    >>> queue[1].callable == jobB.handleInterrupt
+    True
+    >>> queue[2].callable == jobC.resumeCallbacks
+    True
+    >>> queue[3] is jobE
+    True
+
 As an aside, notice that the ``handleInterrupt`` and ``resumeCallbacks`` jobs
 have custom error log levels, and custom retry policies.
 
     >>> import logging
+    >>> queue[1].failure_log_level == logging.CRITICAL
+    True
     >>> queue[2].failure_log_level == logging.CRITICAL
     True
-    >>> queue[3].failure_log_level == logging.CRITICAL
+    >>> queue[1].retry_policy_factory is zc.async.job.RetryCommonForever
     True
     >>> queue[2].retry_policy_factory is zc.async.job.RetryCommonForever
-    True
-    >>> queue[3].retry_policy_factory is zc.async.job.RetryCommonForever
     True
 
 If you have multiple workers, it is strongly suggested that you get the

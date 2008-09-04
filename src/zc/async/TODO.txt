@@ -1,9 +1,9 @@
 - fix up tips so that it looks better
-- finish quickstart
-- write a zc.buildout quickstart
-- write a grok quickstart
-- write test for using installed twisted reactor
-- write test for interrupt retry of parallel/serial
+- write a zc.buildout/grok quickstart
+- zc.z3monitor:
+  + asyncdb count pending callable:foo*
+  + asyncdb count completed agent:entry5
+  + asyncdb countall completed
 
 Improvements
 

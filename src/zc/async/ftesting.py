@@ -49,4 +49,9 @@ def tearDown():
         del dispatcher._debug_handler
     dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
     dispatcher.thread.join(3)
+    for queue_pools in dispatcher.queues.values():
+        for name, pool in queue_pools.items():
+            pool.setSize(0)
+            for thread in pool.threads:
+                thread.join(3)
     zc.async.dispatcher.clear()

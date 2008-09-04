@@ -85,14 +85,17 @@ class DispatcherAgents(zc.async.utils.Dict):
     def activate(self):
         if self.activated:
             raise ValueError('Already activated')
+        # in exceptional circumstances, the agents may have in-progress jobs
+        # left in them.  These will never be worked on, and will block the
+        # agents from using these slots in their "size", until the jobs are
+        # removed. This  can be catastrophic.  Therefore we iterate over all
+        # the agents to make sure they are all clean before activating.
+        self._clean()
         self.activated = datetime.datetime.now(pytz.UTC)
         zope.event.notify(
             zc.async.interfaces.DispatcherActivated(self))
 
-    def deactivate(self):
-        if not self.activated:
-            raise ValueError('Not activated')
-        self.activated = None
+    def _clean(self):
         queue = self.parent
         assert zc.async.interfaces.IQueue.providedBy(queue)
         for agent in self.values():
@@ -141,9 +144,22 @@ class DispatcherAgents(zc.async.utils.Dict):
                         job = agent.pull()
                     except IndexError:
                         job = None
+
+    def deactivate(self):
+        if not self.activated:
+            raise ValueError('Not activated')
+        self.activated = None
+        self._clean()
         zope.event.notify(
             zc.async.interfaces.DispatcherDeactivated(self))
 
+    def reactivate(self):
+        # this is called *only* by ``poll``.  ``poll`` calls ``reactivate``
+        # when ``poll`` discovers that a dispatcher, thought dead, is still
+        # alive.
+        self.activated = datetime.datetime.now(pytz.UTC)
+        zope.event.notify(
+            zc.async.interfaces.DispatcherReactivated(self))
 
 class Queues(zc.async.utils.Dict):
 
@@ -188,7 +204,13 @@ class Dispatchers(zc.dict.Dict):
                 "if the dispatcher was inappropriately viewed as ``dead`` and "
                 "deactivated, you should investigate the cause.",
                 uuid)
-            da.activate()
+            # we do this rather than calling ``activate`` because the semantics
+            # are different.  ``activate`` is after a true deactivation, and
+            # cleans out the agents and fires off an activation event.  This
+            # is inappropriate here, and could easily cause problems.
+            # ``reactivate`` is specifically for this circumstance: a
+            # dispatcher thought dead is discovered to be alive.
+            da.reactivate()
         now = datetime.datetime.now(pytz.UTC)
         last_ping = da.last_ping.value
         if (last_ping is None or

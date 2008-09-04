@@ -61,6 +61,7 @@ class AgentThreadPool(object):
 
     def perform_thread(self):
         zc.async.local.dispatcher = self.dispatcher
+        zc.async.local.name = self.name # this is the name of this pool's agent
         conn = self.dispatcher.db.open()
         try:
             job_info = self.queue.get()
@@ -141,6 +142,11 @@ class AgentThreadPool(object):
                                     transaction.abort() # retry forever (!)
                                 else:
                                     break
+                    except zc.async.interfaces.ReassignedError:
+                        transaction.abort()
+                        info['reassigned'] = True
+                        # will need to get next job_info and continue
+                    # EXPLOSIVE_ERRORS includes Reassigned: order is important
                     except zc.async.utils.EXPLOSIVE_ERRORS:
                         transaction.abort()
                         raise
@@ -165,7 +171,7 @@ class AgentThreadPool(object):
                     info['completed'] = datetime.datetime.utcnow()
                 finally:
                     zc.async.local.job = None # also in job (here for paranoia)
-                    transaction.abort()
+                    transaction.abort() # (also paranoia)
                 zc.async.utils.tracelog.info(
                     'completed in thread %d: %s',
                     info['thread'], info['call'])
@@ -229,8 +235,8 @@ class Dispatcher(object):
     thread = None # this is just a placeholder that other code can use the
     # way that zc.async.subscribers.ThreadedDispatcherInstaller.__call__ does.
 
-    def __init__(self, db, reactor=None, poll_interval=5, uuid=None, jobs_size=200,
-                 polls_size=400):
+    def __init__(self, db, reactor=None, poll_interval=5, uuid=None,
+                 jobs_size=200, polls_size=400):
         if uuid is None:
             uuid = zope.component.getUtility(zc.async.interfaces.IUUID)
         if uuid in _dispatchers:
@@ -331,6 +337,10 @@ class Dispatcher(object):
                         self._activated.add(queue._p_oid)
                     else:
                         continue
+                identifier = 'committing ping for UUID %s' % (self.UUID,)
+                zc.async.utils.try_five_times(
+                    lambda: queue.dispatchers.ping(self.UUID), identifier,
+                    transaction)
                 queue_info = poll_info[queue.name] = {}
                 pools = self.queues.get(queue.name)
                 if pools is None:
@@ -376,7 +386,8 @@ class Dispatcher(object):
                                     'call': repr(job),
                                     'started': None,
                                     'completed': None,
-                                    'thread': None}
+                                    'thread': None,
+                                    'reassigned': False}
                             started_jobs.append(info)
                             dbname = getattr(
                                 job._p_jar.db(), 'database_name', None)
@@ -386,10 +397,6 @@ class Dispatcher(object):
                             pool.queue.put(
                                 (job._p_oid, dbname, info))
                             job = self._getJob(agent)
-                identifier = 'committing ping for UUID %s' % (self.UUID,)
-                zc.async.utils.try_five_times(
-                    lambda: queue.dispatchers.ping(self.UUID), identifier,
-                    transaction)
                 if len(pools) > len(queue_info):
                     conn_delta = 0
                     for name, pool in pools.items():
