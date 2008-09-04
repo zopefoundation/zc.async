@@ -167,6 +167,20 @@ collection and one for a queue.
     added to <class 'zc.async.queue.Queues'>
     with name ''
 
+
+Note that all the events inherit from IObjectEvent.
+
+    >>> import zope.component.interfaces
+    >>> for event in eventtesting.getEvents(
+    ...         zope.component.interfaces.IObjectEvent):
+    ...     print event.__class__
+    <class 'zope.component.interfaces.Unregistered'>
+    <class 'zc.async.interfaces.ObjectAdded'>
+    <class 'zc.async.interfaces.ObjectAdded'>
+    <class 'zc.async.interfaces.DispatcherRegistered'>
+    <class 'zc.async.interfaces.DispatcherActivated'>
+
+
 Finally, we mentioned at the start that the threaded dispatcher installer also
 installed some signal handlers.  Let's show a SIGINT (CTRL-C, usually), and
 how it deactivates the dispatcher's agents collection in the ZODB.

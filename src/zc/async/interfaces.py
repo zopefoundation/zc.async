@@ -109,46 +109,41 @@ class IRetryPolicy(zope.interface.Interface):
         """right before committing a job, retry is given a chance to stash
         information it has saved in the data_cache."""
 
-class IObjectEvent(zope.interface.Interface):
-    """Event happened to object"""
-
-    object = zope.interface.Attribute('the object')
-
 class AbstractObjectEvent(object):
     def __init__(self, object):
         self.object = object
 
-class IDispatcherRegistered(IObjectEvent):
+class IDispatcherRegistered(zope.component.interfaces.IObjectEvent):
     """Dispatcher was registered"""
 
 class DispatcherRegistered(AbstractObjectEvent):
     zope.interface.implements(IDispatcherRegistered)
 
-class IDispatcherUnregistered(IObjectEvent):
+class IDispatcherUnregistered(zope.component.interfaces.IObjectEvent):
     """Dispatcher was unregistered"""
 
 class DispatcherUnregistered(AbstractObjectEvent):
     zope.interface.implements(IDispatcherUnregistered)
 
-class IDispatcherActivated(IObjectEvent):
+class IDispatcherActivated(zope.component.interfaces.IObjectEvent):
     """Dispatcher was activated"""
 
 class DispatcherActivated(AbstractObjectEvent):
     zope.interface.implements(IDispatcherActivated)
 
-class IDispatcherDeactivated(IObjectEvent):
+class IDispatcherDeactivated(zope.component.interfaces.IObjectEvent):
     """Dispatcher was deactivated"""
 
 class DispatcherDeactivated(AbstractObjectEvent):
     zope.interface.implements(IDispatcherDeactivated)
 
-class IDispatcherReactivated(IObjectEvent):
+class IDispatcherReactivated(zope.component.interfaces.IObjectEvent):
     """Dispatcher was reactivated after mistaken deactivation"""
 
 class DispatcherReactivated(AbstractObjectEvent):
     zope.interface.implements(IDispatcherReactivated)
 
-class IObjectAdded(IObjectEvent):
+class IObjectAdded(zope.component.interfaces.IObjectEvent):
     """Object was added to the database"""
 
     parent = zope.interface.Attribute(
