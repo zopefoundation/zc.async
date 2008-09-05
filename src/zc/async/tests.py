@@ -148,6 +148,7 @@ def test_suite():
             'README_1.txt',
             'README_2.txt',
             'catastrophes.txt',
+            'catastrophes_revisited.txt',
             'ftesting.txt',
             'QUICKSTART_1_VIRTUALENV.txt',
             setUp=modSetUp, tearDown=modTearDown,

@@ -965,10 +965,12 @@ Zope 3 [#stop_usage_reactor]_.
     1
     >>> info = dispatcher.getJobInfo(*job_ids[0])
     >>> pprint.pprint(info) # doctest: +ELLIPSIS
-    {'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``zc.async.doctest_test.annotateStatus()``>",
+    {'agent': 'main',
+     'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``zc.async.doctest_test.annotateStatus()``>",
      'completed': None,
      'failed': False,
      'poll id': ...,
+     'queue': '',
      'quota names': (),
      'reassigned': False,
      'result': None,
@@ -1007,15 +1009,18 @@ Zope 3 [#stop_usage_reactor]_.
     []
     >>> info = dispatcher.getJobInfo(*job_ids[0])
     >>> pprint.pprint(info) # doctest: +ELLIPSIS
-    {'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``zc.async.doctest_test.annotateStatus()``>",
+    {'agent': 'main',
+     'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``zc.async.doctest_test.annotateStatus()``>",
      'completed': datetime.datetime(...),
      'failed': False,
      'poll id': ...,
+     'queue': '',
      'quota names': (),
      'reassigned': False,
      'result': '42',
      'started': datetime.datetime(...),
      'thread': ...}
+
      >>> info['thread'] is not None
      True
      >>> info['poll id'] is not None

@@ -51,11 +51,24 @@ Changes
   double-check that the job is registered as being performed by itself.
   If not, the process should abort the transaction, make an error
   log, and give up on the job.  Write conflict errors on the job should
-  protect us from the edge cases in this story.  XXX test
+  protect us from the edge cases in this story.
 
 - Make ftesting try to join worker threads, in addition to polling thread,
   to try to eliminate intermittent test-runner warnings in ftests that a
   thread is left behind.  XXX test
+
+- The dispatcher's ``getActiveJobs`` method now actually tells you information
+  about what's going on in the threads at this instant, rather than what's
+  going on in the database.  The poll's ``active jobs`` keys continues to
+  report what was true *in the database* as of *the last poll*.  This change
+  also affects the ``async jobs`` monitor command.
+
+- The dispatcher method ``getJobInfo`` (and the monitor command ``async job``)
+  now returns the name of the queue for the job, the name of the agent for the
+  job, and whether the job has been, or was reassigned.
+
+- zc.async events inherit from 'zc.component.interfaces.IObjectEvent' instead
+  of a zc.async specific IObjectEvent (thanks to Satchit Haridas).
 
 1.4.1 (2008-07-30)
 ==================

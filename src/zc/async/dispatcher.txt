@@ -290,10 +290,12 @@ in it now. We can get some information about that job from the dispatcher.
     >>> info = dispatcher.getJobInfo(*poll['']['main']['new jobs'][0])
     >>> pprint.pprint(info)
     ... # doctest: +ELLIPSIS
-    {'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``<built-in function mul>(14, 3)``>",
+    {'agent': 'main',
+     'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``<built-in function mul>(14, 3)``>",
      'completed': datetime.datetime(...),
      'failed': False,
      'poll id': ...,
+     'queue': '',
      'quota names': (),
      'reassigned': False,
      'result': '42',

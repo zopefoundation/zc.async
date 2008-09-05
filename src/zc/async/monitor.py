@@ -47,20 +47,21 @@ class Encoder(simplejson.JSONEncoder):
             return str(obj)
         return simplejson.JSONEncoder.default(self, obj)
 
-encoder = Encoder(sort_keys=True, indent=4) 
+encoder = Encoder(sort_keys=True, indent=4)
 
 
 def status(uuid=None):
-    """Get general zc.async dispatcher information.
-    
-    'status' is one of 'STUCK', 'STARTING', 'RUNNING', or 'STOPPED'."""
+    """Get a mapping of general zc.async dispatcher information.
+
+    'status' is one of 'STUCK', 'STARTING', 'RUNNING', or 'STOPPED', where
+    'STUCK' means the poll is past due."""
     if uuid is not None:
         uuid = uuid.UUID(uuid)
     return encoder.encode(zc.async.dispatcher.get(uuid).getStatusInfo())
 
 def jobs(queue=None, agent=None, uuid=None):
-    """Show active jobs as of last poll, sorted from newest to oldest.
-    
+    """Show active jobs in worker threads as of the instant.
+
     Usage:
 
         jobs
@@ -68,7 +69,7 @@ def jobs(queue=None, agent=None, uuid=None):
 
         jobs queue:<queue name>
         (jobs are filtered to those coming from the named queue)
-        
+
         jobs agent:<agent name>
         (jobs are filtered to those coming from agents with given name)
 
@@ -86,7 +87,22 @@ def jobs(queue=None, agent=None, uuid=None):
 def job(OID, database=None, uuid=None):
     """Local information about a job as of last poll, if known.
 
-    Does not consult ZODB, but in-memory information."""
+    Does not consult ZODB, but in-memory information.
+
+    Usage:
+
+        job <job id>
+        (returns information about the job)
+
+        job <job id> database:<database name>
+        (returns job information, with job id disambiguated by database name)
+
+    The job id in this case is an integer such as those returned by the
+    ``async jobs`` command or in the ``longest ...`` and ``shortest ...``
+    values of the ``async jobstats`` command.  It is the integer version of the
+    oid of the job, and can be converted to an oid with ``ZODB.utils.p64``, and
+    converted back to an integer with ``ZODB.utils.u64``.
+    """
     if uuid is not None:
         uuid = uuid.UUID(uuid)
     return encoder.encode(
@@ -109,12 +125,12 @@ def _dt(s):
                 minutes=vals.get('M', 0),
                 seconds=vals.get('S', 0)) + datetime.datetime.utcnow()
     return res
-                
+
 
 def jobstats(at=None, before=None, since=None, queue=None, agent=None,
              uuid=None):
     """Statistics on historical jobs as of last poll.
-    
+
     Usage:
 
         jobstats
@@ -140,10 +156,10 @@ def jobstats(at=None, before=None, since=None, queue=None, agent=None,
 
     Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
     be replaced with a positive integer, and "D," "H," "M," and "S" are
-    literals standing for "days," "hours," "minutes," and "seconds." 
+    literals standing for "days," "hours," "minutes," and "seconds."
     For instance, you might use ``5M`` for five minutes, ``20S`` for
     twenty seconds, or ``1H30M`` for an hour and a half.
-    
+
     Poll keys are the values shown as "key" from the ``poll`` or ``polls``
     command.
 
@@ -160,26 +176,26 @@ def jobstats(at=None, before=None, since=None, queue=None, agent=None,
 
 def poll(at=None, before=None, uuid=None):
     """Get information about a single poll, defaulting to most recent.
-    
+
     Usage:
-    
+
         poll
         (returns most recent poll)
-        
+
         poll at:<poll key or interval>
         (returns poll at or before the poll key or interval)
-        
+
         poll before:<poll key or interval>
         (returns poll before the poll key or interval)
 
     Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
     be replaced with a positive integer, and "D," "H," "M," and "S" are
-    literals standing for "days," "hours," "minutes," and "seconds." 
+    literals standing for "days," "hours," "minutes," and "seconds."
     For instance, you might use ``5M`` for five minutes, ``20S`` for
     twenty seconds, or ``1H30M`` for an hour and a half.
-    
+
     Example:
-    
+
         async poll at:5M
         (get the poll information at five minutes ago or before)"""
     # TODO: parse at and before to datetimes
@@ -192,21 +208,21 @@ def poll(at=None, before=None, uuid=None):
 
 def polls(at=None, before=None, since=None, count=None, uuid=None):
     """Get information about recent polls, defaulting to most recent.
-    
+
     Usage:
-    
+
         polls
         (returns most recent 3 poll)
-        
+
         polls at:<poll key or interval>
         (returns up to 3 polls at or before the poll key or interval)
-        
+
         polls before:<poll key or interval>
         (returns up to 3 polls before the poll key or interval)
-        
+
         polls since:<poll key or interval>
         (returns polls since the poll key or interval, inclusive)
-        
+
         polls count <positive integer>
         (returns the given number of the most recent files)
 
@@ -215,12 +231,12 @@ def polls(at=None, before=None, since=None, count=None, uuid=None):
 
     Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
     be replaced with a positive integer, and "D," "H," "M," and "S" are
-    literals standing for "days," "hours," "minutes," and "seconds." 
+    literals standing for "days," "hours," "minutes," and "seconds."
     For instance, you might use ``5M`` for five minutes, ``20S`` for
     twenty seconds, or ``1H30M`` for an hour and a half.
-    
+
     Example:
-    
+
         async polls before:5M since:10M
         (get the poll information from 5 to 10 minutes ago)"""
     if uuid is not None:
@@ -252,7 +268,7 @@ funcs = {}
 
 def help(cmd=None):
     """Get help on an async monitor tool.
-    
+
     Usage is 'async help <tool name>' or 'async help'."""
     if cmd is None:
         res = [
@@ -271,14 +287,9 @@ def help(cmd=None):
 for f in status, jobs, job, jobstats, poll, polls, utcnow, UUID, help:
     funcs[f.__name__] = f
 
-def async(connection, cmd=None, *raw):
-    """A collection of tools to monitor zc.async activity in this process.
-    
-    To see a list of async tools, use 'async help'.
-    
-    To learn more about an async monitor tool, use 'async help <tool name>'."""
+def monitor(funcs, help, connection, cmd, raw):
     if cmd is None:
-        res = async.__doc__
+        res = help
     else:
         f = funcs.get(cmd)
         if f is None:
@@ -300,4 +311,21 @@ def async(connection, cmd=None, *raw):
     connection.write(res)
     connection.write('\n')
 
-    
+def async(connection, cmd=None, *raw):
+    """A collection of tools to monitor zc.async activity in this process.
+
+    To see a list of async tools, use 'async help'.
+
+    To learn more about an async monitor tool, use 'async help <tool name>'."""
+    monitor(funcs, async.__doc__, connection, cmd, raw)
+
+def asyncdb(connection, cmd=None, *raw):
+    """A collection of tools to monitor zc.async activity in the database.
+
+    To see a list of asyncdb tools, use 'asyncdb help'.
+
+    To learn more about an asyncdb monitor tool, use 'asyncdb help <tool name>'.
+
+    ``asyncdb`` tools differ from ``async`` tools in that ``asyncdb`` tools
+    access the database, and ``async`` tools do not."""
+    monitor(dbfuncs, asyncdb.__doc__, connection, cmd, raw)

@@ -819,7 +819,7 @@ class Job(zc.async.utils.Base):
             # It's debatable whether this is CRITICAL or ERROR level.  We'll
             # go with ERROR for now.
             zc.async.utils.log.error(
-                'Job %r was reassigned.  Likely cause was that polling was '
+                '%r was reassigned.  Likely cause was that polling was '
                 'unable to occur as regularly as expected, perhaps because of '
                 'long commit times in the application.', self)
             raise zc.async.interfaces.ReassignedError()

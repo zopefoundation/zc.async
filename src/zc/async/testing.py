@@ -253,6 +253,22 @@ def wait_for_annotation(job, name):
     else:
         assert False, 'annotation never found'
 
+def shut_down_and_wait(dispatcher):
+    threads = []
+    for queue_pools in dispatcher.queues.values():
+        for pool in queue_pools.values():
+            threads.extend(pool.threads)
+    dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+    dispatcher.thread.join(3)
+    # in most cases, this is unnecessary, but in some instances, such as in
+    # some examples in catastrophes.txt, this is needed.
+    for queue_pools in dispatcher.queues.values():
+        for pool in queue_pools.values():
+           pool.setSize(0)
+    # this makes sure that all the worker threads have a chance to stop.
+    for thread in threads:
+        thread.join(3)
+
 def print_logs(log_file=sys.stdout, log_level=logging.CRITICAL):
     # really more of a debugging tool
     logger = logging.getLogger('zc.async')

@@ -60,9 +60,10 @@ Prerequisites
    Unfortunately, building a clean, standalone workable Python 2.4.5 on OS X is
    not obvious.  This is what I recommend, if you are working on that platform.
    
-   First you need macports.  Go to macports.org and download the newest
-   version.  It doesn't seem to set up the manual path correctly, so after the
-   installation add this to your ~/.profile (or in a similar place)::
+   First you need macports.  Go to http://www.macports.org/ and download the
+   newest version.  It doesn't seem to set up the manual path correctly, so
+   after the installation add this to your ``~/.profile`` (or in a similar
+   place)::
    
     export MANPATH=/opt/local/man:$MANPATH
    
@@ -71,9 +72,9 @@ Prerequisites
    you are working in and open a new one.
 
    Download a source distribution of Python 2.4.5.  You may have your own
-   approach as to where to put things, but I'll go with this pattern in this
-   document: ~/src will hold expanded source trees, ~/opt will hold our local
-   Python, and we'll develop in ~/dev.
+   approach as to where to put things, but I go with this pattern: ``~/src``
+   holds expanded source trees, ``~/opt`` holds our local Python, and I develop
+   in ``~/dev``.
    
    We will want readline and need zlib from macports.
 

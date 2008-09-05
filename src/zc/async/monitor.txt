@@ -29,11 +29,11 @@ async-specific command.
     UUID: Get instance UUID in hex.
     help: Get help on an async monitor tool.
     job: Local information about a job as of last poll, if known.
-    jobs: Show active jobs as of last poll, sorted from newest to oldest.
+    jobs: Show active jobs in worker threads as of the instant.
     jobstats: Statistics on historical jobs as of last poll.
     poll: Get information about a single poll, defaulting to most recent.
     polls: Get information about recent polls, defaulting to most recent.
-    status: Get general zc.async dispatcher information.
+    status: Get a mapping of general zc.async dispatcher information.
     utcnow: Return the current time in UTC, in ISO 8601 format. 
     -> CLOSE
 
@@ -72,9 +72,10 @@ commands will follow.
   with all as ints except seconds, which is a float.
 
     >>> connection.test_input('async help status\n')
-    Get general zc.async dispatcher information.
+    Get a mapping of general zc.async dispatcher information.
     <BLANKLINE>
-        'status' is one of 'STUCK', 'STARTING', 'RUNNING', or 'STOPPED'. 
+        'status' is one of 'STUCK', 'STARTING', 'RUNNING', or 'STOPPED', where
+        'STUCK' means the poll is past due. 
     -> CLOSE
 
     >>> connection.test_input('async status\n')
@@ -100,7 +101,7 @@ Here's the ``jobs`` command.  It introduces some new patterns.
 - several commands have the "queue:" and "agent:" modifiers.
 
     >>> connection.test_input('async help jobs\n')
-    Show active jobs as of last poll, sorted from newest to oldest.
+    Show active jobs in worker threads as of the instant.
     <BLANKLINE>
         Usage:
     <BLANKLINE>
@@ -163,7 +164,7 @@ some potentially useful statistics.  It includes the optional "queue:" and
     <BLANKLINE>
         Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
         be replaced with a positive integer, and "D," "H," "M," and "S" are
-        literals standing for "days," "hours," "minutes," and "seconds." 
+        literals standing for "days," "hours," "minutes," and "seconds."
         For instance, you might use ``5M`` for five minutes, ``20S`` for
         twenty seconds, or ``1H30M`` for an hour and a half.
     <BLANKLINE>
@@ -200,7 +201,7 @@ The ``poll`` command uses patterns we've seen above.
     Get information about a single poll, defaulting to most recent.
     <BLANKLINE>
         Usage:
-    <BLANKLINE>    
+    <BLANKLINE>
             poll
             (returns most recent poll)
     <BLANKLINE>
@@ -212,7 +213,7 @@ The ``poll`` command uses patterns we've seen above.
     <BLANKLINE>
         Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
         be replaced with a positive integer, and "D," "H," "M," and "S" are
-        literals standing for "days," "hours," "minutes," and "seconds." 
+        literals standing for "days," "hours," "minutes," and "seconds."
         For instance, you might use ``5M`` for five minutes, ``20S`` for
         twenty seconds, or ``1H30M`` for an hour and a half.
     <BLANKLINE>
@@ -259,7 +260,7 @@ The ``poll`` command uses patterns we've seen above.
     <BLANKLINE>
         Intervals are of the format ``[nD][nH][nM][nS]``, where "n" should
         be replaced with a positive integer, and "D," "H," "M," and "S" are
-        literals standing for "days," "hours," "minutes," and "seconds." 
+        literals standing for "days," "hours," "minutes," and "seconds."
         For instance, you might use ``5M`` for five minutes, ``20S`` for
         twenty seconds, or ``1H30M`` for an hour and a half.
     <BLANKLINE>
@@ -335,11 +336,14 @@ before because we didn't have a job to look at.
 
     >>> connection.test_input('async job 30\n') # doctest: +ELLIPSIS
     {
+        "agent": "main", 
         "call": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.send_message()``>", 
         "completed": "2006-08-10T15:44:...Z", 
         "failed": false, 
         "poll id": 6420106068024891087, 
+        "queue": "", 
         "quota names": [], 
+        "reassigned": false, 
         "result": "None", 
         "started": "2006-08-10T15:44:...Z", 
         "thread": ...
@@ -405,11 +409,14 @@ Here's the information for that job.
 
     >>> connection.test_input('async job 36\n') # doctest: +ELLIPSIS
     {
+        "agent": "main", 
         "call": "<zc.async.job.Job (oid 36, db 'unnamed') ``zc.async.doctest_test.wait_for_me()``>", 
         "completed": null, 
         "failed": false, 
         "poll id": 6420106067941005007, 
+        "queue": "", 
         "quota names": [], 
+        "reassigned": false, 
         "result": null, 
         "started": "2006-08-10T15:44:...Z", 
         "thread": ...
@@ -623,11 +630,14 @@ The job is done according to the ``job`` command also.
 
     >>> connection.test_input('async job 36\n') # doctest: +ELLIPSIS
     {
+        "agent": "main", 
         "call": "<zc.async.job.Job (oid 36, db 'unnamed') ``zc.async.doctest_test.wait_for_me()``>", 
         "completed": "2006-08-10T15:44:...Z", 
         "failed": false, 
         "poll id": 6420106067941005007, 
+        "queue": "", 
         "quota names": [], 
+        "reassigned": false, 
         "result": "None", 
         "started": "2006-08-10T15:44:...Z", 
         "thread": ...

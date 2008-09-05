@@ -435,12 +435,9 @@ transaction.TranasctionManager.commit.
     >>> agent.chooser = zc.async.agent.chooseFirst
     >>> transaction.commit()
     >>> lock1.release()
-    >>> pprint.pprint(zc.async.testing.get_poll(dispatcher)) # doctest: +ELLIPSIS
-    {'': {'main': {'active jobs': [],
-                   'error': None,
-                   'len': 0,
-                   'new jobs': [(..., 'unnamed')],
-                   'size': 3}}}
+    >>> info = zc.async.testing.get_poll(dispatcher)['']['main']
+    >>> len(info['active jobs'] + info['new jobs'])
+    1
     >>> transaction.TransactionManager.commit = old_commit
     >>> zc.async.testing.wait_for_result(job)
     42
@@ -544,7 +541,7 @@ retried. It's put back in the queue, and it is called again normally.
     >>> old_dispatcher = dispatcher
     >>> zc.async.dispatcher.clear()
     >>> zc.async.subscribers.ThreadedDispatcherInstaller(
-    ...         poll_interval=0.5)(zc.async.interfaces.DatabaseOpened(db))
+    ...         poll_interval=0.1)(zc.async.interfaces.DatabaseOpened(db))
     >>> dispatcher = zc.async.dispatcher.get()
     >>> zc.async.testing.wait_for_result(interrupt_job)
 
@@ -641,7 +638,7 @@ Let's start our dispatcher up again.
     >>> old_dispatcher = dispatcher
     >>> zc.async.dispatcher.clear()
     >>> zc.async.subscribers.ThreadedDispatcherInstaller(
-    ...         poll_interval=0.5)(zc.async.interfaces.DatabaseOpened(db))
+    ...         poll_interval=0.1)(zc.async.interfaces.DatabaseOpened(db))
     >>> dispatcher = zc.async.dispatcher.get()
 
 Initially, it's going to be a bit confused, because it sees that the
@@ -691,14 +688,19 @@ DispatcherAgents object is no longer dead, because it is tied to the new
 instance of the dispatcher.
 
     >>> poll = zc.async.testing.get_poll(dispatcher)
+    >>> t = transaction.begin()
+    >>> da.ping_death_interval = datetime.timedelta(seconds=60)
+    >>> transaction.commit()
+    >>> from zc.async.testing import time_sleep
     >>> def wait_for_pending(job):
-    ...     for i in range(60):
+    ...     for i in range(600):
     ...         t = transaction.begin()
     ...         if job.status in (zc.async.interfaces.PENDING):
     ...             break
-    ...         time_sleep(0.1)
+    ...         time_sleep(0.01)
     ...     else:
-    ...         assert False, 'job never pending'
+    ...         assert False, 'job never pending: ' + str(job.status)
+    ...
     >>> wait_for_pending(job)
     >>> job in da['main']
     False
@@ -723,7 +725,9 @@ Now we need to wait for the job.
 
 The dispatcher cleaned up its own "hard" crash.
 
-[#cleanup2]_
+[#cleanup1]_
+
+.. _hard-crash-with-sibling-recovery:
 
 Hard Crash During Job with Sibling Recovery
 -------------------------------------------
@@ -756,14 +760,6 @@ Now we'll start up an alternate dispatcher.
     ...     poll_interval=0.5, uuid=alt_uuid)(
     ...     zc.async.interfaces.DatabaseOpened(db))
     >>> alt_dispatcher = zc.async.dispatcher.get(alt_uuid)
-
-We're also going to set the main dispatcher's ``ping_death_interval`` back to
-60 seconds so we can see some polls in the alternate dispatcher before it gets
-around to cleaning up.
-
-    >>> da.ping_death_interval = datetime.timedelta(seconds=60)
-    >>> transaction.commit()
-    >>> 
 
 Now we'll "crash" the dispatcher.
 
@@ -806,14 +802,14 @@ Above, the ping_death_interval was returned to the default of 60 seconds. To
 speed up the realization of our second dispatcher that the first one is dead,
 we'll set the ping_death_interval back down to just one second.
 
+    >>> bool(da.activated)
+    True
     >>> da.ping_death_interval
     datetime.timedelta(0, 60)
     >>> import datetime
     >>> da.ping_death_interval = datetime.timedelta(seconds=1)
     >>> transaction.commit()
     >>> zc.async.testing.wait_for_death(da)
-    >>> bool(da.activated)
-    True
 
 After the second dispatcher gets a poll--a chance to notice--it will have
 cleaned up the first dispatcher's old tasks in the same way we saw in the
@@ -844,7 +840,7 @@ Now we need to wait for the job.
 The sibling, then, was able to clean up the mess left by the "hard" crash of
 the first dispatcher.
 
-[#cleanup3]_
+[#cleanup2]_
 
 Other Job-Related Errors
 ------------------------
@@ -871,7 +867,7 @@ are demonstrated in the job.txt document.
     >>> zope.component.provideHandler(zc.async.subscribers.queue_installer)
     >>> zope.component.provideHandler(
     ...     zc.async.subscribers.ThreadedDispatcherInstaller(
-    ...         poll_interval=0.5))
+    ...         poll_interval=0.1))
     >>> zope.component.provideHandler(zc.async.subscribers.agent_installer)
     >>> import zope.event
     >>> import zc.async.interfaces
@@ -882,33 +878,11 @@ are demonstrated in the job.txt document.
 .. [#cleanup1]
 
     >>> lock.release()
-    >>> old_dispatcher.thread.join(3)
-    >>> old_dispatcher.dead_pools[0].threads[0].join(3)
+    >>> zc.async.testing.shut_down_and_wait(old_dispatcher)
 
 .. [#cleanup2]
 
     >>> lock.release()
-    >>> old_dispatcher.thread.join(3)
-    >>> for queue_pools in old_dispatcher.queues.values():
-    ...     for name, pool in queue_pools.items():
-    ...         pool.setSize(0)
-    ...         for thread in pool.threads:
-    ...             thread.join(3)
-    ...
-    -3
-
-.. [#cleanup3]
-
-    >>> lock.release()
-    >>> dispatcher.thread.join(3)
-    >>> for queue_pools in dispatcher.queues.values():
-    ...     for name, pool in queue_pools.items():
-    ...         pool.setSize(0)
-    ...         for thread in pool.threads:
-    ...             thread.join(3)
-    ...
-    -3
-    >>> alt_dispatcher.reactor.callFromThread(alt_dispatcher.reactor.stop)
-    >>> alt_dispatcher.thread.join(3)
-    >>> alt_dispatcher.dead_pools[0].threads[0].join(3)
+    >>> zc.async.testing.shut_down_and_wait(dispatcher)
+    >>> zc.async.testing.shut_down_and_wait(alt_dispatcher)
     >>> time.sleep = old_sleep

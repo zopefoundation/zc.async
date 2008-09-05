@@ -48,18 +48,22 @@ class AgentThreadPool(object):
     initial_backoff = 5
     incremental_backoff = 5
     maximum_backoff = 60
+    jobid = None
 
     def __init__(self, dispatcher, name, size):
         self.dispatcher = dispatcher
         self.name = name
         self.queue = Queue.Queue(0)
         self.threads = []
+        self.jobids = {}
         self.setSize(size)
 
     def getSize(self):
         return self._size
 
     def perform_thread(self):
+        thread_id = thread.get_ident()
+        self.jobids[thread_id] = None
         zc.async.local.dispatcher = self.dispatcher
         zc.async.local.name = self.name # this is the name of this pool's agent
         conn = self.dispatcher.db.open()
@@ -67,7 +71,8 @@ class AgentThreadPool(object):
             job_info = self.queue.get()
             while job_info is not None:
                 identifier, dbname, info = job_info
-                info['thread'] = thread.get_ident()
+                self.jobids[thread_id] = (ZODB.utils.u64(identifier), dbname)
+                info['thread'] = thread_id
                 info['started'] = datetime.datetime.utcnow()
                 zc.async.utils.tracelog.info(
                     'starting in thread %d: %s',
@@ -175,6 +180,7 @@ class AgentThreadPool(object):
                 zc.async.utils.tracelog.info(
                     'completed in thread %d: %s',
                     info['thread'], info['call'])
+                self.jobids[thread_id] = None
                 job_info = self.queue.get()
         finally:
             conn.close()
@@ -182,6 +188,7 @@ class AgentThreadPool(object):
                 # this may cause some bouncing, but we don't ever want to end
                 # up with fewer than needed.
                 self.dispatcher.reactor.callFromThread(self.setSize)
+            del self.jobids[thread_id]
 
     def setSize(self, size=None):
         # this should only be called from the thread in which the reactor runs
@@ -381,6 +388,8 @@ class Dispatcher(object):
                         else:
                             info = {'result': None,
                                     'failed': False,
+                                    'agent': name,
+                                    'queue': queue.name,
                                     'poll id': None,
                                     'quota names': job.quota_names,
                                     'call': repr(job),
@@ -558,28 +567,25 @@ class Dispatcher(object):
                 raise ValueError('ambiguous database name')
             else:
                 database_name = minKey[1]
-        return self.jobs[(oid, database_name)]
+        res = self.jobs[(oid, database_name)]
+        if res['completed'] is None:
+            jobid = (oid, database_name)
+            info = self.polls.first()[res['queue']][res['agent']]
+            if (jobid not in info['active jobs'] and
+                jobid not in info['new jobs']):
+                res = res.copy()
+                res['reassigned'] = True
+        return res
 
     def getActiveJobIds(self, queue=None, agent=None):
         """returns active jobs from newest to oldest"""
         res = []
-        try:
-            poll = self.polls.first()
-        except ValueError:
-            pass
-        else:
-            old = []
-            unknown = []
-            for info in _iter_info(poll, queue, agent):
-                for jobs in (info['new jobs'], info['active jobs']):
-                    for job_id in jobs:
-                        job_info = self.jobs.get(job_id)
-                        if job_info is None:
-                            unknown.append(job_id)
-                        elif not job_info['completed']:
-                            bisect.insort(old, (job_info['poll id'], job_id))
-            res.extend(i[1] for i in old)
-            res.extend(unknown)
+        for queue_name, agents in self.queues.items():
+            if queue is None or queue_name == queue:
+                for agent_name, pool in agents.items():
+                    if agent is None or agent_name == agent:
+                        res.extend(val for val in pool.jobids.values()
+                                   if val is not None)
         return res
 
     def getPollInfo(self, at=None, before=None):
