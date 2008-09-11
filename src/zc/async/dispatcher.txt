@@ -267,14 +267,14 @@ We also have some log entries.
     ...
     >>> print info1.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     starting in thread ...: <zc.async.job.Job (oid ..., db 'unnamed')
-                             ``<built-in function mul>(14, 3)``>
+                             ``operator.mul(14, 3)``>
     >>> print info2.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``<built-in function mul>(14, 3)``> succeeded with result:
+     ``operator.mul(14, 3)``> succeeded with result:
     42
     >>> print info3.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     completed in thread ...: <zc.async.job.Job (oid ..., db 'unnamed')
-                             ``<built-in function mul>(14, 3)``>
+                             ``operator.mul(14, 3)``>
 
     >>> print debug.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     poll ...:
@@ -291,7 +291,7 @@ in it now. We can get some information about that job from the dispatcher.
     >>> pprint.pprint(info)
     ... # doctest: +ELLIPSIS
     {'agent': 'main',
-     'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``<built-in function mul>(14, 3)``>",
+     'call': "<zc.async.job.Job (oid ..., db 'unnamed') ``operator.mul(14, 3)``>",
      'completed': datetime.datetime(...),
      'failed': False,
      'poll id': ...,
@@ -548,7 +548,7 @@ The db's pool size has returned to the original value.
     ...
     >>> print r.getMessage() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     <zc.async.job.Job (oid ..., db 'unnamed')
-     ``<built-in function mul>(14, None)``> failed with traceback:
+     ``operator.mul(14, None)``> failed with traceback:
     *--- Failure #... (pickled) ---
     .../zc/async/job.py:...: __call__(...)
      [ Locals ]...

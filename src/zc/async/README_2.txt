@@ -442,46 +442,31 @@ any tasks for that queue.*
 
 We currently have an agent that simply asks for the next available FIFO job.
 We are using an agent implementation that allows you to specify a callable to
-choose the job.  That callable is now zc.async.agent.chooseFirst.
+filter the job.  That callable is now None.
 
-    >>> agent.chooser is zc.async.agent.chooseFirst
+    >>> agent.filter is None
     True
 
-Here's the entire implementation of that function::
-
-    def chooseFirst(agent):
-        return agent.queue.claim()
-
-What would another agent do?  Well, it might pass a filter function to
-``claim``.  This function takes a job and returns a value evaluated as a
-boolean.  For instance, let's say we always wanted a certain number of
-threads available for working on a particular call; for the purpose of
-example, we'll use ``operator.mul``, though a more real-world example
-might be a network call or a particular call in your application.
+What does a filter do?  A filter takes a job and returns a value evaluated as a
+boolean.  For instance, let's say we always wanted a certain number of threads
+available for working on a particular call; for the purpose of example, we'll
+use ``operator.mul``, though a more real-world example might be a network call
+or a particular call in your application.
 
     >>> import operator
-    >>> def chooseMul(agent):
-    ...     return agent.queue.claim(lambda job: job.callable is operator.mul)
+    >>> def chooseMul(job):
+    ...     return job.callable == operator.mul
     ...
 
-Another variant would prefer operator.mul, but if one is not in the queue,
-it will take any.
+You might want something more sophisticated, such as preferring operator.mul,
+but if one is not in the queue, it will take any; or doing any other priority
+variations.  To do this, you'll want to write your own agent--possibly
+inheriting from the provided one and overriding ``_choose``.
 
-    >>> def preferMul(agent):
-    ...     res = agent.queue.claim(lambda job: job.callable is operator.mul)
-    ...     if res is None:
-    ...         res = agent.queue.claim()
-    ...     return res
-    ...
+Let's set up another agent, in addition to the default one, that has
+the ``chooseMul`` policy.
 
-Other approaches might look at the current jobs in the agent, or the agent's
-dispatcher, and decide what jobs to prefer on that basis.  The agent should
-support many ideas.
-
-Let's set up another agent, in addition to the ``chooseFirst`` one, that has
-the ``preferMul`` policy.
-
-    >>> agent2 = dispatcher_agents['mul'] = zc.async.agent.Agent(preferMul)
+    >>> agent2 = dispatcher_agents['mul'] = zc.async.agent.Agent(chooseMul)
 
 Another characteristic of agents is that they specify how many jobs they
 should pick at a time.  The dispatcher actually adjusts the size of the

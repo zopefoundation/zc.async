@@ -11,15 +11,21 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-import re
 import datetime
-import pytz
-import uuid
-import simplejson
+import re
+import types
 
+import pytz
+from uuid import UUID as uuid_UUID # we use this non-standard import spelling
+# because ``uuid`` is frequently an argument and UUID is a function defined
+# locally.
+import simplejson
 import zope.component
+import persistent.interfaces
 
 import zc.async.dispatcher
+import zc.async.interfaces
+import zc.async.utils
 
 _marker = object()
 class Encoder(simplejson.JSONEncoder):
@@ -43,11 +49,55 @@ class Encoder(simplejson.JSONEncoder):
             if obj.tzinfo is not None:
                 obj = obj.astimezone(pytz.UTC).replace(tzinfo=None)
             return obj.isoformat() + "Z"
-        elif isinstance(obj, uuid.UUID):
+        elif isinstance(obj, uuid_UUID):
             return str(obj)
+        elif zc.async.interfaces.IJob.providedBy(obj):
+            return zc.async.dispatcher.getId(obj)
+        elif getattr(obj, 'next', _marker) is not _marker:
+            # iterator.  Duck typing too fuzzy, practically?
+            return tuple(obj)
+        elif ((types.FunctionType, types.BuiltinFunctionType) or
+              persistent.interfaces.IPersistent.providedBy(obj)):
+            return zc.async.utils.custom_repr(obj)
         return simplejson.JSONEncoder.default(self, obj)
 
 encoder = Encoder(sort_keys=True, indent=4)
+
+def monitor(funcs, help_text, connection, cmd, raw, needs_db_connection=False):
+    if cmd is None:
+        res = help_text
+    else:
+        f = funcs.get(cmd)
+        if f is None:
+            res = '[Unknown tool name for this command: %s]' % (cmd,)
+        else:
+            args = []
+            kwargs = {}
+            for val in raw:
+                if ':' in val:
+                    key, val = val.split(':', 1)
+                    kwargs[key] = val
+                else:
+                    if kwargs:
+                        raise ValueError(
+                            'placeful modifiers must come before named '
+                            'modifiers')
+                    args.append(val)
+            if needs_db_connection:
+                dispatcher = zc.async.dispatcher.get()
+                conn = dispatcher.db.open()
+                try:
+                    res = f(conn, *args, **kwargs)
+                    if not isinstance(res, str):
+                        res = encoder.encode(res)
+                finally:
+                    conn.close()
+            else:
+                res = f(*args, **kwargs)
+                if not isinstance(res, str):
+                    res = encoder.encode(res)
+    connection.write(res)
+    connection.write('\n')
 
 
 def status(uuid=None):
@@ -56,8 +106,8 @@ def status(uuid=None):
     'status' is one of 'STUCK', 'STARTING', 'RUNNING', or 'STOPPED', where
     'STUCK' means the poll is past due."""
     if uuid is not None:
-        uuid = uuid.UUID(uuid)
-    return encoder.encode(zc.async.dispatcher.get(uuid).getStatusInfo())
+        uuid = uuid_UUID(uuid)
+    return zc.async.dispatcher.get(uuid).getStatusInfo()
 
 def jobs(queue=None, agent=None, uuid=None):
     """Show active jobs in worker threads as of the instant.
@@ -80,9 +130,8 @@ def jobs(queue=None, agent=None, uuid=None):
         async jobs queue: agent:main
         (results filtered to queue named '' and agent named 'main')"""
     if uuid is not None:
-        uuid = uuid.UUID(uuid)
-    return encoder.encode(
-        zc.async.dispatcher.get(uuid).getActiveJobIds(queue, agent))
+        uuid = uuid_UUID(uuid)
+    return zc.async.dispatcher.get(uuid).getActiveJobIds(queue, agent)
 
 def job(OID, database=None, uuid=None):
     """Local information about a job as of last poll, if known.
@@ -104,9 +153,8 @@ def job(OID, database=None, uuid=None):
     converted back to an integer with ``ZODB.utils.u64``.
     """
     if uuid is not None:
-        uuid = uuid.UUID(uuid)
-    return encoder.encode(
-        zc.async.dispatcher.get(uuid).getJobInfo(long(OID), database))
+        uuid = uuid_UUID(uuid)
+    return zc.async.dispatcher.get(uuid).getJobInfo(long(OID), database)
 
 _find = re.compile(r'\d+[DHMS]').findall
 def _dt(s):
@@ -119,11 +167,11 @@ def _dt(s):
             vals = {}
             for val in _find(s.upper()):
                 vals[val[-1]] = int(val[:-1])
-            res = datetime.timedelta(
+            res = datetime.datetime.utcnow() - datetime.timedelta(
                 days=vals.get('D', 0),
                 hours=vals.get('H', 0),
                 minutes=vals.get('M', 0),
-                seconds=vals.get('S', 0)) + datetime.datetime.utcnow()
+                seconds=vals.get('S', 0))
     return res
 
 
@@ -166,13 +214,12 @@ def jobstats(at=None, before=None, since=None, queue=None, agent=None,
     Example:
 
         async jobstats queue: agent:main since:1H
-        (results filtered to queue named '' and agent named 'main' from now
-         till one hour ago)"""
+        (results filtered to queue named '' and agent named 'main' from
+         one hour ago till now)"""
     if uuid is not None:
-        uuid = uuid.UUID(uuid)
-    return encoder.encode(
-        zc.async.dispatcher.get(uuid).getStatistics(
-            _dt(at), _dt(before), _dt(since), queue, agent))
+        uuid = uuid_UUID(uuid)
+    return zc.async.dispatcher.get(uuid).getStatistics(
+        _dt(at), _dt(before), _dt(since), queue, agent)
 
 def poll(at=None, before=None, uuid=None):
     """Get information about a single poll, defaulting to most recent.
@@ -200,11 +247,10 @@ def poll(at=None, before=None, uuid=None):
         (get the poll information at five minutes ago or before)"""
     # TODO: parse at and before to datetimes
     if uuid is not None:
-        uuid = uuid.UUID(uuid)
+        uuid = uuid_UUID(uuid)
     info = zc.async.dispatcher.get(uuid).getPollInfo(_dt(at), _dt(before))
-    res = {'key': info.key, 'time': info.utc_timestamp.isoformat() + "Z",
-           'results': info}
-    return encoder.encode(res)
+    return {'key': info.key, 'time': info.utc_timestamp.isoformat() + "Z",
+            'results': info}
 
 def polls(at=None, before=None, since=None, count=None, uuid=None):
     """Get information about recent polls, defaulting to most recent.
@@ -237,20 +283,19 @@ def polls(at=None, before=None, since=None, count=None, uuid=None):
 
     Example:
 
-        async polls before:5M since:10M
-        (get the poll information from 5 to 10 minutes ago)"""
+        async polls since:10M before:5M
+        (get the poll information from 10 to 5 minutes ago)"""
     if uuid is not None:
-        uuid = uuid.UUID(uuid)
+        uuid = uuid_UUID(uuid)
     if count is None:
         if since is None:
             count = 3
     else:
         count = int(count)
-    return encoder.encode(
-        [{'key': p.key, 'time': p.utc_timestamp.isoformat() + "Z",
-          'results': p}
-         for p in zc.async.dispatcher.get(uuid).iterPolls(
-            _dt(at), _dt(before), _dt(since), count)])
+    return [{'key': p.key, 'time': p.utc_timestamp.isoformat() + "Z",
+             'results': p}
+            for p in zc.async.dispatcher.get(uuid).iterPolls(
+               _dt(at), _dt(before), _dt(since), count)]
 
 # provide in async and separately:
 
@@ -260,9 +305,7 @@ def utcnow():
 
 def UUID():
     """Get instance UUID in hex."""
-    res = zope.component.getUtility(zc.async.interfaces.IUUID)
-    if res is not None:
-        return str(res)
+    return str(zope.component.getUtility(zc.async.interfaces.IUUID))
 
 funcs = {}
 
@@ -287,45 +330,11 @@ def help(cmd=None):
 for f in status, jobs, job, jobstats, poll, polls, utcnow, UUID, help:
     funcs[f.__name__] = f
 
-def monitor(funcs, help, connection, cmd, raw):
-    if cmd is None:
-        res = help
-    else:
-        f = funcs.get(cmd)
-        if f is None:
-            res = '[Unknown async tool]'
-        else:
-            args = []
-            kwargs = {}
-            for val in raw:
-                if ':' in val:
-                    key, val = val.split(':', 1)
-                    kwargs[key] = val
-                else:
-                    if kwargs:
-                        raise ValueError(
-                            'placeful modifiers must come before named '
-                            'modifiers')
-                    args.append(val)
-            res = f(*args, **kwargs)
-    connection.write(res)
-    connection.write('\n')
-
 def async(connection, cmd=None, *raw):
-    """A collection of tools to monitor zc.async activity in this process.
+    """Monitor zc.async activity in this process.
 
     To see a list of async tools, use 'async help'.
 
     To learn more about an async monitor tool, use 'async help <tool name>'."""
     monitor(funcs, async.__doc__, connection, cmd, raw)
 
-def asyncdb(connection, cmd=None, *raw):
-    """A collection of tools to monitor zc.async activity in the database.
-
-    To see a list of asyncdb tools, use 'asyncdb help'.
-
-    To learn more about an asyncdb monitor tool, use 'asyncdb help <tool name>'.
-
-    ``asyncdb`` tools differ from ``async`` tools in that ``asyncdb`` tools
-    access the database, and ``async`` tools do not."""
-    monitor(dbfuncs, asyncdb.__doc__, connection, cmd, raw)

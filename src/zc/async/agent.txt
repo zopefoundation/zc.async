@@ -4,9 +4,10 @@ component in the zc.async design that is intended to be pluggable.
 Arguably the most interesting method to control is ``claimJob``.  It is 
 responsible for getting the next job from the queue.
 
-The default implementation in zc.async.agent allows you to pass in a callable
-that, given the agent, claims and returns the desired job.  The default
-callable simply asks for the next job.
+The default implementation in zc.async.agent allows you to control this in one
+of two ways: a ``filter`` or a ``chooser``.  We will examine these later.  The
+default behavior is to accept all jobs (constrained by the agent's size, as
+also seen below).
 
 Let's take a quick look at how the agent works.  Let's imagine we have a
 queue with a dispatcher with an agent [#setUp]_.
@@ -124,8 +125,126 @@ for details).
     >>> len(agent)
     1
 
-This particular agent invites you to provide a function to choose jobs.
-The default one simply chooses the first available job in the queue.
+Let's clean out the queue and agent so our next section has a clean slate.
+
+    >>> while len(queue):
+    ...     ignore = queue.pull(0)
+    ...
+    >>> job5()
+    42
+    >>> len(queue)
+    0
+    >>> len(agent)
+    0
+
+Filters and Choosers
+====================
+
+This particular agent invites you to provide a function to choose jobs.  As
+mentioned above, this can either be a "filter" or a "chooser".  Filters are
+preferred because they allow for better reporting in monitoring code.
+
+Our agent has a ``None`` filter at the moment, and provides a special
+interface indicating that it uses filters:
+``zc.async.interfaces.IFilterAgent``.
+
+    >>> print agent.filter
+    None
+    >>> import zc.async.interfaces
+    >>> zc.async.interfaces.IFilterAgent.providedBy(agent)
+    True
+
+We can define a filter.  The ``filter`` attribute, if not None, must simply
+be a callable that takes a job and returns ``True`` if the agent will accept
+the job, and ``False`` otherwise.  Let's define a filter that accepts
+only jobs with the ``mock_work`` callable and put it on our agent.
+
+    >>> def mock_work_filter(job):
+    ...     return job.callable == mock_work
+    ...
+    >>> agent.filter = mock_work_filter
+    >>> zc.async.interfaces.IFilterAgent.providedBy(agent)
+    True
+    >>> transaction.commit()
+
+Now let's add some jobs.
+
+    >>> import operator
+    >>> import zc.async.job
+    >>> job6 = queue.put(mock_work)
+    >>> job7 = queue.put(zc.async.job.Job(operator.mul, 42, 2))
+    >>> job8 = queue.put(mock_work)
+    >>> job9 = queue.put(zc.async.job.Job(operator.mul, 42, 2))
+
+The agent will claim the mock_work jobs, but not the other two.
+    
+    >>> job6 is agent.claimJob()
+    True
+    >>> job8 is agent.claimJob()
+    True
+    >>> print agent.claimJob()
+    None
+    >>> len(agent)
+    2
+    >>> job6()
+    42
+    >>> job8()
+    42
+    >>> len(agent)
+    0
+    >>> print agent.claimJob()
+    None
+
+Filters are used for monitoring to determine how many jobs in a queue a given
+agent might help to perform.  Therefore, typically a filter should not take the
+state of an agent into account when it decides whether or not to accept a job.
+That should happen in a subclass' ``claimJob`` custom implementation...or in
+a ``chooser``.
+
+The ``chooser`` attribute is the original approach of the agent implementation
+before the ``filter`` was added.  It's primary failing is that it is not
+designed to allow easy introspection of what jobs an agent would be willing to
+do, because the code that filtered also mutated the queue.  That said, it can
+still come in handy if you want to have a chooser that takes the agent's state
+into account.
+
+You cannot have a non-None filter and set a chooser, in this implementation.
+
+    >>> def choose_add(agent):
+    ...     return agent.queue.claim(lambda j: j.callable == operator.add)
+    ...
+    >>> agent.chooser = choose_add
+    Traceback (most recent call last):
+    ...
+    ValueError: cannot set both chooser and filter to non-None
+    >>> agent.filter = None
+    >>> zc.async.interfaces.IFilterAgent.providedBy(agent)
+    True
+    >>> agent.chooser = choose_add
+    >>> zc.async.interfaces.IFilterAgent.providedBy(agent)
+    False
+    >>> agent.filter = mock_work_filter
+    Traceback (most recent call last):
+    ...
+    ValueError: cannot set both chooser and filter to non-None
+    >>> transaction.commit()
+
+Now we have a chooser that only wants to perform jobs with an operator.add
+callable.
+
+    >>> len(queue)
+    2
+    >>> print agent.claimJob()
+    None
+    >>> job9 = queue.put(zc.async.job.Job(operator.add, 41, 1))
+    >>> agent.claimJob() is job9
+    True
+    >>> len(queue)
+    2
+    >>> len(agent)
+    1
+
+Again, filters are preferred.
 
 .. [#setUp] First we'll get a database and the necessary registrations.
 

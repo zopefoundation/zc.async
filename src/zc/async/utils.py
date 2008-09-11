@@ -15,10 +15,13 @@ import datetime
 import logging
 import sys
 import time
+import types
 
+import persistent.interfaces
+import BTrees
 import ZEO.Exceptions
 import ZODB.POSException
-import BTrees
+import ZODB.utils
 import rwproperty
 import persistent
 import zope.minmax
@@ -328,3 +331,24 @@ def try_five_times(call, identifier, tm, commit=True):
             log.critical('Error while %s', identifier, exc_info=True)
             res = zc.twist.Failure()
         return res
+
+def custom_repr(obj):
+    if persistent.interfaces.IPersistent.providedBy(obj):
+        dbname = "?"
+        if obj._p_jar is not None:
+            dbname = getattr(obj._p_jar.db(), 'database_name', "?")
+            if dbname != '?':
+                dbname = repr(dbname)
+        if obj._p_oid is not None:
+            oid = ZODB.utils.u64(obj._p_oid)
+        else:
+            oid = '?'
+        return '%s.%s (oid %s, db %s)' % (
+            obj.__class__.__module__,
+            obj.__class__.__name__,
+            oid,
+            dbname)
+    elif isinstance(obj, (types.FunctionType, types.BuiltinFunctionType)):
+        return '%s.%s' % (obj.__module__, obj.__name__)
+    else:
+        return repr(obj)

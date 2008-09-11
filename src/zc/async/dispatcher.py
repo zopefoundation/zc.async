@@ -217,6 +217,10 @@ class AgentThreadPool(object):
                 self.queue.put(None)
         return size - old # size difference
 
+def getId(obj):
+    dbname = getattr(obj._p_jar.db(), 'database_name', None)
+    return (ZODB.utils.u64(obj._p_oid), dbname)
+
 # this is mostly for testing, though ``get`` comes in handy generally
 
 _dispatchers = {}
@@ -354,10 +358,7 @@ class Dispatcher(object):
                     pools = self.queues[queue.name] = {}
                 for name, agent in da.items():
                     job_info = []
-                    active_jobs = [
-                        (ZODB.utils.u64(job._p_oid),
-                         getattr(job._p_jar.db(), 'database_name', None))
-                         for job in agent]
+                    active_jobs = [getId(job) for job in agent]
                     agent_info = queue_info[name] = {
                         'size': None, 'len': None, 'error': None,
                         'new jobs': job_info, 'active jobs': active_jobs}
@@ -398,9 +399,7 @@ class Dispatcher(object):
                                     'thread': None,
                                     'reassigned': False}
                             started_jobs.append(info)
-                            dbname = getattr(
-                                job._p_jar.db(), 'database_name', None)
-                            jobid = (ZODB.utils.u64(job._p_oid), dbname)
+                            jobid = uoid, dbname = getId(job)
                             self.jobs[jobid] = info
                             job_info.append(jobid)
                             pool.queue.put(

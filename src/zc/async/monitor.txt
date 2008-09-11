@@ -11,7 +11,7 @@ description, using the zc.z3monitor ``help`` command.
     >>> connection.test_input('help async\n')
     Help for async:
     <BLANKLINE>
-    A collection of tools to monitor zc.async activity in this process.
+    Monitor zc.async activity in this process.
     <BLANKLINE>
         To see a list of async tools, use 'async help'.
     <BLANKLINE>
@@ -174,8 +174,8 @@ some potentially useful statistics.  It includes the optional "queue:" and
         Example:
     <BLANKLINE>
             async jobstats queue: agent:main since:1H
-            (results filtered to queue named '' and agent named 'main' from now
-             till one hour ago) 
+            (results filtered to queue named '' and agent named 'main' from
+             one hour ago till now) 
     -> CLOSE
 
     >>> connection.test_input('async jobstats\n')
@@ -266,8 +266,8 @@ The ``poll`` command uses patterns we've seen above.
     <BLANKLINE>
         Example:
     <BLANKLINE>
-            async polls before:5M since:10M
-            (get the poll information from 5 to 10 minutes ago) 
+            async polls since:10M before:5M
+            (get the poll information from 10 to 5 minutes ago) 
     -> CLOSE
 
     >>> connection.test_input('async polls\n')

@@ -14,25 +14,53 @@
 import persistent
 import datetime
 
+import rwproperty
 import zope.interface
 import zope.component
 
 import zc.async.interfaces
 import zc.async.utils
 
-
-def chooseFirst(agent):
-    return agent.queue.claim()
-
+from zc.async.legacy import chooseFirst
 
 class Agent(zc.async.utils.Base):
 
     zope.interface.implements(zc.async.interfaces.IAgent)
 
-    def __init__(self, chooser=None, size=3):
-        if chooser is None:
-            chooser = chooseFirst
+    _chooser = _filter = None
+
+    @property
+    def filter(self):
+        return self._filter
+    @rwproperty.setproperty
+    def filter(self, value):
+        if value is not None and self.chooser is not None:
+            raise ValueError('cannot set both chooser and filter to non-None')
+        self._filter = value
+
+    @property
+    def chooser(self):
+        res = self._chooser
+        if res is None: # legacy support
+            res = self.__dict__.get('chooser')
+        return res
+    @rwproperty.setproperty
+    def chooser(self, value):
+        if value is not None and self.filter is not None:
+            raise ValueError('cannot set both chooser and filter to non-None')
+        self._chooser = value
+        if 'chooser' in self.__dict__:
+            del self.__dict__['chooser']
+        if value is None:
+            zope.interface.alsoProvides(self, zc.async.interfaces.IFilterAgent)
+        else:
+            zope.interface.directlyProvides(self,
+                zope.interface.directlyProvidedBy(self) -
+                zc.async.interfaces.IFilterAgent)
+
+    def __init__(self, chooser=None, filter=None, size=3):
         self.chooser = chooser
+        self.filter = filter
         self.size = size
         self._data = zc.queue.PersistentQueue()
         self._data.__parent__ = self
@@ -79,14 +107,20 @@ class Agent(zc.async.utils.Base):
             # activated but it changed beneath us.  If the ZODB grows a gesture
             # to cause this, use it.
             return None
-        if len(self._data) < self.size:
-            res = self.chooser(self)
+        if len(self._data) < self.size: # MVCC can cause error here...
+            res = self._choose()
             if res is not None:
                 res.parent = self
                 self._data.put(res)
         else:
             res = None
         return res
+
+    def _choose(self): # hook point for subclass.  Override if desired.
+        if self.chooser is not None:
+            return self.chooser(self)
+        else:
+            return self.queue.claim(self.filter)
 
     def jobCompleted(self, job):
         self.remove(job)

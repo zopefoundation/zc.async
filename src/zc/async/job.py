@@ -35,39 +35,7 @@ import zc.async.interfaces
 import zc.async.utils
 import zc.async
 
-def _repr(obj):
-    if isinstance(obj, persistent.Persistent):
-        dbname = "?"
-        if obj._p_jar is not None:
-            dbname = getattr(obj._p_jar.db(), 'database_name', "?")
-            if dbname != '?':
-                dbname = repr(dbname)
-        if obj._p_oid is not None:
-            oid = ZODB.utils.u64(obj._p_oid)
-        else:
-            oid = '?'
-        return '%s.%s (oid %s, db %s)' % (
-            obj.__class__.__module__,
-            obj.__class__.__name__,
-            oid,
-            dbname)
-    elif isinstance(obj, types.FunctionType):
-        return '%s.%s' % (obj.__module__, obj.__name__)
-    else:
-        return repr(obj)
-
-# this is kept so that legacy databases can keep their references to this
-# function
-def success_or_failure(success, failure, res):
-    callable = None
-    if isinstance(res, twisted.python.failure.Failure):
-        if failure is not None:
-            callable = failure
-    elif success is not None:
-        callable = success
-    if callable is None:
-        return res
-    return callable(res)
+from zc.async.legacy import success_or_failure
 
 class RetryCommonFourTimes(persistent.Persistent): # default
     zope.component.adapts(zc.async.interfaces.IJob)
@@ -480,17 +448,20 @@ class Job(zc.async.utils.Base):
 
     def __repr__(self):
         try:
-            call = _repr(self._callable_root)
+            call = zc.async.utils.custom_repr(self._callable_root)
             if self._callable_name is not None:
                 call += ' :' + self._callable_name
-            args = ', '.join(_repr(a) for a in self.args)
-            kwargs = ', '.join(k+"="+_repr(v) for k, v in self.kwargs.items())
+            args = ', '.join(zc.async.utils.custom_repr(a) for a in self.args)
+            kwargs = ', '.join(
+                k + "=" + zc.async.utils.custom_repr(v)
+                for k, v in self.kwargs.items())
             if args:
                 if kwargs:
                     args += ", " + kwargs
             else:
                 args = kwargs
-            return '<%s ``%s(%s)``>' % (_repr(self), call, args)
+            return '<%s ``%s(%s)``>' % (
+                zc.async.utils.custom_repr(self), call, args)
         except (TypeError, ValueError, AttributeError):
             # broken reprs are a bad idea; they obscure problems
             return super(Job, self).__repr__()

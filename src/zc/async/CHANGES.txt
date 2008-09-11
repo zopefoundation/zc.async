@@ -70,6 +70,17 @@ Changes
 - zc.async events inherit from 'zc.component.interfaces.IObjectEvent' instead
   of a zc.async specific IObjectEvent (thanks to Satchit Haridas).
 
+- Added new monitoring and introspection tools XXX
+
+- Added new preferred way of filtering agent choices: ``filter`` attribute XXX
+
+- deprecated agent.chooseFirst XXX
+
+- Moved deprecated legacy code to new ``legacy`` module.
+
+- Tried to be significantly reduce the chance of spurious timing errors in the
+  tests, at the expense of causing the tests to take longer to run.
+
 1.4.1 (2008-07-30)
 ==================
 

@@ -1,0 +1,1197 @@
+Monitoring and Introspecting zc.async Database State
+====================================================
+
+The zc.async database activity can be monitored and introspected via
+zc.z3monitor plugins.  Let's imagine we have a connection over which we can
+send text messages to the monitor server [#setUp]_.
+
+All monitoring is done through the ``asyncdb`` command.  Here is its
+description, using the zc.z3monitor ``help`` command.
+
+    >>> connection.test_input('help asyncdb\n')
+    Help for asyncdb:
+    <BLANKLINE>
+    Monitor and introspect zc.async activity in the database.
+    <BLANKLINE>
+        To see a list of asyncdb tools, use 'asyncdb help'.
+    <BLANKLINE>
+        To learn more about an asyncdb tool, use 'asyncdb help <tool name>'.
+    <BLANKLINE>
+        ``asyncdb`` tools differ from ``async`` tools in that ``asyncdb`` tools
+        access the database, and ``async`` tools do not.
+    -> CLOSE
+
+As you can see, you use ``asyncdb help`` to get more information about each
+async-specific command.
+
+    >>> connection.test_input('asyncdb help\n')
+    These are the tools available.  Usage for each tool is 
+    'asyncdb <tool name> [modifiers...]'.  Learn more about each 
+    tool using 'asyncdb help <tool name>'.
+    <BLANKLINE>
+    UUIDs: Return all active UUIDs.
+    count: Count jobs in one or more states.
+    firstjob: Return summary of first job found matching given filters.
+    help: Get help on an asyncdb monitor tool.
+    job: Return summary of job identified by integer oid.
+    jobs: Return jobs in one or more states.
+    jobstats: Return statistics about jobs in one or more states.
+    status: Return status of the agents of all queues and all active UUIDs.
+    traceback: Return the traceback for the job identified by integer oid. 
+    -> CLOSE
+
+Let's give a quick run through these for an overview, and then we'll dig in
+just a bit.
+
+The ``UUIDs`` command is the simplest.  It returns all active UUIDs.
+
+    >>> connection.test_input('asyncdb UUIDs\n')
+    [
+        "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd"
+    ] 
+    -> CLOSE
+
+The ``status`` is also simple, but very informative.  By default, it lists
+information for all queues.  For each queue, it lists the number of pending
+jobs and the active dispatchers; for each dispatcher, it lists status
+information, and each agent; for each agent, it lists the filter or chooser,
+the number of active jobs, and the size of the agent.
+
+    >>> connection.test_input('asyncdb status\n')
+    {
+        "": {
+            "dispatchers": {
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 0, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:22.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 1.0
+                    }
+                }
+            }, 
+            "len": 0
+        }
+    } 
+    -> CLOSE
+
+The rest of the commands have to do with jobs, so we will add some.
+
+    >>> import zc.async.job
+    >>> import threading
+    >>> active_lock = threading.Lock()
+    >>> active_lock.acquire()
+    True
+    >>> callback_lock = threading.Lock()
+    >>> callback_lock.acquire()
+    True
+    >>> active_lock2 = threading.Lock()
+    >>> active_lock2.acquire()
+    True
+    >>> def raise_exception():
+    ...     raise RuntimeError('kumquat!')
+    ...
+    >>> def active_pause():
+    ...     active_lock.acquire()
+    ...     return 42
+    ...
+    >>> def active_pause2():
+    ...     active_lock2.acquire()
+    ...     return 42
+    ...
+    >>> def callback_pause(result):
+    ...     callback_lock.acquire()
+    ...     return repr(result)
+    ...
+    >>> def send_message():
+    ...     return "imagine this sent a message to another machine"
+    ...
+    >>> def sum_silly(*args, **kwargs):
+    ...     return sum(args, kwargs.get('start', 0))
+    ...
+    >>> job1 = queue.put(raise_exception)
+    >>> job2 = queue.put(active_pause)
+    >>> job3 = queue.put(zc.async.job.Job(sum_silly, 18, 18, start=6))
+    >>> job3_callback = job3.addCallback(callback_pause)
+    >>> job4 = queue.put(active_pause2)
+    >>> job5 = queue.put(send_message)
+    >>> job6 = queue.put(zc.async.job.Job(sum, (18, 18, 6)))
+    >>> import transaction
+    >>> transaction.commit()
+
+Notice the change in the queue's len:
+
+    >>> connection.test_input('asyncdb status\n')
+    {
+        "": {
+            "dispatchers": {
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 0, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:22.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 1.0
+                    }
+                }
+            }, 
+            "len": 6
+        }
+    } 
+    -> CLOSE
+
+The ``jobs`` command lists all of the jobs in one or more states, identifying
+them with integer OIDs and database names.
+
+    >>> connection.test_input('asyncdb jobs pending\n') # doctest: +ELLIPSIS
+    [
+        [
+            30, 
+            "unnamed"
+        ], 
+        [
+            31, 
+            "unnamed"
+        ], 
+        [
+            32, 
+            "unnamed"
+        ], 
+        [
+            33, 
+            "unnamed"
+        ], 
+        [
+            34, 
+            "unnamed"
+        ], 
+        [
+            35, 
+            "unnamed"
+        ]
+    ] 
+    -> CLOSE
+
+You can also count and get stats for these, with the same arguments.
+
+    >>> connection.test_input('asyncdb count pending\n')
+    6 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb jobstats pending\n')
+    {
+        "active": 0, 
+        "assigned": 0, 
+        "callbacks": 0, 
+        "failed": 0, 
+        "longest active": null, 
+        "longest wait": [
+            {
+                "seconds": 0.0
+            }, 
+            [
+                30, 
+                "unnamed"
+            ]
+        ], 
+        "pending": 6, 
+        "shortest active": null, 
+        "shortest wait": [
+            {
+                "seconds": 0.0
+            }, 
+            [
+                30, 
+                "unnamed"
+            ]
+        ], 
+        "succeeded": 0
+    } 
+    -> CLOSE
+
+We can look at these jobs.
+
+    >>> connection.test_input('asyncdb job 30\n')
+    {
+        "active": null, 
+        "active end": null, 
+        "active start": null, 
+        "agent": null, 
+        "args": [], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [], 
+        "dispatcher": null, 
+        "failed": false, 
+        "initial callbacks end": null, 
+        "kwargs": {}, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+        "result": "None", 
+        "status": "pending", 
+        "wait": {
+            "seconds": 0.0
+        }
+    } 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb job 32\n')
+    {
+        "active": null, 
+        "active end": null, 
+        "active start": null, 
+        "agent": null, 
+        "args": [
+            18, 
+            18
+        ], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [
+            [
+                49, 
+                "unnamed"
+            ]
+        ], 
+        "dispatcher": null, 
+        "failed": false, 
+        "initial callbacks end": null, 
+        "kwargs": {
+            "start": 6
+        }, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 32, db 'unnamed') ``zc.async.doctest_test.sum_silly(18, 18, start=6)``>", 
+        "result": "None", 
+        "status": "pending", 
+        "wait": {
+            "seconds": 0.0
+        }
+    } 
+    -> CLOSE
+
+Specifying the database name is equivalent (note that, confusingly, this
+database's name is "unnamed").
+
+    >>> connection.test_input('asyncdb job 32 unnamed\n')
+    {
+        "active": null, 
+        "active end": null, 
+        "active start": null, 
+        "agent": null, 
+        "args": [
+            18, 
+            18
+        ], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [
+            [
+                49, 
+                "unnamed"
+            ]
+        ], 
+        "dispatcher": null, 
+        "failed": false, 
+        "initial callbacks end": null, 
+        "kwargs": {
+            "start": 6
+        }, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 32, db 'unnamed') ``zc.async.doctest_test.sum_silly(18, 18, start=6)``>", 
+        "result": "None", 
+        "status": "pending", 
+        "wait": {
+            "seconds": 0.0
+        }
+    } 
+    -> CLOSE
+
+We can also use ``firstjob`` to look at the first job in a given state.
+
+    >>> connection.test_input('asyncdb firstjob pending\n')
+    {
+        "active": null, 
+        "active end": null, 
+        "active start": null, 
+        "agent": null, 
+        "args": [], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [], 
+        "dispatcher": null, 
+        "failed": false, 
+        "initial callbacks end": null, 
+        "kwargs": {}, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+        "result": "None", 
+        "status": "pending", 
+        "wait": {
+            "seconds": 0.0
+        }
+    } 
+    -> CLOSE
+
+The ``jobs``, ``count``, ``jobstats`` and ``firstjob`` commands all support the
+same filtering options, which allow you to filter against a certain dispatcher,
+a certain agent, or a string for the callable, or for various times.  Here's an
+example of filtering by callable name.
+
+    >>> connection.test_input('asyncdb count pending callable:send_message\n')
+    1 
+    -> CLOSE
+
+This can accept glob-style wildcards.
+
+    >>> connection.test_input('asyncdb count pending callable:su*\n')
+    2 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb count pending callable:s*\n')
+    3 
+    -> CLOSE
+
+If you do not include a ".", it matches only on the callable name.  If you
+include a ".", it matches on the fully-qualified name (that is, including the
+module).
+
+    >>> connection.test_input('asyncdb count pending callable:*test.send*\n')
+    1 
+    -> CLOSE
+    >>> connection.test_input('asyncdb count pending callable:__builtin__.*\n')
+    1 
+    -> CLOSE
+
+Currently we don't have any jobs in any other state, other than pending.
+Let's change that.
+
+    >>> connection.test_input(
+    ...     'asyncdb count assigned active callbacks completed\n')
+    0 
+    -> CLOSE
+    >>> ignore = reactor.time_flies(dispatcher.poll_interval)
+    >>> import time
+    >>> time.sleep(0.2)
+    >>> connection.test_input(
+    ...     'asyncdb count assigned active callbacks completed\n')
+    3 
+    -> CLOSE
+
+Now, because of our locks, we have one job in "active", one in "callbacks",
+and one in "completed".
+
+    >>> connection.test_input(
+    ...     'asyncdb count pending\n')
+    3 
+    -> CLOSE
+    >>> connection.test_input(
+    ...     'asyncdb count assigned\n')
+    0 
+    -> CLOSE
+    >>> connection.test_input(
+    ...     'asyncdb count active\n')
+    1 
+    -> CLOSE
+    >>> connection.test_input(
+    ...     'asyncdb count callbacks\n')
+    1 
+    -> CLOSE
+    >>> connection.test_input(
+    ...     'asyncdb count completed\n')
+    1 
+    -> CLOSE
+
+The "completed" category is divided into two synthetic states, "failed" and
+"succeeded".  The one completed job raised an exception, so it is "failed".
+
+    >>> connection.test_input(
+    ...     'asyncdb count failed\n')
+    1 
+    -> CLOSE
+    >>> connection.test_input(
+    ...     'asyncdb count succeeded\n')
+    0 
+    -> CLOSE
+
+Note that you cannot combine "completed," "succeeded," or "failed."
+
+    >>> connection.test_input(
+    ...     'asyncdb count succeeded failed\n') # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: can only include zero or one of "completed", "succeeded," or "failed" states.
+    <BLANKLINE>
+    -> CLOSE
+
+
+    >>> connection.test_input(
+    ...     'asyncdb count failed completed\n') # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: can only include zero or one of "completed", "succeeded," or "failed" states.
+    <BLANKLINE>
+    -> CLOSE
+
+    >>> connection.test_input(
+    ...     'asyncdb count succeeded completed\n') # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: can only include zero or one of "completed", "succeeded," or "failed" states.
+    <BLANKLINE>
+    -> CLOSE
+
+    >>> connection.test_input(
+    ...     'asyncdb count succeeded completed failed\n') # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: can only include zero or one of "completed", "succeeded," or "failed" states.
+    <BLANKLINE>
+    -> CLOSE
+
+The last job failed, so we can get a traceback for it.  This is the last
+command that asyncdb provides.
+
+    >>> connection.test_input('asyncdb traceback 30\n') # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+      File "...job.py", line ..., in __call__
+        ...
+      File "<doctest monitordb.txt...>", line ..., in raise_exception
+        raise RuntimeError('kumquat!')
+    exceptions.RuntimeError: kumquat!
+    <BLANKLINE>
+    -> CLOSE
+
+You can get a brief or a verbose version of the traceback.
+
+    >>> connection.test_input(
+    ...     'asyncdb traceback 30 detail:brief\n') # doctest: +ELLIPSIS
+    Traceback: exceptions.RuntimeError: kumquat!
+    ...job.py:...:__call__
+    <doctest monitordb.txt...>:...:raise_exception
+    <BLANKLINE>
+    -> CLOSE
+
+    >>> connection.test_input(
+    ...     'asyncdb traceback 30 detail:verbose\n') # doctest: +ELLIPSIS
+    *--- Failure #... (pickled) ---
+    ...job.py:...: __call__(...)
+     [ Locals ]
+      identifier : '"preparing for call o[...]'
+      prepare : '<function prepare at [...]'
+      res : 'None'
+      self : '<zc.async.job.Job (oi[...]'
+      args : '()'
+      tm : '<transaction._manager[...]'
+      kwargs : '{}'
+      setup_info : 'None'
+      effective_args : '[]'
+      data_cache : '{}'
+      statuses : "(u'new-status', u'ass[...]"
+      effective_kwargs : '{}'
+     ( Globals )
+    <doctest monitordb.txt...>:...: raise_exception(...)
+     [ Locals ]
+     ( Globals )
+    exceptions.RuntimeError: kumquat!
+    *--- End of Failure #... ---
+    <BLANKLINE>
+    -> CLOSE
+
+
+The brief version is included in the job summary view (see the "result" key).
+
+    >>> connection.test_input('asyncdb job 30\n') # doctest: +ELLIPSIS
+    {
+        "active": {
+            "seconds": 0.0
+        }, 
+        "active end": "2006-08-10T15:44:27.000211Z", 
+        "active start": "2006-08-10T15:44:27.000211Z", 
+        "agent": "main", 
+        "args": [], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [], 
+        "dispatcher": "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd", 
+        "failed": true, 
+        "initial callbacks end": "2006-08-10T15:44:27.000211Z", 
+        "kwargs": {}, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+        "result": "Traceback: exceptions.RuntimeError: kumquat!\n...job.py:...:__call__\n<doctest monitordb.txt...>:...:raise_exception\n", 
+        "status": "completed", 
+        "wait": {
+            "seconds": 4.0
+        }
+    } 
+    -> CLOSE
+
+Now, let's look at some of the date-based filters: ``requested_start``,
+``start``, ``end``, and ``callbacks_completed``.  They filter
+the results of the ``jobs``, ``count``, ``jobstats`` and ``firstjob`` tools.
+
+Each may be of the form "sinceINTERVAL", "beforeINTERVAL", or
+"sinceINTERVAL,beforeINTERVAL".  Intervals are of the format
+``[nD][nH][nM][nS]``, where "n" should be replaced with a positive integer, and
+"D," "H," "M," and "S" are literals standing for "days," "hours," "minutes,"
+and "seconds." For instance, you might use ``5M`` for five minutes, ``20S`` for
+twenty seconds, or ``1H30M`` for an hour and a half.
+
+For easier reading, it may help to insert "ago" after each interval.
+
+Here are some examples.
+
+* If you used "start:since5s" then that could be read as "jobs that
+  started five seconds ago or sooner."  
+
+* "requested_start:before1M" could be read as "jobs that were supposed to begin
+  one minute ago or longer". 
+
+* "end:since1M,before30S" could be read as "jobs that ended their
+  primary work (that is, not including callbacks) between thirty seconds and
+  one minute ago."
+
+* "callbacks_completed:before30S,since1M" could be read as "jobs that
+  completed the callbacks they had when first run between thirty seconds and
+  one minute ago."  (This also shows that the order of "before" and "since" do
+  not matter.)
+
+Let's let some more time pass, and then use some of these.
+
+    >>> ignore = reactor.time_flies(dispatcher.poll_interval)
+    >>> time.sleep(0.2)
+
+    >>> connection.test_input('asyncdb status\n')
+    {
+        "": {
+            "dispatchers": {
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 3, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:22.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 11.0
+                    }
+                }
+            }, 
+            "len": 2
+        }
+    } 
+    -> CLOSE
+
+How many jobs are active?
+
+    >>> connection.test_input('asyncdb count active\n')
+    2 
+    -> CLOSE
+
+So, what are the active jobs that have been working for more than two seconds?
+
+    >>> connection.test_input('asyncdb jobs active start:before2S\n')
+    [
+        [
+            31, 
+            "unnamed"
+        ]
+    ] 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb job 31\n')
+    {
+        "active": {
+            "seconds": 6.0
+        }, 
+        "active end": null, 
+        "active start": "2006-08-10T15:44:27.000211Z", 
+        "agent": "main", 
+        "args": [], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [], 
+        "dispatcher": "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd", 
+        "failed": false, 
+        "initial callbacks end": null, 
+        "kwargs": {}, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 31, db 'unnamed') ``zc.async.doctest_test.active_pause()``>", 
+        "result": "None", 
+        "status": "active", 
+        "wait": {
+            "seconds": 4.0
+        }
+    } 
+    -> CLOSE
+
+And what are the active jobs that have been working for less than two seconds?
+
+    >>> connection.test_input('asyncdb jobs active start:since2S\n')
+    [
+        [
+            33, 
+            "unnamed"
+        ]
+    ] 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb job 33\n')
+    {
+        "active": {
+            "seconds": 1.0
+        }, 
+        "active end": null, 
+        "active start": "2006-08-10T15:44:32.000211Z", 
+        "agent": "main", 
+        "args": [], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [], 
+        "dispatcher": "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd", 
+        "failed": false, 
+        "initial callbacks end": null, 
+        "kwargs": {}, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 33, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>", 
+        "result": "None", 
+        "status": "active", 
+        "wait": {
+            "seconds": 9.0
+        }
+    } 
+    -> CLOSE
+
+Let's let some more time pass, and then let the new job complete.
+
+    >>> ignore = reactor.time_flies(dispatcher.poll_interval)
+    >>> active_lock2.release()
+    >>> time.sleep(0.2)
+
+Now, how many jobs have completed?
+
+    >>> connection.test_input('asyncdb count completed\n')
+    2 
+    -> CLOSE
+
+What's the first (most recent) job that completed?  (Note that this information
+about completed jobs rotates out periodically from the database, so, by
+default, you only have about seven days worth of completed jobs).
+
+    >>> connection.test_input('asyncdb firstjob completed\n')
+    {
+        "active": {
+            "seconds": 6.0
+        }, 
+        "active end": "2006-08-10T15:44:38.000211Z", 
+        "active start": "2006-08-10T15:44:32.000211Z", 
+        "agent": "main", 
+        "args": [], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [], 
+        "dispatcher": "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd", 
+        "failed": false, 
+        "initial callbacks end": "2006-08-10T15:44:38.000211Z", 
+        "kwargs": {}, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 33, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>", 
+        "result": "42", 
+        "status": "completed", 
+        "wait": {
+            "seconds": 9.0
+        }
+    } 
+    -> CLOSE
+
+What's the first completed job that ended more than 5 seconds ago?
+
+    >>> connection.test_input('asyncdb firstjob completed end:before5S\n')
+    ... # doctest: +ELLIPSIS
+    {
+        "active": {
+            "seconds": 0.0
+        }, 
+        "active end": "2006-08-10T15:44:27.000211Z", 
+        "active start": "2006-08-10T15:44:27.000211Z", 
+        "agent": "main", 
+        "args": [], 
+        "begin after": "2006-08-10T15:44:23.000211Z", 
+        "callbacks": [], 
+        "dispatcher": "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd", 
+        "failed": true, 
+        "initial callbacks end": "2006-08-10T15:44:27.000211Z", 
+        "kwargs": {}, 
+        "queue": "", 
+        "quota names": [], 
+        "repr": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+        "result": "Traceback: exceptions.RuntimeError: kumquat!\n...job.py:...:__call__\n<doctest monitordb.txt...>:...:raise_exception\n", 
+        "status": "completed", 
+        "wait": {
+            "seconds": 4.0
+        }
+    } 
+    -> CLOSE
+
+The last things to show are filtering by dispatcher, agent, or queue. We'll
+make the scenario a bit more complex to test some of the other features.  To
+demonstrate, we'll need to add another dispatcher, with a custom agent with a
+filter; and add another agent with a chooser to the first dispatcher.
+
+    >>> import uuid
+    >>> uuid2 = uuid.UUID('282b5a6c-5a84-11dd-a9af-0017f2c49bdd')
+    >>> alt_dispatcher = zc.async.dispatcher.Dispatcher(db, reactor, uuid=uuid2)
+    >>> alt_dispatcher.activate()
+    >>> ignore = reactor.time_flies(1)
+
+Now we have a new installed agent.
+
+    >>> connection.test_input('asyncdb UUIDs\n')
+    [
+        "282b5a6c-5a84-11dd-a9af-0017f2c49bdd", 
+        "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd"
+    ] 
+    -> CLOSE
+
+It doesn't have any agents yet, though, so it hasn't taken any jobs.
+
+    >>> connection.test_input('asyncdb status\n')
+    {
+        "": {
+            "dispatchers": {
+                "282b5a6c-5a84-11dd-a9af-0017f2c49bdd": {
+                    "agents": {}, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:38.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 1.0
+                    }
+                }, 
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 2, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:22.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 17.0
+                    }
+                }
+            }, 
+            "len": 2
+        }
+    } 
+    -> CLOSE
+
+The majority of the asyncdb commands let you filter by uuid.  You can either
+provide the uuid string, or "THIS" if you want to look at this process's uuid.
+
+    >>> connection.test_input('asyncdb status uuid:THIS\n')
+    {
+        "": {
+            "dispatchers": {
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 2, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:22.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 17.0
+                    }
+                }
+            }, 
+            "len": 2
+        }
+    } 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb status uuid:282b5a6c-5a84-11dd-a9af-0017f2c49bdd\n')
+    {
+        "": {
+            "dispatchers": {
+                "282b5a6c-5a84-11dd-a9af-0017f2c49bdd": {
+                    "agents": {}, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:38.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 1.0
+                    }
+                }
+            }, 
+            "len": 2
+        }
+    } 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb count active callbacks completed uuid:THIS\n')
+    4 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb count active callbacks completed uuid:282b5a6c-5a84-11dd-a9af-0017f2c49bdd\n')
+    0 
+    -> CLOSE
+
+Now we'll add an agent for this dispatcher.  It uses a filter that won't accept
+any of the pending jobs--it will only accept the ``active_pause2`` function
+created above.
+
+    >>> import zc.async.agent
+    >>> import zc.async.utils
+    >>> def filter(j):
+    ...     return (zc.async.utils.custom_repr(j.callable) ==
+    ...             'zc.async.doctest_test.active_pause2')
+    >>> agent = zc.async.agent.Agent(filter=filter)
+    >>> queue.dispatchers[alt_dispatcher.UUID]['filtered'] = agent
+    >>> transaction.commit()
+    >>> ignore = reactor.time_flies(1)
+
+The agent is now reported in the status.  Still no jobs in the agent.
+
+    >>> connection.test_input('asyncdb status\n')
+    {
+        "": {
+            "dispatchers": {
+                "282b5a6c-5a84-11dd-a9af-0017f2c49bdd": {
+                    "agents": {
+                        "filtered": {
+                            "filter": "zc.async.doctest_test.filter", 
+                            "len": 0, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:38.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 2.0
+                    }
+                }, 
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 2, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:22.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 18.0
+                    }
+                }
+            }, 
+            "len": 2
+        }
+    } 
+    -> CLOSE
+
+We can filter by agent.
+
+    >>> connection.test_input('asyncdb count active callbacks agent:main\n')
+    2 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb count active callbacks agent:filtered\n')
+    0 
+    -> CLOSE
+
+We can also filter by agent for *pending* jobs.  This returns jobs that the
+agent would accept, according to its filter.
+
+    >>> connection.test_input('asyncdb count pending agent:main\n')
+    2 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb count pending agent:filtered\n')
+    0 
+    -> CLOSE
+
+For instance, here's a job that the filtered agent is willing to do.
+
+    >>> job7 = queue.put(active_pause2)
+    >>> transaction.commit()
+
+    >>> connection.test_input('asyncdb count pending agent:filtered\n')
+    1 
+    -> CLOSE
+
+That will work for the dispatcher, by uuid, as well.  Specifying the uuid alone
+is like specifying all of the uuid's agents.
+
+    >>> connection.test_input('asyncdb count pending uuid:THIS\n')
+    3 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb count pending uuid:282b5a6c-5a84-11dd-a9af-0017f2c49bdd\n')
+    1 
+    -> CLOSE
+
+Finally, we will add another queue so we can show filtering by queue.
+
+    >>> alt_queue = mapping['alt'] = zc.async.queue.Queue()
+    >>> transaction.commit()
+
+Initially, before another poll, the dispatchers will not be activated in the
+new queue.
+
+
+
+    >>> connection.test_input('asyncdb status\n')
+    {
+        "": {
+            "dispatchers": {
+                "282b5a6c-5a84-11dd-a9af-0017f2c49bdd": {
+                    "agents": {
+                        "filtered": {
+                            "filter": "zc.async.doctest_test.filter", 
+                            "len": 0, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:38.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 2.0
+                    }
+                }, 
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 2, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:22.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 18.0
+                    }
+                }
+            }, 
+            "len": 3
+        }, 
+        "alt": {
+            "dispatchers": {}, 
+            "len": 0
+        }
+    } 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb status queue:alt\n')
+    {
+        "alt": {
+            "dispatchers": {}, 
+            "len": 0
+        }
+    } 
+    -> CLOSE
+
+Let's get another poll in.  After that, we can see the dispatchers.
+
+    >>> ignore = reactor.time_flies(dispatcher.poll_interval-2)
+
+    >>> connection.test_input('asyncdb status queue:alt\n')
+    {
+        "alt": {
+            "dispatchers": {
+                "282b5a6c-5a84-11dd-a9af-0017f2c49bdd": {
+                    "agents": {}, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:43.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 0.0
+                    }
+                }, 
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {}, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:42.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 1.0
+                    }
+                }
+            }, 
+            "len": 0
+        }
+    } 
+    -> CLOSE
+
+
+We don't have any jobs in there, but if we did, they would be shown as usual.
+
+    >>> connection.test_input('asyncdb count pending queue:alt\n')
+    0 
+    -> CLOSE
+
+    >>> active_lock2.release()
+    >>> active_lock.release()
+    >>> callback_lock.release()
+    
+
+[#tearDown]_
+
+.. [#setUp] See the discussion in other documentation to explain this code.
+
+    >>> import ZODB.FileStorage
+    >>> storage = ZODB.FileStorage.FileStorage(
+    ...     'zc_async.fs', create=True)
+    >>> from ZODB.DB import DB 
+    >>> db = DB(storage) 
+    >>> conn = db.open()
+    >>> root = conn.root()
+
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+
+    >>> import zc.async.testing
+    >>> reactor = zc.async.testing.Reactor()
+    >>> reactor.start() # this monkeypatches datetime.datetime.now 
+
+    >>> import zc.async.queue
+    >>> import zc.async.interfaces
+    >>> mapping = root[zc.async.interfaces.KEY] = zc.async.queue.Queues()
+    >>> queue = mapping[''] = zc.async.queue.Queue()
+    >>> import transaction
+    >>> transaction.commit()
+
+    >>> import zc.async.dispatcher
+    >>> dispatcher = zc.async.dispatcher.Dispatcher(db, reactor)
+    >>> dispatcher.activate()
+    >>> reactor.time_flies(1)
+    1
+
+    >>> import zc.async.agent
+    >>> agent = zc.async.agent.Agent()
+    >>> queue.dispatchers[dispatcher.UUID]['main'] = agent
+    >>> transaction.commit()
+
+    >>> import zc.ngi.testing
+    >>> import zc.z3monitor
+
+    >>> connection = zc.ngi.testing.TextConnection()
+    >>> server = zc.z3monitor.Server(connection)
+
+    >>> import zc.async.monitordb
+    >>> import zope.component
+    >>> import zc.z3monitor.interfaces
+    >>> zope.component.provideUtility(
+    ...     zc.async.monitordb.asyncdb,
+    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin,
+    ...     'asyncdb')
+    >>> zope.component.provideUtility(zc.z3monitor.help,
+    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin, 'help')
+
+.. [#tearDown]
+    >>> threads = []
+    >>> for d in (dispatcher, alt_dispatcher):
+    ...     for queue_pools in d.queues.values():
+    ...         for pool in queue_pools.values():
+    ...             threads.extend(pool.threads)
+    >>> reactor.stop()
+    >>> zc.async.testing.wait_for_deactivation(dispatcher)
+    >>> zc.async.testing.wait_for_deactivation(alt_dispatcher)
+    >>> for thread in threads:
+    ...     thread.join(3)
+    ...

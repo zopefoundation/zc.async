@@ -875,7 +875,7 @@ Zope 3 [#stop_usage_reactor]_.
     >>> import zc.async.agent
     >>> agent = zc.async.agent.Agent()
     >>> queue.dispatchers[dispatcher.UUID]['main'] = agent
-    >>> agent.chooser is zc.async.agent.chooseFirst
+    >>> agent.filter is None
     True
     >>> agent.size
     3
@@ -1171,13 +1171,14 @@ Zope 3 [#stop_usage_reactor]_.
 
 .. [#stop_usage_reactor]
 
+    >>> threads = []
+    >>> for queue_pools in dispatcher.queues.values():
+    ...     for pool in queue_pools.values():
+    ...         threads.extend(pool.threads)
     >>> reactor.stop()
     >>> zc.async.testing.wait_for_deactivation(dispatcher)
-    >>> for queue_pools in dispatcher.queues.values():
-    ...     for name, pool in queue_pools.items():
-    ...         pool.setSize(0)
-    ...         for thread in pool.threads:
-    ...             thread.join(3)
+    >>> for thread in threads:
+    ...     thread.join(3)
     ...
     >>> pprint.pprint(dispatcher.getStatistics()) # doctest: +ELLIPSIS
     {'failed': 2,

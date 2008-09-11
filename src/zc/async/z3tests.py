@@ -39,6 +39,7 @@ def test_suite():
     return unittest.TestSuite((
         doctest.DocFileSuite(
             'monitor.txt',
+            'monitordb.txt',
             'z3.txt',
             setUp=setUp, tearDown=zc.async.tests.modTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),

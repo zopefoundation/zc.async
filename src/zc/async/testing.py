@@ -153,12 +153,18 @@ class Reactor(object):
         end = _now + datetime.timedelta(seconds=seconds)
         ct = 0
         next = self._get_next(end)
+        then = None
         while next is not None:
             now, callable, args, kw = next
-            set_now(now)
+            if then is None or then != now:
+                time_sleep(0.5) # give threads a chance to work
+                set_now(now)
             callable(*args, **kw) # normally this would get try...except
             ct += 1
             next = self._get_next(end)
+            then = now
+        if ct:
+            time_sleep(0.5)
         set_now(end)
         return ct
 

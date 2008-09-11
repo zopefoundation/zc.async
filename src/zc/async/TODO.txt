@@ -1,9 +1,8 @@
 - fix up tips so that it looks better
 - write a zc.buildout/grok quickstart
-- zc.z3monitor:
-  + asyncdb count pending callable:foo*
-  + asyncdb count completed agent:entry5
-  + asyncdb countall completed
+- zc.monitor instead of zc.z3monitor
+- improvements to thread teardown
+- docstrings for monitordb functions
 
 Improvements
 

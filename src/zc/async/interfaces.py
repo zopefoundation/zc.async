@@ -341,6 +341,24 @@ class IAgent(zope.interface.common.sequence.IFiniteSequence):
     def index(item):
         """return index, or raise ValueError if item is not in queue"""
 
+class IFilterAgent(IAgent):
+    """An agent that uses a filter to claim jobs (see ``IQueue.claim``).
+    
+    This sort of agent can easily report what jobs it *could* take because the
+    filter simply should be able to return a boolean and not change any state.
+    """
+    
+    def filter(job):
+        """return whether the agent could perform the job.
+        
+        This decision should ignore whether the agent has any room (that is, if
+        len(agent) < agent.size).
+        
+        As a special case, if the ``filter`` attribute on the agent is None,
+        this should be considered to be a do-nothing filter--that is, the agent
+        accepts all jobs.
+        """
+
 
 class IQueue(zc.queue.interfaces.IQueue):
 
