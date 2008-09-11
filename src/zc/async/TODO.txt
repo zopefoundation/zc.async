@@ -3,6 +3,7 @@
 - zc.monitor instead of zc.z3monitor
 - improvements to thread teardown
 - docstrings for monitordb functions
+- waiting thread testing notification improvements (Patrick)
 
 Improvements
 

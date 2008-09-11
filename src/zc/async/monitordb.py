@@ -161,11 +161,316 @@ def _jobs(context, states,
                         yield j
 
 def jobs(context, *states, **kwargs):
-    """Return jobs in one or more states."""
+    """Return jobs in one or more states.
+
+    Jobs are identified by integer OID and database name.  These identifiers
+    can be used with the "asyncdb job" command to get details about the jobs.
+    The integer OIDs can be used in a database connection to get the job with
+    ``connection.get(ZODB.utils.p64(INTEGER_OID))``.
+
+    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
+    the same arguments, which are described below; after which usage examples
+    for this command are listed.
+
+    Arguments
+    =========
+    
+    States
+    ------
+
+    You must provide at least one of the following states.
+
+    - "pending": the job is in a queue, waiting to be started.
+    
+    - "assigned": a dispatcher has claimed the job and assigned it to one of
+      its worker threads.  Work has not yet begun.  Jobs are in this state very
+      briefly.
+    
+    - "active": A worker thread is performing this job.
+    
+    - "callbacks": the job's work is ended, and the thread is performing the
+      callbacks, if any.
+    
+    - "completed": the job and its callbacks are completed.  Completed jobs
+      stay in the database for only a certain amount of time--between seven and
+      eight days in the default agent implementation.
+
+    - "succeeded": the job completed successfully (that is, without raising an
+      unhandled exception, and without returning an explicit
+      twisted.python.failure.Failure).  This is a subset of "completed,"
+      described above.
+
+     - "failed": the job completed by raising an unhandled exception or by
+       explicitly returning a twisted.python.failure.Failure.  This is a subset
+       of "completed," described above.
+
+    You may use no more than one of the states "completed," "succeeded," and
+    "failed".
+
+    Optional Arguments
+    ------------------
+
+    You can further filter your results with a number of optional arguments.
+
+    "Shell-style glob wildcards," as referred to in this list, are "?", "*",
+    "[SEQUENCE]", and "[!SEQUENCE]", as described in
+    http://docs.python.org/lib/module-fnmatch.html .
+    
+    A "duration-based filter" described in this list accepts an argument that
+    is of the form "sinceINTERVAL", "beforeINTERVAL", or
+    "sinceINTERVAL,beforeINTERVAL" (no space!).  The "INTERVAL"s are of the
+    form ``[nD][nH][nM][nS]``, where "n" should be replaced with a positive
+    integer, and "D," "H," "M," and "S" are literals standing for "days,"
+    "hours," "minutes," and "seconds." For instance, you might use ``5M`` for
+    five minutes, ``20S`` for twenty seconds, or ``1H30M`` for an hour and a
+    half.  Thus "before30M" would mean "thirty minutes ago or older." 
+    "since45S" would mean "45 seconds ago or newer."  "since1H,before30M" would
+    mean "between thirty minutes and an hour ago."  Note that reversing the two
+    components in the last example--"before30M,since1H"--is equivalent.
+    
+
+    - "callable": filters by callable name.  Supports shell-style glob
+      wildcards.  If you do not include a "." in the string, it matches only on
+      the callable name.  If you include a ".", it matches on the
+      fully-qualified name (that is, including the module).
+    
+    - "queue": filters by queue name.  Supports shell-style glob wildcards.
+    
+    - "agent": filters by agent name.  Supports shell-style glob wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agent could perform, according to its filter.
+    
+    - "uuid": filters by UUID string, or the special marker "THIS", indicating
+      the UUID of the current process' dispatcher.  Supports shell-style glob
+      wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agents for that dispatcher could perform, according to
+      their filters.
+    
+    - "requested_start": a duration-based filter for when the job was requested
+      to start.
+      
+      Note that, if a job is not given an explicit start time, the time when it
+      was added to a queue is used.  This is based on a job's ``begin_after``
+      attribute.
+    
+    - "start": a duration-based filter for when the job started work.
+    
+      Note that, if a job is restarted because of problems such as an
+      interruption or a conflict error, this is the  most recent time that the
+      job started work.  This is based on a job's ``active_start`` attribute.
+      
+      To see the first time a job started work ever, the default retry policies
+      store a 'first_active' value in their ``data`` attribute
+      (``job.getRetryPolicy().data.get('first_active')``).  Other information
+      about retries can also be found in this data dictionary.
+    
+    - "end": a duration-based filter for when the job ended work (but not
+      callbacks).
+    
+      This is based on a job's ``active_end`` attribute.
+    
+    - "callbacks_completed":  a duration-based filter for when the job
+      finished the callbacks it had just after it performed the job.
+      
+      If subsequent callbacks are added, they are performed immediately, and
+      will not affect the value that this filter uses.
+    
+      This is based on a job's ``initial_callbacks_end`` attribute.
+    
+    Usage Examples
+    ==============
+    
+    Here are some examples of the command.
+
+        asyncdb job pending
+        (lists the job identifiers for pending jobs)
+        
+        asyndb job active agent:instance5
+        (lists the job identifiers of all jobs that any agent named instance5
+        is working on)
+        
+        asyndb job pending agent:instance5
+        (lists the job identifiers of all pending jobs that agents named
+        "instance5" could perform)
+
+        asyncdb job completed end:since1H callable:import_*
+        (lists the job identifiers of completed jobs that ended within the
+        last hour that called a function or method that began with the string
+        "import_")
+
+    Here are some examples of how the duration-based filters work.
+    
+    * If you used "start:since5s" then that could be read as "jobs that
+      started five seconds ago or sooner."  
+    
+    * "requested_start:before1M" could be read as "jobs that were supposed to
+      begin one minute ago or longer". 
+    
+    * "end:since1M,before30S" could be read as "jobs that ended their
+      primary work (that is, not including callbacks) between thirty seconds
+      and one minute ago."
+    
+    * "callbacks_completed:before30S,since1M" could be read as "jobs that
+      completed the callbacks they had when first run between thirty seconds
+      and one minute ago."  (This also shows that the order of "before" and
+      "since" do not matter.)
+    """
     return _jobs(context, states, **kwargs)
 
 def count(context, *states, **kwargs):
-    """Count jobs in one or more states."""
+    """Count jobs in one or more states.
+
+    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
+    the same arguments, which are described below; after which usage examples
+    for this command are listed.
+
+    Arguments
+    =========
+    
+    States
+    ------
+
+    You must provide at least one of the following states.
+
+    - "pending": the job is in a queue, waiting to be started.
+    
+    - "assigned": a dispatcher has claimed the job and assigned it to one of
+      its worker threads.  Work has not yet begun.  Jobs are in this state very
+      briefly.
+    
+    - "active": A worker thread is performing this job.
+    
+    - "callbacks": the job's work is ended, and the thread is performing the
+      callbacks, if any.
+    
+    - "completed": the job and its callbacks are completed.  Completed jobs
+      stay in the database for only a certain amount of time--between seven and
+      eight days in the default agent implementation.
+
+    - "succeeded": the job completed successfully (that is, without raising an
+      unhandled exception, and without returning an explicit
+      twisted.python.failure.Failure).  This is a subset of "completed,"
+      described above.
+
+     - "failed": the job completed by raising an unhandled exception or by
+       explicitly returning a twisted.python.failure.Failure.  This is a subset
+       of "completed," described above.
+
+    You may use no more than one of the states "completed," "succeeded," and
+    "failed".
+
+    Optional Arguments
+    ------------------
+
+    You can further filter your results with a number of optional arguments.
+
+    "Shell-style glob wildcards," as referred to in this list, are "?", "*",
+    "[SEQUENCE]", and "[!SEQUENCE]", as described in
+    http://docs.python.org/lib/module-fnmatch.html .
+    
+    A "duration-based filter" described in this list accepts an argument that
+    is of the form "sinceINTERVAL", "beforeINTERVAL", or
+    "sinceINTERVAL,beforeINTERVAL" (no space!).  The "INTERVAL"s are of the
+    form ``[nD][nH][nM][nS]``, where "n" should be replaced with a positive
+    integer, and "D," "H," "M," and "S" are literals standing for "days,"
+    "hours," "minutes," and "seconds." For instance, you might use ``5M`` for
+    five minutes, ``20S`` for twenty seconds, or ``1H30M`` for an hour and a
+    half.  Thus "before30M" would mean "thirty minutes ago or older." 
+    "since45S" would mean "45 seconds ago or newer."  "since1H,before30M" would
+    mean "between thirty minutes and an hour ago."  Note that reversing the two
+    components in the last example--"before30M,since1H"--is equivalent.
+    
+
+    - "callable": filters by callable name.  Supports shell-style glob
+      wildcards.  If you do not include a "." in the string, it matches only on
+      the callable name.  If you include a ".", it matches on the
+      fully-qualified name (that is, including the module).
+    
+    - "queue": filters by queue name.  Supports shell-style glob wildcards.
+    
+    - "agent": filters by agent name.  Supports shell-style glob wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agent could perform, according to its filter.
+    
+    - "uuid": filters by UUID string, or the special marker "THIS", indicating
+      the UUID of the current process' dispatcher.  Supports shell-style glob
+      wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agents for that dispatcher could perform, according to
+      their filters.
+    
+    - "requested_start": a duration-based filter for when the job was requested
+      to start.
+      
+      Note that, if a job is not given an explicit start time, the time when it
+      was added to a queue is used.  This is based on a job's ``begin_after``
+      attribute.
+    
+    - "start": a duration-based filter for when the job started work.
+    
+      Note that, if a job is restarted because of problems such as an
+      interruption or a conflict error, this is the  most recent time that the
+      job started work.  This is based on a job's ``active_start`` attribute.
+      
+      To see the first time a job started work ever, the default retry policies
+      store a 'first_active' value in their ``data`` attribute
+      (``job.getRetryPolicy().data.get('first_active')``).  Other information
+      about retries can also be found in this data dictionary.
+    
+    - "end": a duration-based filter for when the job ended work (but not
+      callbacks).
+    
+      This is based on a job's ``active_end`` attribute.
+    
+    - "callbacks_completed":  a duration-based filter for when the job
+      finished the callbacks it had just after it performed the job.
+      
+      If subsequent callbacks are added, they are performed immediately, and
+      will not affect the value that this filter uses.
+    
+      This is based on a job's ``initial_callbacks_end`` attribute.
+    
+    Usage Examples
+    ==============
+    
+    Here are some examples of the command.
+
+        asyncdb count pending
+        (counts pending jobs)
+        
+        asyndb count active agent:instance5
+        (counts the jobs that all agents named instance5 are working on)
+        
+        asyndb count pending agent:instance5
+        (counts the pending jobs that all agents named "instance5" could
+        perform)
+
+        asyncdb count completed end:since1H callable:import_*
+        (counts the completed jobs that ended within the last hour that called
+        a function or method that began with the string "import_")
+
+    Here are some examples of how the duration-based filters work.
+    
+    * If you used "start:since5s" then that could be read as "jobs that
+      started five seconds ago or sooner."  
+    
+    * "requested_start:before1M" could be read as "jobs that were supposed to
+      begin one minute ago or longer". 
+    
+    * "end:since1M,before30S" could be read as "jobs that ended their
+      primary work (that is, not including callbacks) between thirty seconds
+      and one minute ago."
+    
+    * "callbacks_completed:before30S,since1M" could be read as "jobs that
+      completed the callbacks they had when first run between thirty seconds
+      and one minute ago."  (This also shows that the order of "before" and
+      "since" do not matter.)
+    """
     res = 0
     for j in _jobs(context, states, **kwargs):
         res += 1
@@ -180,7 +485,162 @@ _status_keys = {
     zc.async.interfaces.COMPLETED: 'completed'}
 
 def jobstats(context, *states, **kwargs):
-    """Return statistics about jobs in one or more states."""
+    """Return statistics about jobs in one or more states.
+
+    XXX describe statistics
+
+    Jobs are identified by integer OID and database name.  These identifiers
+    can be used with the "asyncdb job" command to get details about the jobs.
+
+    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
+    the same arguments, which are described below; after which usage examples
+    for this command are listed.
+
+    Arguments
+    =========
+    
+    States
+    ------
+
+    You must provide at least one of the following states.
+
+    - "pending": the job is in a queue, waiting to be started.
+    
+    - "assigned": a dispatcher has claimed the job and assigned it to one of
+      its worker threads.  Work has not yet begun.  Jobs are in this state very
+      briefly.
+    
+    - "active": A worker thread is performing this job.
+    
+    - "callbacks": the job's work is ended, and the thread is performing the
+      callbacks, if any.
+    
+    - "completed": the job and its callbacks are completed.  Completed jobs
+      stay in the database for only a certain amount of time--between seven and
+      eight days in the default agent implementation.
+
+    - "succeeded": the job completed successfully (that is, without raising an
+      unhandled exception, and without returning an explicit
+      twisted.python.failure.Failure).  This is a subset of "completed,"
+      described above.
+
+     - "failed": the job completed by raising an unhandled exception or by
+       explicitly returning a twisted.python.failure.Failure.  This is a subset
+       of "completed," described above.
+
+    You may use no more than one of the states "completed," "succeeded," and
+    "failed".
+
+    Optional Arguments
+    ------------------
+
+    You can further filter your results with a number of optional arguments.
+
+    "Shell-style glob wildcards," as referred to in this list, are "?", "*",
+    "[SEQUENCE]", and "[!SEQUENCE]", as described in
+    http://docs.python.org/lib/module-fnmatch.html .
+    
+    A "duration-based filter" described in this list accepts an argument that
+    is of the form "sinceINTERVAL", "beforeINTERVAL", or
+    "sinceINTERVAL,beforeINTERVAL" (no space!).  The "INTERVAL"s are of the
+    form ``[nD][nH][nM][nS]``, where "n" should be replaced with a positive
+    integer, and "D," "H," "M," and "S" are literals standing for "days,"
+    "hours," "minutes," and "seconds." For instance, you might use ``5M`` for
+    five minutes, ``20S`` for twenty seconds, or ``1H30M`` for an hour and a
+    half.  Thus "before30M" would mean "thirty minutes ago or older." 
+    "since45S" would mean "45 seconds ago or newer."  "since1H,before30M" would
+    mean "between thirty minutes and an hour ago."  Note that reversing the two
+    components in the last example--"before30M,since1H"--is equivalent.
+    
+
+    - "callable": filters by callable name.  Supports shell-style glob
+      wildcards.  If you do not include a "." in the string, it matches only on
+      the callable name.  If you include a ".", it matches on the
+      fully-qualified name (that is, including the module).
+    
+    - "queue": filters by queue name.  Supports shell-style glob wildcards.
+    
+    - "agent": filters by agent name.  Supports shell-style glob wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agent could perform, according to its filter.
+    
+    - "uuid": filters by UUID string, or the special marker "THIS", indicating
+      the UUID of the current process' dispatcher.  Supports shell-style glob
+      wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agents for that dispatcher could perform, according to
+      their filters.
+    
+    - "requested_start": a duration-based filter for when the job was requested
+      to start.
+      
+      Note that, if a job is not given an explicit start time, the time when it
+      was added to a queue is used.  This is based on a job's ``begin_after``
+      attribute.
+    
+    - "start": a duration-based filter for when the job started work.
+    
+      Note that, if a job is restarted because of problems such as an
+      interruption or a conflict error, this is the  most recent time that the
+      job started work.  This is based on a job's ``active_start`` attribute.
+      
+      To see the first time a job started work ever, the default retry policies
+      store a 'first_active' value in their ``data`` attribute
+      (``job.getRetryPolicy().data.get('first_active')``).  Other information
+      about retries can also be found in this data dictionary.
+    
+    - "end": a duration-based filter for when the job ended work (but not
+      callbacks).
+    
+      This is based on a job's ``active_end`` attribute.
+    
+    - "callbacks_completed":  a duration-based filter for when the job
+      finished the callbacks it had just after it performed the job.
+      
+      If subsequent callbacks are added, they are performed immediately, and
+      will not affect the value that this filter uses.
+    
+      This is based on a job's ``initial_callbacks_end`` attribute.
+    
+    Usage Examples
+    ==============
+    
+    Here are some examples of the command.
+
+        asyncdb jobstats pending
+        (gives statistics about the pending jobs)
+        
+        asyndb jobstats active agent:instance5
+        (gives statistics about all jobs that any agent named instance5 is
+        working on)
+        
+        asyndb job pending agent:instance5
+        (gives statistics aboutt all pending jobs that agents named "instance5"
+        could perform)
+
+        asyncdb job completed end:since1H callable:import_*
+        (gves statistics about completed jobs that ended within the last hour
+        that called a function or method that began with the string "import_")
+
+    Here are some examples of how the duration-based filters work.
+    
+    * If you used "start:since5s" then that could be read as "jobs that
+      started five seconds ago or sooner."  
+    
+    * "requested_start:before1M" could be read as "jobs that were supposed to
+      begin one minute ago or longer". 
+    
+    * "end:since1M,before30S" could be read as "jobs that ended their
+      primary work (that is, not including callbacks) between thirty seconds
+      and one minute ago."
+    
+    * "callbacks_completed:before30S,since1M" could be read as "jobs that
+      completed the callbacks they had when first run between thirty seconds
+      and one minute ago."  (This also shows that the order of "before" and
+      "since" do not matter.)
+    """
     now = datetime.datetime.now(pytz.UTC)
     d = {'pending': 0, 'assigned': 0, 'active': 0, 'callbacks': 0,
          'succeeded': 0, 'failed': 0}
@@ -292,6 +752,158 @@ def job(context, oid, database=None):
 
 def firstjob(context, *states, **kwargs):
     """Return summary of first job found matching given filters.
+
+    XXX describe what "first" means for different states.
+
+    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
+    the same arguments, which are described below; after which usage examples
+    for this command are listed.
+
+    Arguments
+    =========
+    
+    States
+    ------
+
+    You must provide at least one of the following states.
+
+    - "pending": the job is in a queue, waiting to be started.
+    
+    - "assigned": a dispatcher has claimed the job and assigned it to one of
+      its worker threads.  Work has not yet begun.  Jobs are in this state very
+      briefly.
+    
+    - "active": A worker thread is performing this job.
+    
+    - "callbacks": the job's work is ended, and the thread is performing the
+      callbacks, if any.
+    
+    - "completed": the job and its callbacks are completed.  Completed jobs
+      stay in the database for only a certain amount of time--between seven and
+      eight days in the default agent implementation.
+
+    - "succeeded": the job completed successfully (that is, without raising an
+      unhandled exception, and without returning an explicit
+      twisted.python.failure.Failure).  This is a subset of "completed,"
+      described above.
+
+     - "failed": the job completed by raising an unhandled exception or by
+       explicitly returning a twisted.python.failure.Failure.  This is a subset
+       of "completed," described above.
+
+    You may use no more than one of the states "completed," "succeeded," and
+    "failed".
+
+    Optional Arguments
+    ------------------
+
+    You can further filter your results with a number of optional arguments.
+
+    "Shell-style glob wildcards," as referred to in this list, are "?", "*",
+    "[SEQUENCE]", and "[!SEQUENCE]", as described in
+    http://docs.python.org/lib/module-fnmatch.html .
+    
+    A "duration-based filter" described in this list accepts an argument that
+    is of the form "sinceINTERVAL", "beforeINTERVAL", or
+    "sinceINTERVAL,beforeINTERVAL" (no space!).  The "INTERVAL"s are of the
+    form ``[nD][nH][nM][nS]``, where "n" should be replaced with a positive
+    integer, and "D," "H," "M," and "S" are literals standing for "days,"
+    "hours," "minutes," and "seconds." For instance, you might use ``5M`` for
+    five minutes, ``20S`` for twenty seconds, or ``1H30M`` for an hour and a
+    half.  Thus "before30M" would mean "thirty minutes ago or older." 
+    "since45S" would mean "45 seconds ago or newer."  "since1H,before30M" would
+    mean "between thirty minutes and an hour ago."  Note that reversing the two
+    components in the last example--"before30M,since1H"--is equivalent.
+    
+
+    - "callable": filters by callable name.  Supports shell-style glob
+      wildcards.  If you do not include a "." in the string, it matches only on
+      the callable name.  If you include a ".", it matches on the
+      fully-qualified name (that is, including the module).
+    
+    - "queue": filters by queue name.  Supports shell-style glob wildcards.
+    
+    - "agent": filters by agent name.  Supports shell-style glob wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agent could perform, according to its filter.
+    
+    - "uuid": filters by UUID string, or the special marker "THIS", indicating
+      the UUID of the current process' dispatcher.  Supports shell-style glob
+      wildcards.
+
+      When applied to jobs in the "pending" state, this restricts the jobs to
+      the ones that the agents for that dispatcher could perform, according to
+      their filters.
+    
+    - "requested_start": a duration-based filter for when the job was requested
+      to start.
+      
+      Note that, if a job is not given an explicit start time, the time when it
+      was added to a queue is used.  This is based on a job's ``begin_after``
+      attribute.
+    
+    - "start": a duration-based filter for when the job started work.
+    
+      Note that, if a job is restarted because of problems such as an
+      interruption or a conflict error, this is the  most recent time that the
+      job started work.  This is based on a job's ``active_start`` attribute.
+      
+      To see the first time a job started work ever, the default retry policies
+      store a 'first_active' value in their ``data`` attribute
+      (``job.getRetryPolicy().data.get('first_active')``).  Other information
+      about retries can also be found in this data dictionary.
+    
+    - "end": a duration-based filter for when the job ended work (but not
+      callbacks).
+    
+      This is based on a job's ``active_end`` attribute.
+    
+    - "callbacks_completed":  a duration-based filter for when the job
+      finished the callbacks it had just after it performed the job.
+      
+      If subsequent callbacks are added, they are performed immediately, and
+      will not affect the value that this filter uses.
+    
+      This is based on a job's ``initial_callbacks_end`` attribute.
+    
+    Usage Examples
+    ==============
+    
+    Here are some examples of the command.
+
+        asyncdb firstjob pending
+        (describes the first (next-to-be-processed) pending jobs)
+        
+        asyndb job active agent:instance5
+        (describes the first job that any agent named instance5
+        is working on; "first" doesn't mean much here.)
+        
+        asyndb job pending agent:instance5
+        (describes the first (next-to-be-processed) pending jobs that agents
+        named "instance5" could perform)
+
+        asyncdb job completed end:since1H callable:import_*
+        (describes the first (most recently completed) completed job that ended
+        within the last hour that called a function or method that began with
+        the string "import_")
+
+    Here are some examples of how the duration-based filters work.
+    
+    * If you used "start:since5s" then that could be read as "jobs that
+      started five seconds ago or sooner."  
+    
+    * "requested_start:before1M" could be read as "jobs that were supposed to
+      begin one minute ago or longer". 
+    
+    * "end:since1M,before30S" could be read as "jobs that ended their
+      primary work (that is, not including callbacks) between thirty seconds
+      and one minute ago."
+    
+    * "callbacks_completed:before30S,since1M" could be read as "jobs that
+      completed the callbacks they had when first run between thirty seconds
+      and one minute ago."  (This also shows that the order of "before" and
+      "since" do not matter.)
     """
     for j in _jobs(context, states, **kwargs):
         return jobsummary(j)
