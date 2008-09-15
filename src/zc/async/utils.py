@@ -11,6 +11,7 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
+import bisect
 import datetime
 import logging
 import sys
@@ -352,3 +353,26 @@ def custom_repr(obj):
         return '%s.%s' % (obj.__module__, obj.__name__)
     else:
         return repr(obj)
+
+def sortedmerge(sources, key=None):
+    if key is None:
+        key = lambda item: item
+    sorted_sources = []
+    for src in sources:
+        iterator = iter(src)
+        try:
+            first = iterator.next()
+        except StopIteration:
+            pass
+        else:
+            sorted_sources.append((key(first), first, iterator))
+    sorted_sources.sort()
+    while sorted_sources:
+        ignore, result, iterator = sorted_sources.pop(0)
+        yield result
+        try:
+            next = iterator.next()
+        except StopIteration:
+            pass
+        else:
+            bisect.insort(sorted_sources, (key(next), next, iterator))

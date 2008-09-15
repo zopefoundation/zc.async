@@ -2,11 +2,11 @@ Monitoring Dispatchers
 ======================
 
 A process's zc.async dispatcher [#setUp]_ can be monitored in-process via
-zc.z3monitor plugins.  Let's imagine we have a connection over which we
-can send text messages to the monitor server [#z3monitor_setup]_.
+zc.monitor plugins.  Let's imagine we have a connection over which we
+can send text messages to the monitor server [#monitor_setup]_.
 
 All monitoring is done through the ``async`` command.  Here is its
-description, using the zc.z3monitor ``help`` command.
+description, using the zc.monitor ``help`` command.
 
     >>> connection.test_input('help async\n')
     Help for async:
@@ -714,20 +714,20 @@ Here are the revised stats.
     >>> queue.dispatchers[dispatcher.UUID]['main'] = agent
     >>> transaction.commit()
 
-.. [#z3monitor_setup] This part actually sets up the monitoring.
+.. [#monitor_setup] This part actually sets up the monitoring.
 
     >>> import zc.ngi.testing
-    >>> import zc.z3monitor
+    >>> import zc.monitor
 
     >>> connection = zc.ngi.testing.TextConnection()
-    >>> server = zc.z3monitor.Server(connection)
+    >>> server = zc.monitor.Server(connection)
 
     >>> import zc.async.monitor
     >>> import zope.component
-    >>> import zc.z3monitor.interfaces
+    >>> import zc.monitor.interfaces
     >>> zope.component.provideUtility(
     ...     zc.async.monitor.async,
-    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin,
+    ...     zc.monitor.interfaces.IMonitorPlugin,
     ...     'async')
-    >>> zope.component.provideUtility(zc.z3monitor.help,
-    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin, 'help')
+    >>> zope.component.provideUtility(zc.monitor.help,
+    ...     zc.monitor.interfaces.IMonitorPlugin, 'help')

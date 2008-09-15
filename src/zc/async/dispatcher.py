@@ -62,7 +62,8 @@ class AgentThreadPool(object):
         return self._size
 
     def perform_thread(self):
-        thread_id = thread.get_ident()
+        thread_id = str(thread.get_ident())
+        threading.currentThread().setName(thread_id)
         self.jobids[thread_id] = None
         zc.async.local.dispatcher = self.dispatcher
         zc.async.local.name = self.name # this is the name of this pool's agent
@@ -75,7 +76,7 @@ class AgentThreadPool(object):
                 info['thread'] = thread_id
                 info['started'] = datetime.datetime.utcnow()
                 zc.async.utils.tracelog.info(
-                    'starting in thread %d: %s',
+                    'starting in thread %s: %s',
                     info['thread'], info['call'])
                 backoff = self.initial_backoff
                 conflict_retry_count = 0
@@ -178,7 +179,7 @@ class AgentThreadPool(object):
                     zc.async.local.job = None # also in job (here for paranoia)
                     transaction.abort() # (also paranoia)
                 zc.async.utils.tracelog.info(
-                    'completed in thread %d: %s',
+                    'completed in thread %s: %s',
                     info['thread'], info['call'])
                 self.jobids[thread_id] = None
                 job_info = self.queue.get()
@@ -495,6 +496,10 @@ class Dispatcher(object):
             raise ValueError('not activated')
         self.activated = None # "in progress"
         try:
+            # Note: we do not want to clear jobs and polls, because they can
+            # be helpful diagnostic information (particularly in the use of
+            # zc.async.testing.tear_down_dispatcher to identify jobs that won't
+            # stop).
             transaction.begin()
             try:
                 identifier = 'cleanly deactivating UUID %s' % (self.UUID,)

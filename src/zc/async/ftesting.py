@@ -47,5 +47,5 @@ def tearDown():
         logger = logging.getLogger('zc.async')
         logger.removeHandler(dispatcher._debug_handler)
         del dispatcher._debug_handler
-    zc.async.testing.shut_down_and_wait(dispatcher)
+    zc.async.testing.tear_down_dispatcher(dispatcher)
     zc.async.dispatcher.clear()

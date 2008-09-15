@@ -1,13 +1,16 @@
+- need to show in monitordb test that completed, in-agent, and pending jobs
+  do a merge sort (esp. completed, because this si important to the semantics
+  of lastcompleted.
+- need test for "display" in asyncdb jobstats and jobs
+
 - fix up tips so that it looks better
 - write a zc.buildout/grok quickstart
-- zc.monitor instead of zc.z3monitor
-- improvements to thread teardown
-- docstrings for monitordb functions
-- waiting thread testing notification improvements (Patrick)
+
 
 Improvements
 
 - queues should be pluggable like agent with filter
+- consider agent sort function for jobs to implement priority queues
 
 More docs:
 

@@ -20,25 +20,22 @@ import zc.ngi.async # to quiet the thread complaints from the testing
 # z3monitor server or the zc.ngi.async thread. :-(
 
 import zc.async.tests
-import zc.async.monitortests
 
-def tearDown(test):
-    import zc.async.dispatcher
-    zc.async.dispatcher.pop()
-    zope.component.testing.tearDown(test)
+def setUp(test):
+    zc.async.tests.modSetUp(test)
+    # make the uuid stable for these tests
+    f = open(os.environ["ZC_ASYNC_UUID"], 'w')
+    # make this stable for test purposes
+    f.writelines(('d10f43dc-ffdf-11dc-abd4-0017f2c49bdd',))
+    f.close()
+    zc.async.instanceuuid.UUID = zc.async.instanceuuid.getUUID()
 
 def test_suite():
     return unittest.TestSuite((
         doctest.DocFileSuite(
-            'z3.txt',
-            setUp=zc.async.monitortests.setUp,
-            tearDown=zc.async.tests.modTearDown,
-            optionflags=doctest.INTERPRET_FOOTNOTES),
-        doctest.DocFileSuite(
-            'README_3a.txt',
-            'README_3b.txt',
-            setUp=zope.component.testing.setUp,
-            tearDown=tearDown,
+            'monitor.txt',
+            'monitordb.txt',
+            setUp=setUp, tearDown=zc.async.tests.modTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES),
         ))
 

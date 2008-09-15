@@ -168,5 +168,5 @@ Q.E.D.
 
 Now we'll shut down the dispatchers.
 
-    >>> zc.async.testing.shut_down_and_wait(dispatcher)
-    >>> zc.async.testing.shut_down_and_wait(alt_dispatcher)
+    >>> zc.async.testing.tear_down_dispatcher(dispatcher)
+    >>> zc.async.testing.tear_down_dispatcher(alt_dispatcher)

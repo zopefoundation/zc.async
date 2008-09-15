@@ -53,10 +53,6 @@ Changes
   log, and give up on the job.  Write conflict errors on the job should
   protect us from the edge cases in this story.
 
-- Make ftesting try to join worker threads, in addition to polling thread,
-  to try to eliminate intermittent test-runner warnings in ftests that a
-  thread is left behind.  XXX test
-
 - The dispatcher's ``getActiveJobs`` method now actually tells you information
   about what's going on in the threads at this instant, rather than what's
   going on in the database.  The poll's ``active jobs`` keys continues to
@@ -80,6 +76,16 @@ Changes
 
 - Tried to be significantly reduce the chance of spurious timing errors in the
   tests, at the expense of causing the tests to take longer to run.
+
+- monitoring support depends on the new zc.monitor package, which is not Zope
+  specific.  This means non-Zope 3 apps can take advantage of the monitoring
+  support.  To use, use the [monitor] target; this only adds simplejson,
+  zc.ngi, and zc.monitor to the basic dependencies.
+
+- Make ftesting try to join worker threads, in addition to polling thread,
+  to try to eliminate intermittent test-runner warnings in ftests that a
+  thread is left behind.  If the threads do not end, inform the user what jobs
+  are not letting go.  (thanks to Patrick Strawderman)
 
 1.4.1 (2008-07-30)
 ==================

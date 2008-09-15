@@ -19,7 +19,9 @@ Summary
   you need to make sure that ftests do not use dispatchers started in the
   application. Start up ftest (or integration test) dispatchers separately,
   using ``zc.async.ftesting.setUp``, and then tear down after the tests are
-  done with ``zc.async.ftesting.tearDown``.
+  done with ``zc.async.ftesting.tearDown``.  The ``tearDown`` feature tries
+  to shut down all threads, and tries to let you know what job was running in
+  threads that couldn't be cleanly stopped.
 
   The ftest dispatcher polls every tenth of a second, so you shouldn't need to
   wait long for you job to get started in your tests.
@@ -31,6 +33,8 @@ Summary
 - If you don't want to dig into guts in your functional tests to use the tools
   described in the previous point, consider making a view to check on job
   status using a data structure like JSON, and looking at that in your tests.
+  Alternatively, investigate the tools in monitordb.py--although the tools
+  were created for zc.monitor, they can still be used effectively in Python.
 
 - The ``setUp`` code by default sends critical log messages to __stdout__ so it
   can help diagnose why a callback might never complete.
@@ -201,6 +205,49 @@ same layer, of course.
     >>> dispatcher.activated
     False
 
+ftesting.tearDown attempts to join all threads in the dispatchers' queues, but
+will raise an error if a job or dispatcher fails to shut down.
+
+If the thread is performing a job, the error informs you what job is being
+performed.
+
+    >>> zc.async.ftesting.setUp()
+    >>> _ = transaction.begin()
+    >>> queue = root[zc.async.interfaces.KEY]['']
+    >>> def bad_job():
+    ...     zc.async.testing.time_sleep(4)
+    >>> job = queue.put(bad_job)
+    >>> transaction.commit()
+    >>> zc.async.testing.wait_for_start(job)
+    >>> zc.async.ftesting.tearDown() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    TearDownDispatcherError: 
+    Job in pool 'main' failed to stop:
+      <zc.async.job.Job (oid ..., db ...) ``zc.async.doctest_test.bad_job()``>
+    >>> zc.async.testing.wait_for_result(job)
+
+If the dispatcher isn't shutting down for some reason, the UUID is given.
+
+    >>> zc.async.ftesting.tearDown()
+    >>> zc.async.ftesting.setUp()
+    >>> dispatcher = zc.async.dispatcher.get()
+    >>> def noop(*kw):
+    ...     pass
+    >>> original_stop = dispatcher.reactor.stop
+    >>> dispatcher.reactor.stop = noop
+    >>> zc.async.ftesting.tearDown() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+    ...
+    TearDownDispatcherError: 
+    Dispatcher (..., ...) failed to stop.
+
+Let's restore the original reactor.stop method and call tearDown again, which
+will work this time.
+
+    >>> dispatcher.reactor.stop = original_stop
+    >>> zc.async.ftesting.tearDown()
+
 Also worth noting, as mentioned in the summary, is that you should use
 zope.app.testing version 3.4.2 or higher to avoid getting spurious,
 intermittent bug reports from ftests that use zc.async.
@@ -214,4 +261,4 @@ tearDowns, but we do it here, now, to make the point.
     >>> storage.cleanup()
 
     >>> del storage # we just do this to not confuse our own tearDown code.
-    >>> del globals()['getRootFolder'] # clean up globals
+    >>> del globals()['getRootFolder'] # clean up globals; probably unnecessary

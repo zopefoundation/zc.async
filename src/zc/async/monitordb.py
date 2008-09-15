@@ -1,5 +1,6 @@
 import datetime
 import fnmatch
+import itertools
 import re
 from uuid import UUID # we use this non-standard import spelling because
 # ``uuid`` is frequently an argument
@@ -13,6 +14,7 @@ import zope.component
 import zc.async.dispatcher
 import zc.async.interfaces
 import zc.async.monitor
+import zc.async.utils
 
 _available_states = frozenset(
     ('pending', 'assigned', 'active', 'callbacks', 'completed', 'succeeded',
@@ -93,14 +95,64 @@ def _jobs(context, states,
         queue = re.compile(fnmatch.translate(queue)).match
     if agent is not None:
         agent = re.compile(fnmatch.translate(agent)).match
+    sources = []
+    if pending:
+        def pending_source(q, agent_filters, ignore_agent_filters):
+            for j in q:
+                if not ignore_agent_filters:
+                    for f in agent_filters:
+                        if f(j):
+                            break # this is a positive match
+                    else:
+                        continue
+                for f in filters:
+                    if not f(j):
+                        break # this is a negative match
+                else:
+                    yield j
+        def pending_key(job):
+            return job.begin_after.isoformat()
+        pending_sources = []
+        sources.append((pending_sources, pending_key))
+    if agent_states:
+        def agent_source(a):
+            for j in a:
+                if j.status not in agent_states:
+                    continue
+                for f in filters:
+                    if not f(j):
+                        break
+                else:
+                    yield j
+        def agent_key(job):
+            return (job.active_start or job.begin_after).isoformat()
+        agent_sources = []
+        sources.append((agent_sources, agent_key))
+    if completed:
+        def completed_source(a):
+            for j in a.completed:
+                if completed!='completed':
+                    is_failure = isinstance(
+                        j.result, twisted.python.failure.Failure)
+                    if (completed=='succeeded' and is_failure or
+                        completed=='failed' and not is_failure):
+                        continue
+                for f in filters:
+                    if not f(j):
+                        break
+                else:
+                    yield j
+        def completed_key(job):
+            return job.key # == reverse int of job.initial_callbacks_end
+        completed_sources = []
+        sources.append((completed_sources, completed_key))
     queues = conn.root()[zc.async.interfaces.KEY]
     for q_name, q in queues.items():
         if queue and not queue(q_name):
             continue
         agent_filters = []
         ignore_agent_filters = agent is None and uuid is None
-        if (assigned or active or callbacks or completed or
-            pending and not ignore_agent_filters):
+        if (agent_states or completed or pending and not ignore_agent_filters):
             if uuid is None:
                 das = q.dispatchers.values()
             else:
@@ -124,53 +176,25 @@ def _jobs(context, states,
                                     '(%s : %s : %s)' %
                                     (q_name, da.UUID, a_name))
                     if agent_states:
-                        for j in a:
-                            if j.status not in agent_states:
-                                continue
-                            for f in filters:
-                                if not f(j):
-                                    break
-                            else:
-                                yield j
+                        agent_sources.append(agent_source(a))
                     if completed:
-                        for j in a.completed:
-                            if completed!='completed':
-                                is_failure = isinstance(
-                                    j.result, twisted.python.failure.Failure)
-                                if (completed=='succeeded' and is_failure or
-                                    completed=='failed' and not is_failure):
-                                    continue
-                            for f in filters:
-                                if not f(j):
-                                    break
-                            else:
-                                yield j
-        if pending:
-            if not agent or agent_filters:
-                for j in q:
-                    if not ignore_agent_filters:
-                        for f in agent_filters:
-                            if f(j):
-                                break # this is a positive match
-                        else:
-                            continue
-                    for f in filters:
-                        if not f(j):
-                            break # this is a negative match
-                    else:
-                        yield j
+                        completed_sources.append(completed_source(a))
+        if pending and (not agent or agent_filters):
+            pending_sources.append(
+                pending_source(q, agent_filters, ignore_agent_filters))
+    return itertools.chain(
+        *(zc.async.utils.sortedmerge(s, key) for s, key in sources))
 
 def jobs(context, *states, **kwargs):
     """Return jobs in one or more states.
 
-    Jobs are identified by integer OID and database name.  These identifiers
-    can be used with the "asyncdb job" command to get details about the jobs.
-    The integer OIDs can be used in a database connection to get the job with
-    ``connection.get(ZODB.utils.p64(INTEGER_OID))``.
-
-    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
-    the same arguments, which are described below; after which usage examples
-    for this command are listed.
+    By default, jobs are identified by integer OID and database name.  These
+    identifiers can be used with the "asyncdb job" command to get details about
+    the jobs. The integer OIDs can be used in a database connection to get the
+    job with ``connection.get(ZODB.utils.p64(INTEGER_OID))``.  For other
+    display options for jobs, see the "display" optional argument.
+    
+    After the arguments list, this description concludes with usage examples.
 
     Arguments
     =========
@@ -279,7 +303,12 @@ def jobs(context, *states, **kwargs):
       will not affect the value that this filter uses.
     
       This is based on a job's ``initial_callbacks_end`` attribute.
-    
+
+    - "display": By default, or with a "default" value, jobs are identified
+      with integer OID and database name.  If the display value is "repr,"
+      reprs of the jobs are used instead.  If the display value is "detail,"
+      a dictionary of details is used for each job.
+
     Usage Examples
     ==============
     
@@ -318,14 +347,22 @@ def jobs(context, *states, **kwargs):
       and one minute ago."  (This also shows that the order of "before" and
       "since" do not matter.)
     """
-    return _jobs(context, states, **kwargs)
+    display = kwargs.pop('display', 'default').lower()
+    res = _jobs(context, states, **kwargs)
+    if display == 'default':
+        return res
+    elif display == 'repr':
+        return (repr(j) for j in res)
+    elif display == 'details':
+        return (jobsummary(j) for j in res)
+    else:
+        raise ValueError('unknown value for "display": '
+                         'must be one of "default," "repr," or "details."')
 
 def count(context, *states, **kwargs):
     """Count jobs in one or more states.
-
-    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
-    the same arguments, which are described below; after which usage examples
-    for this command are listed.
+    
+    After the arguments list, this description concludes with usage examples.
 
     Arguments
     =========
@@ -487,14 +524,25 @@ _status_keys = {
 def jobstats(context, *states, **kwargs):
     """Return statistics about jobs in one or more states.
 
-    XXX describe statistics
+    The report shows the following statistics.
+    
+    - The number of jobs that match the search in each of these states:
+      "pending," "assigned," "active," "callbacks," "succeeded," and "failed".
 
-    Jobs are identified by integer OID and database name.  These identifiers
-    can be used with the "asyncdb job" command to get details about the jobs.
+    - "longest wait" and "shortest wait" give the wait duration and identifier
+      of the job with the longest and shortest wait interval, respectively.
 
-    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
-    the same arguments, which are described below; after which usage examples
-    for this command are listed.
+    - "longest active" and "shortest active" give the active duration and
+      identifier of the job with the longest and shortest active duration,
+      respectively.
+
+    By default, jobs are identified by integer OID and database name.  These
+    identifiers can be used with the "asyncdb job" command to get details about
+    the jobs. The integer OIDs can be used in a database connection to get the
+    job with ``connection.get(ZODB.utils.p64(INTEGER_OID))``.  Alternatively,
+    for other display options for jobs, see the "display" optional argument.
+    
+    After the arguments list, this description concludes with usage examples.
 
     Arguments
     =========
@@ -603,6 +651,11 @@ def jobstats(context, *states, **kwargs):
       will not affect the value that this filter uses.
     
       This is based on a job's ``initial_callbacks_end`` attribute.
+
+    - "display": By default, or with a "default" value, jobs are identified
+      with integer OID and database name.  If the display value is "repr,"
+      reprs of the jobs are used instead.  If the display value is "detail,"
+      a dictionary of details is used for each job.
     
     Usage Examples
     ==============
@@ -646,6 +699,16 @@ def jobstats(context, *states, **kwargs):
          'succeeded': 0, 'failed': 0}
     longest_wait = longest_active = None
     shortest_wait = shortest_active = None
+    display = kwargs.pop('display', 'default').lower()
+    if display == 'default':
+        job_display = lambda j: j
+    elif display == 'repr':
+        job_display = lambda j: j is not None and repr(j) or j
+    elif display == 'details':
+        job_display = lambda j: j is not None and jobsummary(j) or j
+    else:
+        raise ValueError('unknown value for "display": '
+                         'must be one of "default," "repr," or "details."')
     for j in _jobs(context, states, **kwargs):
         status = j.status 
         if status == zc.async.interfaces.COMPLETED:
@@ -676,10 +739,22 @@ def jobstats(context, *states, **kwargs):
         if (shortest_wait is None or
             shortest_wait[0] < wait):
             shortest_wait = wait, j
-    d['longest wait'] = longest_wait
-    d['longest active'] = longest_active
-    d['shortest wait'] = shortest_wait
-    d['shortest active'] = shortest_active
+    d['longest wait'] = (
+        longest_wait is not None and
+        (longest_wait[0], job_display(longest_wait[1])) or
+        longest_wait)
+    d['longest active'] = (
+        longest_active is not None and
+        (longest_active[0], job_display(longest_active[1])) or
+        longest_active)
+    d['shortest wait'] = (
+        shortest_wait is not None and
+        (shortest_wait[0], job_display(shortest_wait[1])) or
+        shortest_wait)
+    d['shortest active'] = (
+        shortest_active is not None and
+        (shortest_active[0], job_display(shortest_active[1])) or
+        shortest_active)
     return d
 
 def jobsummary(job):
@@ -711,8 +786,8 @@ def jobsummary(job):
     else:
         queue = None
     return {'repr': repr(job),
-            'args': list(job.args),
-            'kwargs': dict(job.kwargs),
+            'args': list(repr(a) for a in job.args),
+            'kwargs': dict((k, repr(v)) for k, v in job.kwargs.items()),
             'begin after': job.begin_after,
             'active start': job.active_start,
             'active end': job.active_end,
@@ -747,57 +822,218 @@ def traceback(context, oid, database=None, detail='default'):
     return job.result.getTraceback(detail=detail)
 
 def job(context, oid, database=None):
-    """Return summary of job identified by integer oid."""
+    """Return details of job identified by integer oid.
+    
+    The result includes the following information:
+    
+    - "active": how long the job was,or has been active.
+
+    - "active end": when the job ended its work (before callbacks).
+
+    - "active start": when the job started its work.
+
+    - "agent": the name of the agent that performed this job.
+
+    - "args": the standard repr of each argument to this job.
+
+    - "begin after": when the job was requested to begin.
+
+    - "callbacks": identifiers of the callbacks to this job.
+
+    - "dispatcher": the UUID of the dispatcher that performed this job.
+
+    - "failed": whether the job failed (raised an unhandled exception).
+
+    - "initial callbacks end": when the callbacks were first completed.
+
+    - "kwargs": standard reprs of each keyword argument to this job.
+
+    - "queue": the name of the queue that performed this job.
+
+    - "quota names": the quota names of this job.
+
+    - "repr": a repr of this job (includes its integer OID and database name).
+
+    - "result": a repr of the result of the job; OR a brief traceback.
+
+    - "status": the status of the job.
+
+    - "wait": how long the job was, or has been waiting.
+
+    Times are in UTC.
+    """
     return jobsummary(_get_job(context, oid, database))
 
-def firstjob(context, *states, **kwargs):
-    """Return summary of first job found matching given filters.
+def nextpending(context, **kwargs):
+    """Return details of the next job in queue to be performed.
+    
+    The result includes the following information:
+    
+    - "active": how long the job was,or has been active.
 
-    XXX describe what "first" means for different states.
+    - "active end": when the job ended its work (before callbacks).
 
-    The asyncdb commands "jobs," "count," "jobstats," and "firstjob" all share
-    the same arguments, which are described below; after which usage examples
-    for this command are listed.
+    - "active start": when the job started its work.
+
+    - "agent": the name of the agent that performed this job.
+
+    - "args": the standard repr of each argument to this job.
+
+    - "begin after": when the job was requested to begin.
+
+    - "callbacks": identifiers of the callbacks to this job.
+
+    - "dispatcher": the UUID of the dispatcher that performed this job.
+
+    - "failed": whether the job failed (raised an unhandled exception).
+
+    - "initial callbacks end": when the callbacks were first completed.
+
+    - "kwargs": standard reprs of each keyword argument to this job.
+
+    - "queue": the name of the queue that performed this job.
+
+    - "quota names": the quota names of this job.
+
+    - "repr": a repr of this job (includes its integer OID and database name).
+
+    - "result": a repr of the result of the job; OR a brief traceback.
+
+    - "status": the status of the job.
+
+    - "wait": how long the job was, or has been waiting.
+
+    Times are in UTC.
+    
+    After the arguments list, this description concludes with usage examples.
 
     Arguments
     =========
-    
-    States
-    ------
-
-    You must provide at least one of the following states.
-
-    - "pending": the job is in a queue, waiting to be started.
-    
-    - "assigned": a dispatcher has claimed the job and assigned it to one of
-      its worker threads.  Work has not yet begun.  Jobs are in this state very
-      briefly.
-    
-    - "active": A worker thread is performing this job.
-    
-    - "callbacks": the job's work is ended, and the thread is performing the
-      callbacks, if any.
-    
-    - "completed": the job and its callbacks are completed.  Completed jobs
-      stay in the database for only a certain amount of time--between seven and
-      eight days in the default agent implementation.
-
-    - "succeeded": the job completed successfully (that is, without raising an
-      unhandled exception, and without returning an explicit
-      twisted.python.failure.Failure).  This is a subset of "completed,"
-      described above.
-
-     - "failed": the job completed by raising an unhandled exception or by
-       explicitly returning a twisted.python.failure.Failure.  This is a subset
-       of "completed," described above.
-
-    You may use no more than one of the states "completed," "succeeded," and
-    "failed".
 
     Optional Arguments
     ------------------
 
-    You can further filter your results with a number of optional arguments.
+    You can filter your results with a number of optional arguments.
+
+    "Shell-style glob wildcards," as referred to in this list, are "?", "*",
+    "[SEQUENCE]", and "[!SEQUENCE]", as described in
+    http://docs.python.org/lib/module-fnmatch.html .
+    
+    A "duration-based filter" described in this list accepts an argument that
+    is of the form "sinceINTERVAL", "beforeINTERVAL", or
+    "sinceINTERVAL,beforeINTERVAL" (no space!).  The "INTERVAL"s are of the
+    form ``[nD][nH][nM][nS]``, where "n" should be replaced with a positive
+    integer, and "D," "H," "M," and "S" are literals standing for "days,"
+    "hours," "minutes," and "seconds." For instance, you might use ``5M`` for
+    five minutes, ``20S`` for twenty seconds, or ``1H30M`` for an hour and a
+    half.  Thus "before30M" would mean "thirty minutes ago or older." 
+    "since45S" would mean "45 seconds ago or newer."  "since1H,before30M" would
+    mean "between thirty minutes and an hour ago."  Note that reversing the two
+    components in the last example--"before30M,since1H"--is equivalent.
+    
+
+    - "callable": filters by callable name.  Supports shell-style glob
+      wildcards.  If you do not include a "." in the string, it matches only on
+      the callable name.  If you include a ".", it matches on the
+      fully-qualified name (that is, including the module).
+    
+    - "queue": filters by queue name.  Supports shell-style glob wildcards.
+    
+    - "agent": filters by agent name.  Supports shell-style glob wildcards.
+      This restricts the jobs to the ones that the agent could perform,
+      according to its filter.
+    
+    - "uuid": filters by UUID string, or the special marker "THIS", indicating
+      the UUID of the current process' dispatcher.  Supports shell-style glob
+      wildcards.  This restricts the jobs to the ones that the agents for that
+      dispatcher could perform, according to their filters.
+    
+    - "requested_start": a duration-based filter for when the job was requested
+      to start.
+      
+      Note that, if a job is not given an explicit start time, the time when it
+      was added to a queue is used.  This is based on a job's ``begin_after``
+      attribute.
+    
+    Usage Examples
+    ==============
+    
+    Here are some examples of the command.
+
+        asyncdb nextpending
+        (gives details of next pending job)
+        
+        asyndb nextpending agent:instance5
+        (gives details of the next pending job that any of the "instance5"
+        agents could work on)
+
+        asyncdb nextpending callable:import_*
+        (gives details about the next pending job with a callable beginning
+        with the name "import_")
+
+        asyncdb nextpending start:before1M
+        (gives details of the next pending job that was supposed to begin
+        one minute ago or longer)
+    """
+    unsupported = set(['start', 'end', 'callbacks_completed']).intersection(
+        kwargs)
+    if unsupported:
+        raise ValueError('unsupported filters: %s' %
+                         (', '.join(sorted(unsupported)),))
+    for j in _jobs(context, ('pending',), **kwargs):
+        return jobsummary(j)
+    return None
+
+def lastcompleted(context, **kwargs):
+    """Return details of the most recently completed job.
+    
+    The result includes the following information:
+    
+    - "active": how long the job was,or has been active.
+
+    - "active end": when the job ended its work (before callbacks).
+
+    - "active start": when the job started its work.
+
+    - "agent": the name of the agent that performed this job.
+
+    - "args": the standard repr of each argument to this job.
+
+    - "begin after": when the job was requested to begin.
+
+    - "callbacks": identifiers of the callbacks to this job.
+
+    - "dispatcher": the UUID of the dispatcher that performed this job.
+
+    - "failed": whether the job failed (raised an unhandled exception).
+
+    - "initial callbacks end": when the callbacks were first completed.
+
+    - "kwargs": standard reprs of each keyword argument to this job.
+
+    - "queue": the name of the queue that performed this job.
+
+    - "quota names": the quota names of this job.
+
+    - "repr": a repr of this job (includes its integer OID and database name).
+
+    - "result": a repr of the result of the job; OR a brief traceback.
+
+    - "status": the status of the job.
+
+    - "wait": how long the job was, or has been waiting.
+
+    Times are in UTC.
+    
+    After the arguments list, this description concludes with usage examples.
+
+    Arguments
+    =========
+
+    Optional Arguments
+    ------------------
+
+    You can filter your results with a number of optional arguments.
 
     "Shell-style glob wildcards," as referred to in this list, are "?", "*",
     "[SEQUENCE]", and "[!SEQUENCE]", as described in
@@ -872,21 +1108,17 @@ def firstjob(context, *states, **kwargs):
     
     Here are some examples of the command.
 
-        asyncdb firstjob pending
-        (describes the first (next-to-be-processed) pending jobs)
+        asyncdb lastcompleted
+        (gives details about the most recently completed job)
         
-        asyndb job active agent:instance5
-        (describes the first job that any agent named instance5
-        is working on; "first" doesn't mean much here.)
-        
-        asyndb job pending agent:instance5
-        (describes the first (next-to-be-processed) pending jobs that agents
-        named "instance5" could perform)
+        asyndb lastcompleted agent:instance5
+        (gives details about the most recently completed job that any agent
+        named "instance5" has worked on)
 
-        asyncdb job completed end:since1H callable:import_*
-        (describes the first (most recently completed) completed job that ended
-        within the last hour that called a function or method that began with
-        the string "import_")
+        asyncdb lastcompleted end:since1H callable:import_*
+        (gives details about the most recently completed job that ended within
+        the last hour that called a function or method that began with the
+        string "import_")
 
     Here are some examples of how the duration-based filters work.
     
@@ -905,7 +1137,7 @@ def firstjob(context, *states, **kwargs):
       and one minute ago."  (This also shows that the order of "before" and
       "since" do not matter.)
     """
-    for j in _jobs(context, states, **kwargs):
+    for j in _jobs(context, ('completed',), **kwargs):
         return jobsummary(j)
     return None
 
@@ -920,7 +1152,10 @@ def UUIDs(context):
             if da.activated]
 
 def status(context, queue=None, agent=None, uuid=None):
-    """Return status of the agents of all queues and all active UUIDs."""
+    """Return status of the agents of all queues and all active UUIDs.
+    
+    Times are in UTC.
+    """
     conn = ZODB.interfaces.IConnection(context)
     if uuid is not None:
         if uuid.upper() == 'THIS':
@@ -983,8 +1218,8 @@ def help(context, cmd=None):
         return 'Unknown async tool'
     return f.__doc__
 
-for f in (
-    count, jobs, job, firstjob, traceback, jobstats, UUIDs, status, help):
+for f in (count, jobs, job, nextpending, lastcompleted, traceback, jobstats,
+          UUIDs, status, help):
     name = f.__name__
     funcs[name] = f
 

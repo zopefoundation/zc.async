@@ -259,21 +259,49 @@ def wait_for_annotation(job, name):
     else:
         assert False, 'annotation never found'
 
-def shut_down_and_wait(dispatcher):
+
+class TearDownDispatcherError(RuntimeError):
+    pass
+
+def tear_down_dispatcher(dispatcher):
     threads = []
     for queue_pools in dispatcher.queues.values():
         for pool in queue_pools.values():
-            threads.extend(pool.threads)
+            threads.extend((thread, pool) for thread in pool.threads)
+    problems = []
     dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
     dispatcher.thread.join(3)
+    if dispatcher.thread.isAlive():
+        problems.append(
+            'Dispatcher (%s, %s) failed to stop.' %
+            (dispatcher.thread.getName(), dispatcher.UUID))
     # in most cases, this is unnecessary, but in some instances, such as in
     # some examples in catastrophes.txt, this is needed.
     for queue_pools in dispatcher.queues.values():
         for pool in queue_pools.values():
            pool.setSize(0)
     # this makes sure that all the worker threads have a chance to stop.
-    for thread in threads:
+    for thread, pool in threads:
         thread.join(3)
+        if thread.isAlive():
+            name = thread.getName()
+            jobid = pool.jobids.get(name)
+            # from here, we could try going to the database, or to the past
+            # jobs in the dispatcher's rotating history.  We'll just go with
+            # the dispatcher's history--without trying to open the database.
+            if jobid is not None:
+                jobinfo = dispatcher.jobs.get(jobid)
+                if jobinfo is None:
+                    jobid = str(jobid)
+                else:
+                    jobid = jobinfo['call']
+            else:
+                jobid = '[job unknown]'
+            problems.append(
+                'Job in pool %r failed to stop: %s' % (pool.name, jobid))
+    if problems:
+        problems = '\n' + '\n'.join(problems)
+        raise TearDownDispatcherError(problems)
 
 def print_logs(log_file=sys.stdout, log_level=logging.CRITICAL):
     # really more of a debugging tool
@@ -281,6 +309,6 @@ def print_logs(log_file=sys.stdout, log_level=logging.CRITICAL):
     # stashing this on the dispatcher is a hack, but at least we're doing
     # it on code from the same package.
     handler = logging.StreamHandler(log_file)
-    logger.setLevel(log_level)
+    handler.level = log_level
     logger.addHandler(handler)
     return handler

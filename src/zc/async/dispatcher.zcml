@@ -2,9 +2,9 @@
 <configure xmlns="http://namespaces.zope.org/zope">
     <include file="configure.zcml" />
     <utility component=".monitor.async"
-             provides="zc.z3monitor.interfaces.IZ3MonitorPlugin"
+             provides="zc.monitor.interfaces.IMonitorPlugin"
              name="async" />
     <utility component=".monitordb.asyncdb"
-             provides="zc.z3monitor.interfaces.IZ3MonitorPlugin"
+             provides="zc.monitor.interfaces.IMonitorPlugin"
              name="asyncdb" />
 </configure>

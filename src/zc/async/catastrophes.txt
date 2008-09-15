@@ -878,11 +878,11 @@ are demonstrated in the job.txt document.
 .. [#cleanup1]
 
     >>> lock.release()
-    >>> zc.async.testing.shut_down_and_wait(old_dispatcher)
+    >>> zc.async.testing.tear_down_dispatcher(old_dispatcher)
 
 .. [#cleanup2]
 
     >>> lock.release()
-    >>> zc.async.testing.shut_down_and_wait(dispatcher)
-    >>> zc.async.testing.shut_down_and_wait(alt_dispatcher)
+    >>> zc.async.testing.tear_down_dispatcher(dispatcher)
+    >>> zc.async.testing.tear_down_dispatcher(alt_dispatcher)
     >>> time.sleep = old_sleep

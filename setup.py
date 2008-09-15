@@ -109,6 +109,10 @@ setup(
         'rwproperty',
         ],
     extras_require={
+        'monitor': [
+            'zc.monitor',
+            'simplejson',
+            ],
         'z3':[
             'zc.z3monitor',
             'zope.security',

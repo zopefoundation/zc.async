@@ -2,11 +2,11 @@ Monitoring and Introspecting zc.async Database State
 ====================================================
 
 The zc.async database activity can be monitored and introspected via
-zc.z3monitor plugins.  Let's imagine we have a connection over which we can
+zc.monitor plugins.  Let's imagine we have a connection over which we can
 send text messages to the monitor server [#setUp]_.
 
 All monitoring is done through the ``asyncdb`` command.  Here is its
-description, using the zc.z3monitor ``help`` command.
+description, using the zc.monitor ``help`` command.
 
     >>> connection.test_input('help asyncdb\n')
     Help for asyncdb:
@@ -31,11 +31,12 @@ async-specific command.
     <BLANKLINE>
     UUIDs: Return all active UUIDs.
     count: Count jobs in one or more states.
-    firstjob: Return summary of first job found matching given filters.
     help: Get help on an asyncdb monitor tool.
-    job: Return summary of job identified by integer oid.
+    job: Return details of job identified by integer oid.
     jobs: Return jobs in one or more states.
     jobstats: Return statistics about jobs in one or more states.
+    lastcompleted: Return details of the most recently completed job.
+    nextpending: Return details of the next job in queue to be performed.
     status: Return status of the agents of all queues and all active UUIDs.
     traceback: Return the traceback for the job identified by integer oid. 
     -> CLOSE
@@ -265,8 +266,8 @@ We can look at these jobs.
         "active start": null, 
         "agent": null, 
         "args": [
-            18, 
-            18
+            "18", 
+            "18"
         ], 
         "begin after": "2006-08-10T15:44:23.000211Z", 
         "callbacks": [
@@ -279,7 +280,7 @@ We can look at these jobs.
         "failed": false, 
         "initial callbacks end": null, 
         "kwargs": {
-            "start": 6
+            "start": "6"
         }, 
         "queue": "", 
         "quota names": [], 
@@ -291,6 +292,7 @@ We can look at these jobs.
         }
     } 
     -> CLOSE
+
 
 Specifying the database name is equivalent (note that, confusingly, this
 database's name is "unnamed").
@@ -302,8 +304,8 @@ database's name is "unnamed").
         "active start": null, 
         "agent": null, 
         "args": [
-            18, 
-            18
+            "18", 
+            "18"
         ], 
         "begin after": "2006-08-10T15:44:23.000211Z", 
         "callbacks": [
@@ -316,7 +318,7 @@ database's name is "unnamed").
         "failed": false, 
         "initial callbacks end": null, 
         "kwargs": {
-            "start": 6
+            "start": "6"
         }, 
         "queue": "", 
         "quota names": [], 
@@ -329,9 +331,9 @@ database's name is "unnamed").
     } 
     -> CLOSE
 
-We can also use ``firstjob`` to look at the first job in a given state.
+We can also use ``nextpending`` to look at the next job to be performed.
 
-    >>> connection.test_input('asyncdb firstjob pending\n')
+    >>> connection.test_input('asyncdb nextpending\n')
     {
         "active": null, 
         "active end": null, 
@@ -355,10 +357,10 @@ We can also use ``firstjob`` to look at the first job in a given state.
     } 
     -> CLOSE
 
-The ``jobs``, ``count``, ``jobstats`` and ``firstjob`` commands all support the
-same filtering options, which allow you to filter against a certain dispatcher,
-a certain agent, or a string for the callable, or for various times.  Here's an
-example of filtering by callable name.
+The ``jobs``, ``count``, ``jobstats``, ``nextpending``, and ``lastcompleted``
+commands all support similar filtering options, which allow you to filter
+against a certain dispatcher, a certain agent, or a string for the callable, or
+for various times.  Here's an example of filtering by callable name.
 
     >>> connection.test_input('asyncdb count pending callable:send_message\n')
     1 
@@ -550,8 +552,9 @@ The brief version is included in the job summary view (see the "result" key).
     -> CLOSE
 
 Now, let's look at some of the date-based filters: ``requested_start``,
-``start``, ``end``, and ``callbacks_completed``.  They filter
-the results of the ``jobs``, ``count``, ``jobstats`` and ``firstjob`` tools.
+``start``, ``end``, and ``callbacks_completed``.  They filter the results of
+the ``jobs``, ``count``, ``jobstats``, ``nextpending`` and ``lastcompleted``
+tools.
 
 Each may be of the form "sinceINTERVAL", "beforeINTERVAL", or
 "sinceINTERVAL,beforeINTERVAL".  Intervals are of the format
@@ -710,7 +713,7 @@ What's the first (most recent) job that completed?  (Note that this information
 about completed jobs rotates out periodically from the database, so, by
 default, you only have about seven days worth of completed jobs).
 
-    >>> connection.test_input('asyncdb firstjob completed\n')
+    >>> connection.test_input('asyncdb lastcompleted\n')
     {
         "active": {
             "seconds": 6.0
@@ -738,7 +741,7 @@ default, you only have about seven days worth of completed jobs).
 
 What's the first completed job that ended more than 5 seconds ago?
 
-    >>> connection.test_input('asyncdb firstjob completed end:before5S\n')
+    >>> connection.test_input('asyncdb lastcompleted end:before5S\n')
     ... # doctest: +ELLIPSIS
     {
         "active": {
@@ -1168,20 +1171,20 @@ We don't have any jobs in there, but if we did, they would be shown as usual.
     >>> transaction.commit()
 
     >>> import zc.ngi.testing
-    >>> import zc.z3monitor
+    >>> import zc.monitor
 
     >>> connection = zc.ngi.testing.TextConnection()
-    >>> server = zc.z3monitor.Server(connection)
+    >>> server = zc.monitor.Server(connection)
 
     >>> import zc.async.monitordb
     >>> import zope.component
-    >>> import zc.z3monitor.interfaces
+    >>> import zc.monitor.interfaces
     >>> zope.component.provideUtility(
     ...     zc.async.monitordb.asyncdb,
-    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin,
+    ...     zc.monitor.interfaces.IMonitorPlugin,
     ...     'asyncdb')
-    >>> zope.component.provideUtility(zc.z3monitor.help,
-    ...     zc.z3monitor.interfaces.IZ3MonitorPlugin, 'help')
+    >>> zope.component.provideUtility(zc.monitor.help,
+    ...     zc.monitor.interfaces.IMonitorPlugin, 'help')
 
 .. [#tearDown]
     >>> threads = []
