@@ -19,7 +19,7 @@ To run tests, run *all three* of the following:
 
 - ``./bin/test``: this tests zc.async without any zope.app stuff
 
-- ``./bin/z3test``: this tests zc.async monitoring with zc.monitor code, which
+- ``./bin/mtest``: this tests zc.async monitoring with zc.monitor code, which
   just adds itself (zc.monitor), zc.ngi, and simplejson as dependencies.
 
 - ``./bin/z3test``: this tests zc.async with a big chunk of Zope 3, and with
