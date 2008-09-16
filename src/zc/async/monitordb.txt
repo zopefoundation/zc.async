@@ -167,7 +167,7 @@ Notice the change in the queue's len:
 The ``jobs`` command lists all of the jobs in one or more states, identifying
 them with integer OIDs and database names.
 
-    >>> connection.test_input('asyncdb jobs pending\n') # doctest: +ELLIPSIS
+    >>> connection.test_input('asyncdb jobs pending\n')
     [
         [
             30, 
@@ -195,6 +195,50 @@ them with integer OIDs and database names.
         ]
     ] 
     -> CLOSE
+
+You can also get reprs of the jobs instead, or full details.
+
+    >>> connection.test_input('asyncdb jobs pending display:repr\n')
+    [
+        "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+        "<zc.async.job.Job (oid 31, db 'unnamed') ``zc.async.doctest_test.active_pause()``>", 
+        "<zc.async.job.Job (oid 32, db 'unnamed') ``zc.async.doctest_test.sum_silly(18, 18, start=6)``>", 
+        "<zc.async.job.Job (oid 33, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>", 
+        "<zc.async.job.Job (oid 34, db 'unnamed') ``zc.async.doctest_test.send_message()``>", 
+        "<zc.async.job.Job (oid 35, db 'unnamed') ``__builtin__.sum((18, 18, 6))``>"
+    ] 
+    -> CLOSE
+
+For the full details example, we only show the first job, in the interest of
+space.
+
+    >>> connection.test_input('asyncdb jobs pending display:details\n')
+    ... # doctest: +ELLIPSIS
+    [
+        {
+            "active": null, 
+            "active end": null, 
+            "active start": null, 
+            "agent": null, 
+            "args": [], 
+            "begin after": "2006-08-10T15:44:23.000211Z", 
+            "callbacks": [], 
+            "dispatcher": null, 
+            "failed": false, 
+            "initial callbacks end": null, 
+            "kwargs": {}, 
+            "queue": "", 
+            "quota names": [], 
+            "repr": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+            "result": "None", 
+            "status": "pending", 
+            "wait": {
+                "seconds": 0.0
+            }
+        }, ...
+    ] 
+    -> CLOSE
+
 
 You can also count and get stats for these, with the same arguments.
 
@@ -293,6 +337,83 @@ We can look at these jobs.
     } 
     -> CLOSE
 
+Alternatively, we could have used the "display:repr" or "display:details" with
+"jobstats," as with "jobs".
+
+    >>> connection.test_input('asyncdb jobstats pending display:repr\n')
+    {
+        "active": 0, 
+        "assigned": 0, 
+        "callbacks": 0, 
+        "failed": 0, 
+        "longest active": null, 
+        "longest wait": [
+            {
+                "seconds": 0.0
+            }, 
+            "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>"
+        ], 
+        "pending": 6, 
+        "shortest active": null, 
+        "shortest wait": [
+            {
+                "seconds": 0.0
+            }, 
+            "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>"
+        ], 
+        "succeeded": 0
+    } 
+    -> CLOSE
+
+    >>> connection.test_input('asyncdb jobstats pending display:details\n')
+    ... # doctest: +ELLIPSIS
+    {
+        "active": 0, 
+        "assigned": 0, 
+        "callbacks": 0, 
+        "failed": 0, 
+        "longest active": null, 
+        "longest wait": [
+            {
+                "seconds": 0.0
+            }, 
+            {
+                "active": null, 
+                "active end": null, 
+                "active start": null, 
+                "agent": null, 
+                "args": [], 
+                "begin after": "2006-08-10T15:44:23.000211Z", 
+                "callbacks": [], 
+                "dispatcher": null, 
+                "failed": false, 
+                "initial callbacks end": null, 
+                "kwargs": {}, 
+                "queue": "", 
+                "quota names": [], 
+                "repr": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+                "result": "None", 
+                "status": "pending", 
+                "wait": {
+                    "seconds": 0.0
+                }
+            }
+        ], 
+        "pending": 6, 
+        "shortest active": null, 
+        "shortest wait": [
+            {
+                "seconds": 0.0
+            }, 
+            {
+                ...
+                "repr": "<zc.async.job.Job (oid 30, db 'unnamed') ``zc.async.doctest_test.raise_exception()``>", 
+                ...
+            }
+        ], 
+        "succeeded": 0
+    } 
+    -> CLOSE
 
 Specifying the database name is equivalent (note that, confusingly, this
 database's name is "unnamed").

@@ -1,7 +1,7 @@
 - need to show in monitordb test that completed, in-agent, and pending jobs
-  do a merge sort (esp. completed, because this si important to the semantics
+  do a merge sort (esp. completed, because this is important to the semantics
   of lastcompleted.
-- need test for "display" in asyncdb jobstats and jobs
+- fill out XXXs in CHANGES
 
 - fix up tips so that it looks better
 - write a zc.buildout/grok quickstart
