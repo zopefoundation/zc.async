@@ -1,3 +1,6 @@
+BUILDING
+========
+
 To develop this package from source:
 
 - check out the software from the repository
@@ -9,12 +12,21 @@ To develop this package from source:
 
 - run ``./bin/buildout``
 
-To run tests, run *both* of the following:
+TESTING
+=======
+
+To run tests, run *all three* of the following:
 
 - ``./bin/test``: this tests zc.async without any zope.app stuff
 
-- ``./bin/z3test``: this tests zc.async with zc.z3monitor code, along with a
-  lot of zope.app that it drags along.
+- ``./bin/z3test``: this tests zc.async monitoring with zc.monitor code, which
+  just adds itself (zc.monitor), zc.ngi, and simplejson as dependencies.
+
+- ``./bin/z3test``: this tests zc.async with a big chunk of Zope 3, and with
+  zc.z3monitor code (a package of Zope 3-specific helpers for zc.monitor).
+
+RELEASING
+=========
 
 Changes should be documented in CHANGES.txt *in the package*.
 
@@ -31,7 +43,11 @@ parses it correctly.
 Once this works, go ahead and ``./bin/py setup.py sdist register upload``.
 
 BUILDING SPHINX DOCS
+====================
 
-sphinx-build -b <builder> sphinx sphinx/.build
+Use this command::
 
-Then tar the resulting files in the sphinx/.build directory and upload to PyPI.
+    sphinx-build -b <builder> sphinx sphinx/.build
+
+You'll want to use the "html" builder for PyPI upload.  Then tar the resulting
+files in the sphinx/.build directory and upload to PyPI.
