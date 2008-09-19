@@ -376,3 +376,15 @@ def sortedmerge(sources, key=None):
             pass
         else:
             bisect.insort(sorted_sources, (key(next), next, iterator))
+
+def takecount(res, count):
+    if count < 0:
+        raise ValueError('count must be a positive integer')
+    if count == 0:
+        return
+    ct = 0
+    for val in res:
+        yield val
+        ct += 1
+        if ct >= count:
+            break

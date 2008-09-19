@@ -212,8 +212,11 @@ You can also get reprs of the jobs instead, or full details.
 For the full details example, we only show the first job, in the interest of
 space.
 
-    >>> connection.test_input('asyncdb jobs pending display:details\n')
-    ... # doctest: +ELLIPSIS
+(Because we limit this to a "count" of 1, this is essentially equivalent to
+``nextpending``, except it takes a lot longer to write and it has a matched
+pair of square brackets on the outside.)
+
+    >>> connection.test_input('asyncdb jobs pending display:details count:1\n')
     [
         {
             "active": null, 
@@ -235,7 +238,7 @@ space.
             "wait": {
                 "seconds": 0.0
             }
-        }, ...
+        }
     ] 
     -> CLOSE
 
@@ -822,7 +825,7 @@ Let's let some more time pass, and then let the new job complete.
 
     >>> ignore = reactor.time_flies(dispatcher.poll_interval)
     >>> active_lock2.release()
-    >>> time.sleep(0.2)
+    >>> time.sleep(0.4)
 
 Now, how many jobs have completed?
 
@@ -1135,8 +1138,6 @@ Finally, we will add another queue so we can show filtering by queue.
 Initially, before another poll, the dispatchers will not be activated in the
 new queue.
 
-
-
     >>> connection.test_input('asyncdb status\n')
     {
         "": {
@@ -1249,10 +1250,95 @@ We don't have any jobs in there, but if we did, they would be shown as usual.
     0 
     -> CLOSE
 
+It's worth noting that ``jobs``, ``lastcompleted`` and ``nextpending`` all rely
+on merging pending tasks across queues, and merging in-agent and completed
+tasks across agents, while keeping ordering.
+
+The pending tasks are almost always arranged effectively in order of the
+``begin_after`` value of each job.  In rare cases, when interrupted tasks are
+scheduled for a retry, this may get a bit out of order, but the order does
+reflect the exact order of the jobs the queue offers.  ``begin_after`` is used
+for the merge across queues, if that is necessary.
+
+    >>> connection.test_input('asyncdb jobs pending display:repr\n')
+    [
+        "<zc.async.job.Job (oid 35, db 'unnamed') ``__builtin__.sum((18, 18, 6))``>"
+    ] 
+    -> CLOSE
+
+    >>> j = alt_queue.put(zc.async.job.Job(sum_silly, 41, 41))
+    >>> transaction.commit()
+    >>> connection.test_input('asyncdb jobs pending display:repr\n')
+    [
+        "<zc.async.job.Job (oid 35, db 'unnamed') ``__builtin__.sum((18, 18, 6))``>", 
+        "<zc.async.job.Job (oid 107, db 'unnamed') ``zc.async.doctest_test.sum_silly(41, 41)``>"
+    ] 
+    -> CLOSE
+
+    >>> ignore = reactor.time_flies(1)
+    >>> j = queue.put(send_message)
+    >>> transaction.commit()
+    >>> connection.test_input('asyncdb jobs pending display:repr\n')
+    [
+        "<zc.async.job.Job (oid 35, db 'unnamed') ``__builtin__.sum((18, 18, 6))``>", 
+        "<zc.async.job.Job (oid 107, db 'unnamed') ``zc.async.doctest_test.sum_silly(41, 41)``>", 
+        "<zc.async.job.Job (oid 113, db 'unnamed') ``zc.async.doctest_test.send_message()``>"
+    ] 
+    -> CLOSE
+
+The agents are generally ordered from oldest started to newest, and use
+``active_start`` or now (assuming that the task is assigned but not yet active
+if ``active_start`` is not set).
+
+    >>> connection.test_input('asyncdb jobs active callbacks display:repr\n')
+    [
+        "<zc.async.job.Job (oid 31, db 'unnamed') ``zc.async.doctest_test.active_pause()``>", 
+        "<zc.async.job.Job (oid 32, db 'unnamed') ``zc.async.doctest_test.sum_silly(18, 18, start=6)``>", 
+        "<zc.async.job.Job (oid 84, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>"
+    ] 
+    -> CLOSE
+
+    >>> active_lock.release()
+    >>> time.sleep(0.4)
+    >>> agent = zc.async.agent.Agent()
+    >>> alt_queue.dispatchers[alt_dispatcher.UUID]['main'] = agent
+    >>> j = alt_queue.put(active_pause)
+    >>> transaction.commit()
+    >>> ignore = reactor.time_flies(dispatcher.poll_interval)
+    >>> time.sleep(0.4)
+    >>> connection.test_input('asyncdb jobs active callbacks display:repr\n')
+    [
+        "<zc.async.job.Job (oid 32, db 'unnamed') ``zc.async.doctest_test.sum_silly(18, 18, start=6)``>", 
+        "<zc.async.job.Job (oid 84, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>", 
+        "<zc.async.job.Job (oid 118, db 'unnamed') ``zc.async.doctest_test.active_pause()``>"
+    ] 
+    -> CLOSE
+
+    >>> active_lock2.release()
+    >>> time.sleep(0.4)
+    >>> j = alt_queue.put(active_pause2)
+    >>> transaction.commit()
+    >>> ignore = reactor.time_flies(dispatcher.poll_interval)
+    >>> time.sleep(0.4)
+    >>> connection.test_input('asyncdb jobs active callbacks display:repr\n')
+    [
+        "<zc.async.job.Job (oid 32, db 'unnamed') ``zc.async.doctest_test.sum_silly(18, 18, start=6)``>", 
+        "<zc.async.job.Job (oid 118, db 'unnamed') ``zc.async.doctest_test.active_pause()``>", 
+        "<zc.async.job.Job (oid 135, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>"
+    ] 
+    -> CLOSE
+
+The completed tasks are ordered the most strictly.  They are ordered from most
+recently completed to oldest completed, where "completed" is defined as the
+first time that all callbacks ran to completion.  Therefore, as you might
+guess, ``lastcompleted`` just gets the first job from the merged list that
+``jobs`` uses.
+
+    XXX
+
     >>> active_lock2.release()
     >>> active_lock.release()
     >>> callback_lock.release()
-    
 
 [#tearDown]_
 

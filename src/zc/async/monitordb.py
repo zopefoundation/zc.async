@@ -124,8 +124,10 @@ def _jobs(context, states,
                         break
                 else:
                     yield j
+        
+        now = datetime.datetime.now(pytz.UTC)
         def agent_key(job):
-            return (job.active_start or job.begin_after).isoformat()
+            return (job.active_start or now).isoformat()
         agent_sources = []
         sources.append((agent_sources, agent_key))
     if completed:
@@ -309,6 +311,10 @@ def jobs(context, *states, **kwargs):
       reprs of the jobs are used instead.  If the display value is "detail,"
       a dictionary of details is used for each job.
 
+    - "count": By default, or with a value of 0, this will include all jobs
+      matching the filter.  If you provide a count (a positive integer), only
+      a maximum of the given "count" items will be listed.
+
     Usage Examples
     ==============
     
@@ -330,6 +336,10 @@ def jobs(context, *states, **kwargs):
         last hour that called a function or method that began with the string
         "import_")
 
+        asyncdb job pending count:3 display:repr
+        (lists the job reprs for the three pending jobs next in line to be
+        performed)
+
     Here are some examples of how the duration-based filters work.
     
     * If you used "start:since5s" then that could be read as "jobs that
@@ -348,7 +358,10 @@ def jobs(context, *states, **kwargs):
       "since" do not matter.)
     """
     display = kwargs.pop('display', 'default').lower()
+    count = int(kwargs.pop('count', 0))
     res = _jobs(context, states, **kwargs)
+    if count:
+        res = zc.async.utils.takecount(res, count)
     if display == 'default':
         return res
     elif display == 'repr':
