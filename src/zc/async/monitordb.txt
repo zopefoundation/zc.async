@@ -1316,7 +1316,7 @@ if ``active_start`` is not set).
 
     >>> active_lock2.release()
     >>> time.sleep(0.4)
-    >>> j = alt_queue.put(active_pause2)
+    >>> j = queue.put(active_pause2)
     >>> transaction.commit()
     >>> ignore = reactor.time_flies(dispatcher.poll_interval)
     >>> time.sleep(0.4)
@@ -1334,11 +1334,35 @@ first time that all callbacks ran to completion.  Therefore, as you might
 guess, ``lastcompleted`` just gets the first job from the merged list that
 ``jobs`` uses.
 
-    XXX
+    >>> connection.test_input('asyncdb jobs completed display:repr count:3\n')
+    [
+        "<zc.async.job.Job (oid 84, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>", 
+        "<zc.async.job.Job (oid 107, db 'unnamed') ``zc.async.doctest_test.sum_silly(41, 41)``>", 
+        "<zc.async.job.Job (oid 113, db 'unnamed') ``zc.async.doctest_test.send_message()``>"
+    ] 
+    -> CLOSE
 
-    >>> active_lock2.release()
+    >>> ignore = reactor.time_flies(0.25)
     >>> active_lock.release()
-    >>> callback_lock.release()
+    >>> time.sleep(0.4)
+    >>> connection.test_input('asyncdb jobs completed display:repr count:3\n')
+    [
+        "<zc.async.job.Job (oid 118, db 'unnamed') ``zc.async.doctest_test.active_pause()``>", 
+        "<zc.async.job.Job (oid 84, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>", 
+        "<zc.async.job.Job (oid 107, db 'unnamed') ``zc.async.doctest_test.sum_silly(41, 41)``>"
+    ] 
+    -> CLOSE
+
+    >>> ignore = reactor.time_flies(0.25)
+    >>> active_lock2.release()
+    >>> time.sleep(0.4)
+    >>> connection.test_input('asyncdb jobs completed display:repr count:3\n')
+    [
+        "<zc.async.job.Job (oid 135, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>", 
+        "<zc.async.job.Job (oid 118, db 'unnamed') ``zc.async.doctest_test.active_pause()``>", 
+        "<zc.async.job.Job (oid 84, db 'unnamed') ``zc.async.doctest_test.active_pause2()``>"
+    ] 
+    -> CLOSE
 
 [#tearDown]_
 
@@ -1394,6 +1418,10 @@ guess, ``lastcompleted`` just gets the first job from the merged list that
     ...     zc.monitor.interfaces.IMonitorPlugin, 'help')
 
 .. [#tearDown]
+    >>> active_lock2.release()
+    >>> active_lock.release()
+    >>> callback_lock.release()
+
     >>> threads = []
     >>> for d in (dispatcher, alt_dispatcher):
     ...     for queue_pools in d.queues.values():
