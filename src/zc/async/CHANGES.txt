@@ -66,11 +66,24 @@ Changes
 - zc.async events inherit from 'zc.component.interfaces.IObjectEvent' instead
   of a zc.async specific IObjectEvent (thanks to Satchit Haridas).
 
-- Added new monitoring and introspection tools XXX
+- Added new monitoring and introspection tools: the ``asyncdb`` zc.monitor
+  command (and, for Python, the code in monitordb.py).  This code provides
+  easy spellings to examine the database's view of what is happening in
+  zc.async.  Because it is the database, it also has a much longer historical
+  view than the ``async`` tools.  The best way to learn about these tools is
+  to read the extensive documentation provided within zc.monitor by
+  using ``asyncdb help`` and ``asyncdb help <TOOL NAME>``.
 
-- Added new preferred way of filtering agent choices: ``filter`` attribute XXX
+- Added new preferred way of filtering agent choices: the new ``filter``
+  attribute.  Using filters, rather than "choosers," allows several ``asyncdb``
+  tools to filter pending jobs based on what an agent is willing to do.  It
+  also is a smaller contract, and so a filter requires less code than a chooser
+  in the common case.  On the other hand, using a filter alone doesn't allow
+  the agent to try to *prefer* certain tasks.
 
-- deprecated agent.chooseFirst XXX
+- Deprecated agent.chooseFirst.  It is no longer necesary, since an agent
+  without a chooser and with a filter of None has the same behavior.  It is
+  retained for legacy databases.
 
 - Moved deprecated legacy code to new ``legacy`` module.
 
