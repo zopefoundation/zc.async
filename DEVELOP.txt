@@ -47,7 +47,7 @@ BUILDING SPHINX DOCS
 
 Use this command::
 
-    sphinx-build -b <builder> sphinx sphinx/.build
+    ./bin/sphinx-build -b <builder> sphinx sphinx/.build
 
 You'll want to use the "html" builder for PyPI upload.  Then tar the resulting
 files in the sphinx/.build directory and upload to PyPI.

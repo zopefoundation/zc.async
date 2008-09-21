@@ -87,7 +87,9 @@ implementations, primarily) and some concepts to the package.
 Quick starts
 ------------
 
-These quick-starts can help you get a feel for the package.
+These quick-starts can help you get a feel for the package.  **Please note:
+the Grok quickstart is only just begun, and should be regarded mostly
+as a placeholder.**
 
 .. toctree::
    :maxdepth: 1

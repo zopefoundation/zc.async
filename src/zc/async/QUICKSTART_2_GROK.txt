@@ -6,17 +6,25 @@ Goals
 =====
 
 In this quickstart, we will use zc.async to make a small web application that
-XXX
+is a Python Package Index (PyPI, http://pypi.python.org/) helper portal.  We'll
+call it "My PyPI," to be cute.
 
-XXX For simplicity, we'll assume that we are making several instances on the
+*My PyPI* will let you subscribe to changes of specific packages, rather than
+the entire package index; and will let you associate external web pages with
+packages for you and others to see and search on.  
+
+We'll make a number of "toy app" decisions to keep the story quick, but it
+should be a good example for how to leverage zc.async.
+
+Also for simplicity, we'll assume that we are making several instances on the
 same machine, such as you might do with a few processors at your disposal.  To
 get the true advantage of high availability in production, you'd want at least
 two boxes, with a deployment of a ZEO server (or equivalent, for RelStorage),
-some kind of redundancy for your database (ZRS, slony) and instructions for
-each box on how to connect to the ZEO primary.
+some kind of redundancy for your database (ZRS, or slony for RelStorage plus
+PostgreSQL) and instructions for each box on how to connect to the ZEO primary.
 
-This quickstart builds on the :ref:`quickstart-with-virtualenv`.  I suggest you
-read that through before this one.  
+This quickstart is more complex than the :ref:`quickstart-with-virtualenv`.  I
+suggest you read that through before this one.  
 
 - That previous quickstart introduces |async| through the Python interpreter
   for a very casual and quick start.  
@@ -100,11 +108,11 @@ Prerequisites
    Now, given my ``--prefix``, I'll find my python in
    ``/Users/gary/opt/py/bin/python``.
 
-Grok requires Python 2.4.  Moreover, for more repeatable installations, many
-developers strongly recommend using a "clean", non-system Python, to reduce the
-probability of unnecessary or spurious problems (in your software *or* in your
-system!).  Therefore, consider building your own Python 2.4 for your
-development.
+As of this writing, Grok requires Python 2.4.  Moreover, for more repeatable
+installations, many developers strongly recommend using a "clean", non-system
+Python, to reduce the probability of unnecessary or spurious problems (in your
+software *or* in your system!).  Therefore, consider building your own Python
+2.4 for your development.
 
 We'll also expect that your Python has |easy_install|_.  If it doesn't, you can
 just download `ez_setup.py`_ and then run it with your local, development
@@ -163,8 +171,8 @@ bin directory as your local Python (e.g., ``~/opt/py/bin/grokproject``).
 Skeleton
 ========
 
-Now we will use grokproject_ to make a skeleton of our package.  Let's just
-call the project "quickstart".  Go to a directory in which you want to develop
+Now we will use grokproject_ to make a skeleton of our package.  Let's
+call the project "mypypi".  Go to a directory in which you want to develop
 our package.  Then use the newly installed ``grokproject`` command to create
 
 XXX

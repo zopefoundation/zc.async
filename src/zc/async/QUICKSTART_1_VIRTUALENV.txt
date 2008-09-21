@@ -457,7 +457,7 @@ Use the following for the file content.
     
     Once the samples are all done, we'll reduce the results with
     ``process_samples``.  It will return an approximation of pi, with
-    accuracy determined by the total size of the aggregated samples,
+    accuracy strongly influenced by the total size of the aggregated samples,
     assuming even distribution of the random numbers.  As you'll see
     soon, we'll be using a |async| convenience function for
     :func:`~zc.async.job.parallel` jobs that gives all of the completed
@@ -472,40 +472,8 @@ Use the following for the file content.
     zc.async, and starts the reactor.  We use a short poll_interval so we can
     have a perceptually snappy response in this quick start.
 
-::
-
-    import random
-    import math
-
-    import ZEO.ClientStorage
-    import ZODB
-    import twisted.internet.reactor
-
-    import zc.async.configure
-
-    def generate_sample(size=100000):
-        count = 0
-        for i in range(size):
-            if math.hypot(random.random(), random.random()) < 1:
-                count += 1
-        return count, size
-
-    def process_samples(*sample_jobs):
-        count = 0 
-        size = 0
-        for j in sample_jobs:
-            count += j.result[0]
-            size += j.result[1]
-        return 4.0 * count / size
-
-    if __name__ == '__main__':
-        storage = ZEO.ClientStorage.ClientStorage(
-            ('127.0.0.1', 9999))
-        db = ZODB.DB(storage)
-        zc.async.configure.base()
-        zc.async.configure.start(
-            db, poll_interval=0.1, twisted=True)
-        twisted.internet.reactor.run()
+.. literalinclude:: pi1.py
+   :linenos:
 
 .. We'll need these defined when we run this as a test.
 
@@ -713,72 +681,8 @@ are the imports, the three new functions, and setting up
    This supports jobs that the |async| system sometimes needs to run for
    exceptional circumstances.
 
-::
-
-    import random
-    import math
-    
-    import ZEO.ClientStorage
-    import ZODB
-    import transaction
-    import twisted.internet.reactor
-    
-    import zc.async.configure
-    import zc.async.queue
-    import zc.async.instanceuuid
-    import zc.async.agent
-    
-    def generate_sample(size=100000):
-        count = 0
-        for i in range(size):
-            if math.hypot(random.random(), random.random()) < 1:
-                count += 1
-        return count, size
-    
-    def process_samples(*sample_jobs):
-        count = 0 
-        size = 0
-        for j in sample_jobs:
-            count += j.result[0]
-            size += j.result[1]
-        return 4.0 * count / size
-    
-    def choose_generate_sample(agent):
-        return agent.queue.claim(
-            lambda j: j.callable.__name__ == 'generate_sample')
-    
-    def choose_another(agent):
-        return agent.queue.claim(
-            lambda j: j.callable.__name__ != 'generate_sample')
-    
-    def install_agent(db):
-        conn = db.open()
-        try:
-            q = zc.async.queue.getDefaultQueue(conn)
-            try:
-                dispatcher = q.dispatchers[zc.async.instanceuuid.UUID]
-            except KeyError:
-                twisted.internet.reactor.callLater(0.05, install_agent, db)
-            else:
-                if 'generate_sample' not in dispatcher:
-                    agent = dispatcher['main']
-                    agent.chooser = choose_another
-                    dispatcher['generate_sample'] = zc.async.agent.Agent(
-                        choose_generate_sample, 1)
-                    transaction.commit()
-        finally:
-            transaction.abort()
-            conn.close()
-    
-    if __name__ == '__main__':
-        storage = ZEO.ClientStorage.ClientStorage(
-            ('127.0.0.1', 9999))
-        db = ZODB.DB(storage)
-        zc.async.configure.base()
-        zc.async.configure.start(
-            db, poll_interval=0.1, twisted=True)
-        twisted.internet.reactor.callWhenRunning(install_agent, db)
-        twisted.internet.reactor.run()
+.. literalinclude:: pi2.py
+   :linenos:
 
 .. _`talent agent`: http://en.wikipedia.org/wiki/Talent_agent
 
@@ -835,14 +739,16 @@ And now, our test.
     import transaction
     transaction.commit()
 
-Wait a few seconds.  If the result is empty (None), begin the transaction again
-and check the result again.  Eventually, these next two lines should give you a
-result: an approximation of pi.
+Wait a few seconds and then try these lines.
 
 ::
 
     _ = transaction.begin()
     j.result
+
+If the result is empty (None), repeat those two lines again (thatæ is, begin
+the transaction again and check the result again).  Eventually, these lines
+should give you a result: an approximation of pi.
 
 Just to prove to ourselves that we saved some time, let's do a comparison test:
 the same number of samples, but not in parallel.
@@ -867,8 +773,165 @@ On my machine, even in this simple, short example, running in parallel
 with a job per processor/core took 7.8 seconds, while running all in one
 process took 13.4 seconds.
 
+Monitoring
+==========
+
+Soon, you may want to be able to monitor or introspect what's going on in your
+zc.async work.  The package provides several tools to do that.  We'll take a
+look at a few here.
+
+We will be turning on a monitor port.  This port should be protected behind a
+firewall, like your ZEO ports.
+
+If you like the functionality that we describe here but would prefer to expose
+it in a different manner, note that most of the Python functions in
+``monitor.py`` and ``monitordb.py`` power the zc.async commands in the monitor
+port, and can be used without the monitor itself.
+
+To enable the monitoring port, we need to install some extra dependencies for
+zc.async: "[monitor]".  Exit the Python interpreter an make sure you are in the
+top "quickstart" directory, and then enter this command:
+
+    $ ./bin/easy_install zc.async[monitor]
+
+If you take a glance at the output, you'll see we've only added a few
+dependencies: ``simplejson``, ``zc.ngi``, and ``zc.monitor``.
+
+Now let's turn on the port and the zc.async commands.
+
+At the top of the ``pi.py`` file, add some imports::
+
+    import os
+    import zope.component
+    import zc.monitor
+    import zc.monitor.interfaces
+    import zc.async.monitor
+    import zc.async.monitordb
+
+Then down in the ``if __name__ == '__main__':`` block, add these lines at the
+top.
+
+::
+
+    monitor_port = os.environ.get('MONITOR_PORT')
+    if monitor_port:
+        for f in (zc.monitor.interactive, zc.monitor.quit, zc.monitor.help,
+                  zc.async.monitor.async, zc.async.monitordb.asyncdb):
+            zope.component.provideUtility(
+                f, zc.monitor.interfaces.IMonitorPlugin, f.__name__)
+        zc.monitor.start(int(monitor_port))
+
+The file should look like this now.
+
+.. literalinclude:: pi3.py
+   :linenos:
+
+Now stop and restart your two worker instances, this time providing two
+different ports in the environment for each worker.  Here's one way to do it.
+First we'll shut down the previous instances.  If you used the lines above to
+start them before, type ``fg`` and RETURN, and then CTRL-C to stop worker 2;
+and then do the same thing (``fg`` and RETURN, and then CTRL-C) to stop worker
+1.
+
+::
+
+    $ cd worker1
+    $ MONITOR_PORT=9991 ../bin/python ../lib/python2.5/site-packages/pi.py &
+    $ cd ../worker2
+    $ MONITOR_PORT=9992 ../bin/python ../lib/python2.5/site-packages/pi.py &
+
+Now you can open connections to these two ports, 9991 and 9992, and query the
+worker (using the ``async`` command, primarily) and the state of zc.async in
+the database itself (the ``asyncdb`` command).
+
+The easiest way to experiment with this is using telnet.  Try this.
+
+::
+
+    $ telnet 127.0.0.1 9991
+
+You should see something like this::
+
+    Trying 127.0.0.1...
+    Connected to localhost.
+    Escape character is '^]'.
+
+Now you can experiment with commands.  Try this (followed by a RETURN)::
+
+    help
+
+You should see something like this::
+
+    Supported commands:
+      async -- Monitor zc.async activity in this process.
+      asyncdb -- Monitor and introspect zc.async activity in the database.
+      help -- Get help about server commands
+      interactive -- Turn on monitor's interactive mode
+      quit -- Quit the monitor
+    Connection closed by foreign host.
+    $
+
+Hm, it dumped us straight back to the shell!  ``zc.monitor`` behaves that way
+tp be friendly to automated monitoring processes using the port.  We can use
+the ``interactive`` command to make things a bit more pleasant for ourselves.
+
+Reuse the telnet command shown above, or maybe connect to 9992 (``telnet
+127.0.0.1 9992``) to see that you can.  This time, type the ``interactive``
+command first.  You should see this reply::
+
+    Interactive mode on.  Use "quit" To exit.
+
+Now experiment!  Try some of these commands to see what you get.
+
+::
+
+    help async
+    
+    async help
+
+    async help status
+    
+    async status
+    
+    async help poll
+    
+    async poll
+    
+    async UUID
+    
+    async utcnow
+    
+    help asyncdb
+
+    asyncdb help
+    
+    asyncdb help UUIDs
+    
+    asyncdb UUIDs
+    
+    asyncdb lastcompleted
+    
+    asyncdb count completed
+    
+    asyncdb count completed uuid:THIS
+
+That last command shows how many jobs this worker has completed for as long as
+the database has records, which by default means between seven and eight days. 
+The help for ``asyncdb count``, which is available from ``asyncdb help count``,
+is not short, but tells you the many options available.
+
+When you are done, use the ``quit`` command to exit the telnet connection to
+the monitor port.
+
+Another important tool is logging.  The ``zc.async.event`` logger gets
+important events--pay special attention to critical events!  ``zc.async.trace``
+lets you follow along with every detail, if so desired.
+
+These monitoring and introspection tools, combined with logging, provide
+powerful tools to keep track of your zc.async work.
+
 Other Configuration
--------------------
+===================
 
 We're at the end of this quickstart.  To close, here's a quick survey of some
 other configuration opportunities available that we haven't seen here.
@@ -947,9 +1010,8 @@ other configuration opportunities available that we haven't seen here.
   targeting specific dispatchers.  These features may be developed for |async|
   itself at a later date.
 
-There are many other topics to discuss--logging, testing, debugging, Zope 3
-integration, and monitoring, for instance--but this is a quick start, so we'll
-end here.
+There are many other topics to discuss--testing, debugging, and Zope 3
+integration, for instance--but this is a quick start, so we'll end here.
 
 .. _PyThreadState_SetAsyncExc: http://docs.python.org/api/threads.html
 
