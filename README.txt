@@ -1,6 +1,3 @@
-|zc.async|_
-~~~~~~~~~~~
-
 ===========
 What is it?
 ===========
@@ -62,6 +59,4 @@ Quickstarts and in-depth documentation are available in the package and in
 the `new and exciting on-line documentation`_.
 
 .. _`new and exciting on-line documentation`: http://packages.python.org/zc.async/1.5.0/
-.. |zc.async| image:: http://packages.python.org/zc.async/1.5.0/_static/zc_async.png
-.. _zc.async: http://packages.python.org/zc.async/1.5.0/
 
