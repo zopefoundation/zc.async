@@ -1,3 +1,4 @@
 exclude MANIFEST.in TEST_THIS_REST_BEFORE_REGISTERING.txt buildout.cfg
 prune sphinx
+prune htmldocs
 prune bootstrap

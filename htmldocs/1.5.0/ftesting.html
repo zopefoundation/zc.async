@@ -1,0 +1,347 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Zope 3 Testing Tips and Tricks &mdash; zc.async v1.5.0 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '',
+          VERSION:     '1.5.0',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: ''
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/interface.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/favicon.ico"/>
+    <link rel="contents" title="Global table of contents" href="contents.html" />
+    <link rel="index" title="Global index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="zc.async v1.5.0 documentation" href="index.html" />
+    <link rel="up" title="Tips and Tricks" href="tips.html" />
+    <link rel="next" title="Changes" href="CHANGES.html" />
+    <link rel="prev" title="Zope 3 General Tips and Tricks" href="z3.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="CHANGES.html" title="Changes"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="z3.html" title="Zope 3 General Tips and Tricks"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+          <li><a href="tips.html" accesskey="U">Tips and Tricks</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  
+  <div class="section" id="zope-3-testing-tips-and-tricks">
+<h1 id="zope-3-testing-tips-and-tricks">Zope 3 Testing Tips and Tricks<a class="headerlink" href="#zope-3-testing-tips-and-tricks" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="summary">
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permalink to this headline">¶</a></h2>
+<ul>
+<li><p class="first">Make sure you are using zope.app.testing version 3.4.2 or newer, or else
+ftests may intermittently raise spurious errors having to do with a missing
+<tt class="docutils literal"><span class="pre">_result</span></tt> attribute on a request&#8217;s response.</p>
+</li>
+<li><p class="first">The Zope 3 tests use DemoStorage, which does not use MVCC.  This can lead
+to your tests having occasional ConflictErrors that will not occur in
+production. In common cases for ftests, you won&#8217;t notice these because of
+Zope&#8217;s usual retry policy.  Unit or integration tests may show these
+problems.</p>
+</li>
+<li><p class="first">Set up the basic configuration in zcml or Python (see examples below), but
+you need to make sure that ftests do not use dispatchers started in the
+application. Start up ftest (or integration test) dispatchers separately,
+using <tt class="docutils literal"><span class="pre">zc.async.ftesting.setUp</span></tt>, and then tear down after the tests are
+done with <tt class="docutils literal"><span class="pre">zc.async.ftesting.tearDown</span></tt>.  The <tt class="docutils literal"><span class="pre">tearDown</span></tt> feature tries
+to shut down all threads, and tries to let you know what job was running in
+threads that couldn&#8217;t be cleanly stopped.</p>
+<p>The ftest dispatcher polls every tenth of a second, so you shouldn&#8217;t need to
+wait long for you job to get started in your tests.</p>
+</li>
+<li><p class="first">General zc.async testing tools such as <tt class="docutils literal"><span class="pre">zc.async.dispatcher.get</span></tt>,
+<tt class="docutils literal"><span class="pre">zc.async.testing.get_poll</span></tt> and <tt class="docutils literal"><span class="pre">zc.async.testing.wait_for_result</span></tt> can
+still be useful for in-depth zc.async tests.</p>
+</li>
+<li><p class="first">If you don&#8217;t want to dig into guts in your functional tests to use the tools
+described in the previous point, consider making a view to check on job
+status using a data structure like JSON, and looking at that in your tests.
+Alternatively, investigate the tools in monitordb.py&#8211;although the tools
+were created for zc.monitor, they can still be used effectively in Python.</p>
+</li>
+<li><p class="first">The <tt class="docutils literal"><span class="pre">setUp</span></tt> code by default sends critical log messages to __stdout__ so it
+can help diagnose why a callback might never complete.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="discussion">
+<h2 id="discussion">Discussion<a class="headerlink" href="#discussion" title="Permalink to this headline">¶</a></h2>
+<p>Normally, in a Zope 3 configuration that uses zc.async, you configure it
+when you start your application.  For instance, you might include a zc.async
+zcml file like basic_dispatcher_policy.zcml that performs the necessary set up.</p>
+<p>However, the Zope 3 ftesting layer database dance doesn&#8217;t play well with
+zc.async unless you take a bit of extra care.</p>
+<p>This is because zc.async will be started with the ftests&#8217; underlying database,
+and then the test will be run with a DemoStorage wrapper. The zc.async
+dispatcher will run, then, but it will never see the changes that you make in
+the wrapper DemoStorage that your test manipulates.  This can be mystifying
+and frustrating.</p>
+<p>Because of this, when you write a Zope 3 app that wants to use both layered
+ftests and zc.async, you have to set things up in a mildly inconvenient way.</p>
+<p>When you start your application normally, use configuration (zcml or grok or
+whatever) to register subscribers like the ones in subscribers.py: adding
+queues, starting dispatchers, and adding agents.</p>
+<p>But don&#8217;t have this configuration registered for your ftests. Instead, bypass
+that part of your site&#8217;s configuration in your ftesting layer, and use the
+<tt class="docutils literal"><span class="pre">zc.async.ftesting.setUp</span></tt> function to set zc.async up in tests when you need
+it, in a footnote of your test or in a similar spot.</p>
+<p>You&#8217;ll still want the basic adapters registered, as found in zc.async&#8217;s
+configure.zcml or configure.py files; and maybe the
+zc.async.queue.getDefaultQueue adapter too. This can be registered in
+ftesting.zcml with this snippet:</p>
+<pre>&lt;include package="zc.async" /&gt;
+&lt;adapter factory="zc.async.queue.getDefaultQueue" /&gt;</pre>
+<p>Or in Python, you might want to do something like this:</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.configure</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">configure</span><span class="o">.</span><span class="n">base</span><span class="p">()</span> <span class="c"># or, more likely, ``minimal`` for Zope 3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.component</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.queue</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">getDefaultQueue</span><span class="p">)</span>
+</pre></div>
+<p>Don&#8217;t forget to call <tt class="docutils literal"><span class="pre">tearDown</span></tt> (see below) at the end of your test!</p>
+<p>Here&#8217;s a usage example.</p>
+<p>As mentioned above, <tt class="docutils literal"><span class="pre">setUp</span></tt> does expect the necessary basic adapters to
+already be installed.</p>
+<p>Zope 3 ftests generally have a <tt class="docutils literal"><span class="pre">getRootObject</span></tt> hanging around to give you the
+root object in the Zope application (but not in the ZODB). Therefore, this
+function tries to be helpful, for better and worse, and muck around in the
+locals to find it. If you want it to leave your locals alone, pass it a
+database connection.</p>
+<p>So, here&#8217;s some set up.  We create a database and make our stub
+<tt class="docutils literal"><span class="pre">getRootFolder</span></tt> function in the globals.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">BTrees</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">ZODB.FileStorage</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">storage</span> <span class="o">=</span> <span class="n">ZODB</span><span class="o">.</span><span class="n">FileStorage</span><span class="o">.</span><span class="n">FileStorage</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="s">&#39;zc_async.fs&#39;</span><span class="p">,</span> <span class="n">create</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ZODB.DB</span> <span class="kn">import</span> <span class="n">DB</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">db</span> <span class="o">=</span> <span class="n">DB</span><span class="p">(</span><span class="n">storage</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">root</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">PseudoZopeRoot</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="s">&#39;Application&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">BTrees</span><span class="o">.</span><span class="n">family32</span><span class="o">.</span><span class="n">OO</span><span class="o">.</span><span class="n">BTree</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">_getRootObject</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">PseudoZopeRoot</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">globals</span><span class="p">()[</span><span class="s">&#39;getRootFolder&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_getRootObject</span>
+</pre></div>
+<p>Notice we are using a real FileStorage, and not a DemoStorage, as is usually
+used in ftests. The fact that DemoStorage does not have MVCC can sometimes lead
+standard ftests to raise spurious ReadConflictErrors that will not actually
+occur in production. The ConflictErrors will generally be retried, so your
+tests should usually pass, even though you might see some &#8220;complaints&#8221;.</p>
+<p>Now we can call <tt class="docutils literal"><span class="pre">setUp</span></tt> as if we were in a functional test.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.ftesting</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">setUp</span><span class="p">()</span>
+</pre></div>
+<p>Now the dispatcher is activated and the polls are running. The function sets up
+a dispatcher that polls much more frequently than usual&#8211;every 0.1 seconds
+rather than every 5, so that tests might run faster&#8211;but otherwise uses typical
+zc.async default values.</p>
+<p>It&#8217;s worth noting a few tricks that are particularly useful for tests here.
+We&#8217;ll also use a couple of them to verify that <tt class="docutils literal"><span class="pre">setUp</span></tt> did its work.</p>
+<p><tt class="docutils literal"><span class="pre">zc.async.dispatcher.get()</span></tt> returns the currently installed dispatcher. This
+can let you check if it is activated and polling and use its simple statistical
+methods, if you want.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+</pre></div>
+<p>For now, we&#8217;ll just see that the dispatcher is activated.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+<p>See the dispatcher.txt for information on information you can get from the
+dispatcher object.</p>
+<p>zc.async.testing has a number of helpful functions for testing. <tt class="docutils literal"><span class="pre">get_poll</span></tt> is
+the most pertinent here: given a dispatcher, it will give you the next poll.
+This is a good way to make sure that a job you just put in has had a chance to
+be claimed by a dispatcher.  It&#8217;s also a reasonable way to verify that the
+dispatcher has started.  <tt class="docutils literal"><span class="pre">setUp</span></tt> already gets the first two polls, so
+it&#8217;s definitely all started.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.testing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">pprint</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">))</span>
+<span class="go">{&#39;&#39;: {&#39;main&#39;: {&#39;active jobs&#39;: [],</span>
+<span class="go">               &#39;error&#39;: None,</span>
+<span class="go">               &#39;len&#39;: 0,</span>
+<span class="go">               &#39;new jobs&#39;: [],</span>
+<span class="go">               &#39;size&#39;: 3}}}</span>
+</pre></div>
+<p>Other useful testing functions are <tt class="docutils literal"><span class="pre">zc.async.testing.wait_for_result</span></tt>, which
+waits for the result on a give job and returns it; and
+<tt class="docutils literal"><span class="pre">zc.async.testing.wait_for_annotation</span></tt>, which waits for a given annotation
+on a given job.  These are demonstrated in various doctests in this package,
+but should also be reasonably simple and self-explanatory.</p>
+<p>Callbacks will retry some errors forever, by default.  The logic is that
+callbacks are often the &#8220;cleanup&#8221; and must be run.  This can lead to confusion
+in debugging tests, though, because the retry warnings are sent to the log,
+and the log is not usually monitored in functional tests.</p>
+<p><tt class="docutils literal"><span class="pre">setUp</span></tt> tries to help with this by adding logging of <tt class="docutils literal"><span class="pre">CRITICAL</span></tt> log
+messages in the &#8220;zc.async&#8221; logger to stdout.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">logging</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s">&#39;zc.async.event&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;Foo!&#39;</span><span class="p">)</span>
+<span class="go">Foo!</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s">&#39;zc.async.event&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s">&#39;Bar!&#39;</span><span class="p">)</span>
+</pre></div>
+<p>Once you have finished your tests, make sure to shut down your dispatcher, or
+the testing framework will complain about an unstopped daemon thread.
+zc.async.ftesting.tearDown will do the trick.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">tearDown</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activated</span>
+<span class="go">False</span>
+</pre></div>
+<p>You can then start another async-enabled functional test up again later in the
+same layer, of course.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">setUp</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">tearDown</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activated</span>
+<span class="go">False</span>
+</pre></div>
+</blockquote>
+<p>ftesting.tearDown attempts to join all threads in the dispatchers&#8217; queues, but
+will raise an error if a job or dispatcher fails to shut down.</p>
+<p>If the thread is performing a job, the error informs you what job is being
+performed.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">setUp</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">KEY</span><span class="p">][</span><span class="s">&#39;&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">bad_job</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">time_sleep</span><span class="p">(</span><span class="mf">4</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">bad_job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_start</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">tearDown</span><span class="p">()</span> <span class="c"># doctest: +ELLIPSIS +NORMALIZE_WHITESPACE</span>
+<span class="gp">...</span>
+<span class="go">TearDownDispatcherError:</span>
+<span class="go">Job in pool &#39;main&#39; failed to stop:</span>
+<span class="go">  &lt;zc.async.job.Job (oid ..., db ...) ``zc.async.doctest_test.bad_job()``&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+</pre></div>
+<p>If the dispatcher isn&#8217;t shutting down for some reason, the UUID is given.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">tearDown</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">setUp</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">noop</span><span class="p">(</span><span class="o">*</span><span class="n">kw</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">pass</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">original_stop</span> <span class="o">=</span> <span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span> <span class="o">=</span> <span class="n">noop</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">tearDown</span><span class="p">()</span> <span class="c"># doctest: +ELLIPSIS +NORMALIZE_WHITESPACE</span>
+<span class="gp">...</span>
+<span class="go">TearDownDispatcherError:</span>
+<span class="go">Dispatcher (..., ...) failed to stop.</span>
+</pre></div>
+<p>Let&#8217;s restore the original reactor.stop method and call tearDown again, which
+will work this time.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span> <span class="o">=</span> <span class="n">original_stop</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">ftesting</span><span class="o">.</span><span class="n">tearDown</span><span class="p">()</span>
+</pre></div>
+<p>Also worth noting, as mentioned in the summary, is that you should use
+zope.app.testing version 3.4.2 or higher to avoid getting spurious,
+intermittent bug reports from ftests that use zc.async.</p>
+<p>In your test or your test&#8217;s tearDown, if you used a FileStorage, as we did
+here, you&#8217;ll need to clean up as well.  We normally do this in our tests&#8217;
+tearDowns, but we do it here, now, to make the point.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">db</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">storage</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">storage</span><span class="o">.</span><span class="n">cleanup</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">del</span> <span class="n">storage</span> <span class="c"># we just do this to not confuse our own tearDown code.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">del</span> <span class="nb">globals</span><span class="p">()[</span><span class="s">&#39;getRootFolder&#39;</span><span class="p">]</span> <span class="c"># clean up globals; probably unnecessary</span>
+</pre></div>
+</blockquote>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><img class="logo" src="_static/zc_async.png" alt="Logo"/></p>
+            <h3>Table Of Contents</h3>
+            <ul>
+<li><a class="reference external" href="">Zope 3 Testing Tips and Tricks</a><ul>
+<li><a class="reference external" href="#summary">Summary</a></li>
+<li><a class="reference external" href="#discussion">Discussion</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="z3.html" title="previous chapter">Zope 3 General Tips and Tricks</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="CHANGES.html" title="next chapter">Changes</a></p>
+            <h3>This Page</h3>
+            <ul class="this-page-menu">
+              <li><a href="_sources/ftesting.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="CHANGES.html" title="Changes"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="z3.html" title="Zope 3 General Tips and Tricks"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+          <li><a href="tips.html" accesskey="U">Tips and Tricks</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2008, Gary Poster.
+      Last updated on Sep 21, 2008.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+    </div>
+  </body>
+</html>

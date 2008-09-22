@@ -1,0 +1,87 @@
+===============
+Tips and Tricks
+===============
+
+General Tips and Tricks
+=======================
+
+* If you have multiple machines working as zc.async dispatchers, it is
+  strongly suggested that you get the associated servers connected to a shared
+  time server.  You generally don't want your machines to disagree by more than
+  a few seconds.
+
+* Avoid long transactions if possible.  Really try to avoid long transactions
+  involving frequently written objects.  One possible strategy is to divide up
+  your code into a job for low-conflict tasks and one or more jobs for
+  high-conflict tasks, perhaps created in a callback.
+
+* Sometimes you can't avoid long transactions. But *really* try to avoid long
+  commits. Commits hold a lock on the ZODB, and if you end up writing so much
+  in a single transaction that you take noticeable time to write, realize that
+  you are affecting--postponing--every single subsequent commit to the
+  database.
+
+* Callbacks should be quick and reliable. If you want to do something that
+  might take a while, put another job in the queue.
+
+* Some tasks are non-transactional.  If you want to do them in a ``Job``, you
+  don't want them to be retried!  Use the NeverRetry retry policy for these,
+  as described in the :ref:`recovering-from-catastrophes` section.
+
+* zc.async works fine with both Python 2.4 and Python 2.5.  Note that building
+  Twisted with Python 2.4 generates a SyntaxError in a test, but as of this
+  writing Twisted 8.1.0 is supported for Python 2.4.
+
+* Using the ``transaction`` package's before-commit hooks can wreak havoc if
+  your hook causes an exception during commit, and the job uses the zc.async
+  ``RetryCommonForever`` retry policy (which all callbacks use by default).
+  This policy has a contract that it *will* commit, or die trying, so it
+  retries all transactions that have an error on commit, and emits a critical
+  log message every few retries (configurable on the policy).  If the error
+  never goes away, this will retry *forever*.  Make sure critical log messages
+  actually alert someone!
+
+Testing Tips and Tricks
+=======================
+
+* In tests, don't check to see if poll is activated until after the first
+  poll. Try ``zc.async.testing.get_poll(zc.async.dispatcher.get(), 0)``, for
+  instance.
+
+* In tests, be aware that DemoStorage does not support mvcc and does not
+  support conflict resolution, so you may experience ConflictError (write and
+  particularly read) problems with it that you will not experience as much,
+  or at all, with a storage that supports those features such as FileStorage.
+  Notice that all of the tests in this package use FileStorage.
+
+* If you get a failure as a result and you didn't expect it, don't forget
+  the ``getTraceback`` and ``printTraceback`` methods on the failure.  The
+  whole point of the failure is to help you diagnose problems.
+
+* ``zc.async.dispatcher.get()`` will get you the dispatcher.  You can then check
+  if it is ``activated`` and also use the other introspection and status
+  methods.
+
+* The ``zc.async.testing`` module has a number of helpful functions for
+  testing. ``get_poll``, given a dispatcher, will give you the next poll. This
+  is a good way to make sure that a job you just put in has had a chance to be
+  claimed by a dispatcher. It's also a reasonable way to verify that the
+  dispatcher has started. Other useful testing functions are
+  ``zc.async.testing.wait_for_result``, which waits for the result on a give
+  job and returns it; and ``zc.async.testing.wait_for_annotation``, which waits
+  for a given annotation on a given job. These are demonstrated in various
+  doctests in this package, but should also be reasonably simple and
+  self-explanatory.
+
+More Tips and Tricks
+====================
+
+The following documents describe specific tips and tricks for specific
+situations.
+
+.. toctree::
+   :maxdepth: 2
+
+   catastrophes
+   z3
+   ftesting

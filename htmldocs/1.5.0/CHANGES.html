@@ -1,0 +1,415 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Changes &mdash; zc.async v1.5.0 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '',
+          VERSION:     '1.5.0',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: ''
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/interface.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/favicon.ico"/>
+    <link rel="contents" title="Global table of contents" href="contents.html" />
+    <link rel="index" title="Global index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="zc.async v1.5.0 documentation" href="index.html" />
+    <link rel="prev" title="Zope 3 Testing Tips and Tricks" href="ftesting.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="ftesting.html" title="Zope 3 Testing Tips and Tricks"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  
+  <div class="section" id="changes">
+<h1 id="changes">Changes<a class="headerlink" href="#changes" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="id1">
+<h2 id="id1">1.5.0 (2008-09-21)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>Documentation improvements.  Converted documentation into Sphinx system.</li>
+<li>Made &#8220;other&#8221; commit errors for the <tt class="docutils literal"><span class="pre">RetryCommonForever</span></tt> retry policy have
+an incremental backoff.  By default, this starts at 0 seconds, and increments
+by a second to a maximum of 60 seconds.</li>
+<li>Work around a memory leak in zope.i18nmessageid
+(<a class="reference external" href="https://bugs.launchpad.net/zope3/+bug/257657">https://bugs.launchpad.net/zope3/+bug/257657</a>).  The change should be
+backward-compatible.  It also will produce slightly smaller pickles for Jobs,
+but that was really not a particular goal.</li>
+<li>Added zc.async.partial.Partial for backward compatibility purposes.</li>
+<li>Fix support for Twisted installed reactor.</li>
+<li>Fix retry behavior for parallel and serial jobs</li>
+<li>Tweaked the uuid.txt to mention zdaemon/supervisor rather than Zope 3.</li>
+<li>Fixed some bugs in egg creation.</li>
+<li>Changed quotas to not use a container that has conflict resolution, since
+these values should be a strict maximum.</li>
+<li>We only want to claim a job if we are activated.   Make the agent check the
+<tt class="docutils literal"><span class="pre">activated</span></tt> and <tt class="docutils literal"><span class="pre">dead</span></tt> attributes of the parent dispatcher before
+claiming.</li>
+<li>When activating, also clean out jobs from the dispatcher&#8217;s agents, just as
+with deactivating.  This should protect from unusual race conditions in
+which the dispatcher got a job after being deactivated.</li>
+<li>Change dispatcher to ping before claiming jobs.</li>
+<li>when a ping reactivates a dispatcher, use new method <tt class="docutils literal"><span class="pre">reactivate</span></tt> rather
+than <tt class="docutils literal"><span class="pre">activate</span></tt>.  This fires a new <tt class="docutils literal"><span class="pre">DispatcherReactivated</span></tt> event.</li>
+<li>It&#8217;s still theoretically possible (for instance, with a
+badly-behaved long commit that causes a sibling to believe that the
+process is dead) that an async worker process would be working on a
+job that it shouldn&#8217;t be.  For instance, the job has been taken away,
+and is another process&#8217; responsibility now.  Now, whenever a
+process is about to start any work (especially a retry), it should
+double-check that the job is registered as being performed by itself.
+If not, the process should abort the transaction, make an error
+log, and give up on the job.  Write conflict errors on the job should
+protect us from the edge cases in this story.</li>
+<li>The dispatcher&#8217;s <tt class="docutils literal"><span class="pre">getActiveJobs</span></tt> method now actually tells you information
+about what&#8217;s going on in the threads at this instant, rather than what&#8217;s
+going on in the database.  The poll&#8217;s <tt class="docutils literal"><span class="pre">active</span> <span class="pre">jobs</span></tt> keys continues to
+report what was true <em>in the database</em> as of <em>the last poll</em>.  This change
+also affects the <tt class="docutils literal"><span class="pre">async</span> <span class="pre">jobs</span></tt> monitor command.</li>
+<li>The dispatcher method <tt class="docutils literal"><span class="pre">getJobInfo</span></tt> (and the monitor command <tt class="docutils literal"><span class="pre">async</span> <span class="pre">job</span></tt>)
+now returns the name of the queue for the job, the name of the agent for the
+job, and whether the job has been, or was reassigned.</li>
+<li>zc.async events inherit from &#8216;zc.component.interfaces.IObjectEvent&#8217; instead
+of a zc.async specific IObjectEvent (thanks to Satchit Haridas).</li>
+<li>Added new monitoring and introspection tools: the <tt class="docutils literal"><span class="pre">asyncdb</span></tt> zc.monitor
+command (and, for Python, the code in monitordb.py).  This code provides
+easy spellings to examine the database&#8217;s view of what is happening in
+zc.async.  Because it is the database, it also has a much longer historical
+view than the <tt class="docutils literal"><span class="pre">async</span></tt> tools.  The best way to learn about these tools is
+to read the extensive documentation provided within zc.monitor by
+using <tt class="docutils literal"><span class="pre">asyncdb</span> <span class="pre">help</span></tt> and <tt class="docutils literal"><span class="pre">asyncdb</span> <span class="pre">help</span> <span class="pre">&lt;TOOL</span> <span class="pre">NAME&gt;</span></tt>.</li>
+<li>Added new preferred way of filtering agent choices: the new <tt class="docutils literal"><span class="pre">filter</span></tt>
+attribute.  Using filters, rather than &#8220;choosers,&#8221; allows several <tt class="docutils literal"><span class="pre">asyncdb</span></tt>
+tools to filter pending jobs based on what an agent is willing to do.  It
+also is a smaller contract, and so a filter requires less code than a chooser
+in the common case.  On the other hand, using a filter alone doesn&#8217;t allow
+the agent to try to <em>prefer</em> certain tasks.</li>
+<li>Deprecated agent.chooseFirst.  It is no longer necesary, since an agent
+without a chooser and with a filter of None has the same behavior.  It is
+retained for legacy databases.</li>
+<li>Moved deprecated legacy code to new <tt class="docutils literal"><span class="pre">legacy</span></tt> module.</li>
+<li>Tried to be significantly reduce the chance of spurious timing errors in the
+tests, at the expense of causing the tests to take longer to run.</li>
+<li>monitoring support depends on the new zc.monitor package, which is not Zope
+specific.  This means non-Zope 3 apps can take advantage of the monitoring
+support.  To use, use the [monitor] target; this only adds simplejson,
+zc.ngi, and zc.monitor to the basic dependencies.</li>
+<li>Make ftesting try to join worker threads, in addition to polling thread,
+to try to eliminate intermittent test-runner warnings in ftests that a
+thread is left behind.  If the threads do not end, inform the user what jobs
+are not letting go.  (thanks to Patrick Strawderman)</li>
+</ul>
+</div>
+<div class="section" id="id2">
+<h2 id="id2">1.4.1 (2008-07-30)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>The new <tt class="docutils literal"><span class="pre">serial</span></tt> and <tt class="docutils literal"><span class="pre">parallel</span></tt> helpers did not allow the
+<tt class="docutils literal"><span class="pre">postprocess</span></tt> argument to be a partial closure, and were being naughty.
+Fixed.</li>
+<li>Added tests and demos for advanced features of <tt class="docutils literal"><span class="pre">serial</span></tt> and <tt class="docutils literal"><span class="pre">parallel</span></tt>.</li>
+<li>More tweaks to the new Quickstart S5 document.</li>
+</ul>
+</div>
+<div class="section" id="id3">
+<h2 id="id3">1.4.0 (2008-07-30)<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h2>
+<ul>
+<li><p class="first">Mentioned in ftesting.txt that Zope 3 users should uses zope.app.testing
+3.4.2 or newer.  Also added a summary section at the beginning of that file.</p>
+</li>
+<li><p class="first">Added logging of critical messages to __stdout__ for <tt class="docutils literal"><span class="pre">ftesting.setUp</span></tt>.
+This can help discovering problems in callback transactions.  This uses a new
+helper function , <tt class="docutils literal"><span class="pre">print_logs</span></tt>, in zc.async.testing, which is primarily
+intended to be used for quick and dirty debugging</p>
+</li>
+<li><p class="first">Changed testing.wait_for_result and testing.wait_for_annotation to ignore
+ReadConflictErrors, so they can be used more reliably in tests that use
+MappingStorage, and other storages without MVCC.</p>
+</li>
+<li><p class="first">Support &lt;type &#8216;builtin_function_or_method&#8217;&gt; for adaptation to Job.</p>
+</li>
+<li><p class="first">Add warning about long commits to tips and tricks.</p>
+</li>
+<li><p class="first">After complaining about a polling dispatcher that is deactivated not really
+being dead in the logs, reactivate.</p>
+</li>
+<li><p class="first">No longer use intermediate job to implement the success/failure addCallbacks
+behavior.  Introduce an ICallbackProxy that can be used for this kind of
+behavior instead.  This change was driven by two desires.</p>
+<ul class="simple">
+<li>Don&#8217;t log the intermediate result.  It makes logs harder to read with
+unnecessary duplications of pertinent data hidden within unimportant
+differences in the log entries.</li>
+<li>Don&#8217;t unnecessarily remember errors in success/failure callbacks.  This can
+cause unnecessary failures in unusual situations.</li>
+</ul>
+<p>The callback proxy accepts callbacks, which are added to the selected job
+(success or failure) when the job is selected.</p>
+<p>This change introduces some hopefully trivial incompatibilities, which
+basically come down to the callback being a proxy, not a real job. Use the
+convenience properties <tt class="docutils literal"><span class="pre">success</span></tt> and <tt class="docutils literal"><span class="pre">failure</span></tt> on the proxy to look at
+the respective jobs. After the proxy is evaluated, the <tt class="docutils literal"><span class="pre">job</span></tt> attribute
+will hold the job that was actually run. <tt class="docutils literal"><span class="pre">status</span></tt> and <tt class="docutils literal"><span class="pre">result</span></tt> are
+conveniences to get the status and result of the selected job.</p>
+</li>
+<li><p class="first">Add <tt class="docutils literal"><span class="pre">parallel</span></tt> and <tt class="docutils literal"><span class="pre">serial</span></tt> convenience functions to zc.async.job to make
+it trivial to schedule and process decomposed jobs.</p>
+</li>
+<li><p class="first">Add <tt class="docutils literal"><span class="pre">start</span></tt> convenience function to zc.async.configure to make it trivial
+to start up a common-case configuration of a zc.async dispatcher.</p>
+</li>
+<li><p class="first">No longer use protected attributes of callbacks in <tt class="docutils literal"><span class="pre">resumeCallbacks</span></tt>.</p>
+</li>
+<li><p class="first">The &#8220;local&#8221; code is now moved out from the dispatcher module to
+threadlocal.  This is to recognize that the local code is now modified
+outside of the dispatcher module, as described in the next bullet.</p>
+</li>
+<li><p class="first">Jobs, when called, are responsible for setting the &#8220;local&#8221; job value.  This
+means that zc.async.local.getJob() always returns the currently running job,
+whether it is a top-level job (as before) or a callback (now).</p>
+</li>
+<li><p class="first">Start on S5 QuickStart presentation (see QUICKSTART_1_VIRTUALENV.txt in
+package).</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id4">
+<h2 id="id4">1.3 (2008-07-04)<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>added &#8220;Tips and Tricks&#8221; and incorporated into the PyPI page.</li>
+<li>added <tt class="docutils literal"><span class="pre">setUp</span></tt> and <tt class="docutils literal"><span class="pre">tearDown</span></tt> hooks to Job class so that code can run
+before and after the main job&#8217;s code.  The output of <tt class="docutils literal"><span class="pre">setUp</span></tt> is passed as
+an argument to <tt class="docutils literal"><span class="pre">tearDown</span></tt> so that one can pass state to the other, if
+needed. <tt class="docutils literal"><span class="pre">setUp</span></tt> is run immediately before the actual job call.
+<tt class="docutils literal"><span class="pre">tearDown</span></tt> runs after the transaction is committed, or after it was aborted
+if there was a failure.   A retry requested by a retry policy causes the
+methods to be run again.  A failure in <tt class="docutils literal"><span class="pre">setUp</span></tt> is considered to be a
+failure in the job, as far as the retryPolicy is concerned (i.e., the job
+calls the retry policy&#8217;s <tt class="docutils literal"><span class="pre">jobError</span></tt> method).  If <tt class="docutils literal"><span class="pre">setUp</span></tt> fails, the job
+is not called, bit <tt class="docutils literal"><span class="pre">tearDown</span></tt> is.  <tt class="docutils literal"><span class="pre">tearDown</span></tt> will fail with a critical
+log message, but then processing will continue.</li>
+<li>using the new <tt class="docutils literal"><span class="pre">setUp</span></tt> and <tt class="docutils literal"><span class="pre">tearDown</span></tt> hooks, added a Zope 3-specific Job
+subclass (see zc.async.z3.Job) that remembers the zope.app.component site and
+interaction participants when instantiated. These can be mutated. Then, when
+the job is run, the <tt class="docutils literal"><span class="pre">setUp</span></tt> sets up the site and a security interaction
+with the old participants, and then the <tt class="docutils literal"><span class="pre">tearDown</span></tt> tears it all down after
+the transaction has committed.</li>
+<li>changed retry policy logs to &#8220;WARNING&#8221; level, from &#8220;INFO&#8221; level.</li>
+<li>changed many dispatcher errors to &#8220;CRITICAL&#8221; level from &#8220;ERROR&#8221; level.</li>
+<li>added &#8220;CRITICAL&#8221; level logs for &#8220;other&#8221; commit retries on the
+RetryCommonForever retry policy.</li>
+<li>added <tt class="docutils literal"><span class="pre">remove</span></tt> method on queue.</li>
+<li>added helpers for setting up and tearing down Zope 3 functional tests
+(ftesting.py), and a discussion of how to write Zope 3 functional tests with
+layers (zope.app.testing.functional) in ftesting.txt.</li>
+<li>remove obsolete retry approach for success/failure callbacks
+(<tt class="docutils literal"><span class="pre">completeStartedJobArguments</span></tt>): it is now handled by retry policies.</li>
+<li>remove odd full-path self-references within the utils module.</li>
+<li>renamed <tt class="docutils literal"><span class="pre">zc.async.utils.try_transaction_five_times</span></tt> to
+<tt class="docutils literal"><span class="pre">zc.async.utils.try_five_times</span></tt>.</li>
+<li>doc improvements and fixes (thanks to Zvezdan Petkovic and Gintautas
+Miliauskas).</li>
+<li>the <tt class="docutils literal"><span class="pre">z3</span></tt> &#8220;extra&#8221; distutils target now explicitly depends on zope.security,
+zope.app.security, and zope.app.component.  This almost certainly does not
+increase the practical dependencies of the <tt class="docutils literal"><span class="pre">z3</span></tt> extras, but it does reflect
+new direct dependencies of the z3-specific modules in the package.</li>
+</ul>
+</div>
+<div class="section" id="id5">
+<h2 id="id5">1.2 (2008-06-20)<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>made the log for finding an activated agent report the pertinent queue&#8217;s oid
+as an unpacked integer, rather than the packed string blob. Use
+<tt class="docutils literal"><span class="pre">ZODB.utils.p64</span></tt> to convert back to an oid that the ZODB will recognize.</li>
+<li>Bugfix: in failing a job, the job thought it was in its old agent, and the
+<tt class="docutils literal"><span class="pre">fail</span></tt> call failed. This is now tested by the first example in new doctest
+<tt class="docutils literal"><span class="pre">catastrophes.txt</span></tt>.</li>
+<li>jobs no longer default to a <tt class="docutils literal"><span class="pre">begin_by</span></tt> value of one hour after the
+<tt class="docutils literal"><span class="pre">begin_after</span></tt>.  The default now is no limit.</li>
+<li>Made dispatcher much more robust to transaction errors and ZEO
+ClientDisconnected errors.</li>
+<li>Jobs now use an IRetryPolicy to decide what to do on failure within a job,
+within the commit of the result, and if the job is interrupted.  This allows
+support of transactional jobs, transactional jobs that critically must be
+run to completion, and non-transactional jobs such as communicating with an
+external service.</li>
+<li>The default retry policy supports retries for ClientDisconnected errors,
+transaction errors, and interruptions.</li>
+<li><tt class="docutils literal"><span class="pre">job.txt</span></tt> has been expanded significantly to show error handling and the
+use of retry policies. New file <tt class="docutils literal"><span class="pre">catastrophes.txt</span></tt> shows handling of other
+catastrophes, such as interruptions to polling.</li>
+<li>job errors now go in the main zc.async.event log rather than in the
+zc.async.trace log.  Successes continue to go in the trace log.</li>
+<li>callback failures go to the main log as a CRITICAL error, by default.</li>
+<li><tt class="docutils literal"><span class="pre">handleInterrupt</span></tt> is the new protocol on jobs to inform them that they were
+active in a dispatcher that is now dead. They either fail or reschedule,
+depending on the associated IRetryPolicy for the job. If they reschedule,
+this should either be a datetime or timedelta. The job calls the agent&#8217;s
+<tt class="docutils literal"><span class="pre">reschedule</span></tt> method. If the timedelta is empty or negative, or the datetime
+is earlier than now, the job is put back in the queue with a new <tt class="docutils literal"><span class="pre">putBack</span></tt>
+method on the queue. This is intended to be the opposite of <tt class="docutils literal"><span class="pre">claim</span></tt>. Jobs
+put in the queue with <tt class="docutils literal"><span class="pre">putBack</span></tt> will be pulled out before any others.</li>
+<li>convert to using zope.minmax rather than locally defined <tt class="docutils literal"><span class="pre">Atom</span></tt>.</li>
+<li>Fix (and simplify) last_ping code so as to reduce unnecessarily writing the
+state of the parent DispatcherAgents collection to the database whenever the
+atom changed.</li>
+<li>Depends on new release of zc.twist (1.3)</li>
+<li>Switched dispatcher&#8217;s in-memory storage of job and poll information to be per
+job or per poll, respectively, rather than per time period, so as to try and
+make memory usage more predictable (for instance, whether a dispatcher is
+whipping through lots of jobs quickly, or doing work more slowly).</li>
+</ul>
+</div>
+<div class="section" id="id6">
+<h2 id="id6">1.1.1 (2008-05-14)<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>more README tweaks.</li>
+<li>converted all reports from the dispatcher, including the monitor output,
+to use &#8220;unpacked&#8221; integer oids.  This addresses a problem that simplejson
+was having in trying to interpret the packed string blobs as unicode, and
+then making zc.ngi fall over.  To get the object, then, you&#8217;ll need to
+use <tt class="docutils literal"><span class="pre">ZODB.utils.p64</span></tt>, like this:
+<tt class="docutils literal"><span class="pre">connection.get(ZODB.utils.p64(INTEGER_OID))</span></tt>, where <tt class="docutils literal"><span class="pre">INTEGER_OID</span></tt>
+indicates the integer oid of the object you want to examine.</li>
+<li>added several more tests for the monitor code.</li>
+<li>made the <tt class="docutils literal"><span class="pre">async</span> <span class="pre">jobs</span></tt> monitor command be &#8220;up to the minute&#8221;.  Before, it
+included all of the new and active jobs from the previous poll; now, it
+also filters out those that have since completed.</li>
+<li>The <tt class="docutils literal"><span class="pre">async</span> <span class="pre">job</span></tt> command was broken, as revealed by a new monitor test.
+Fixed, which also means we need a new version of zope.bforest (1.2) for a new
+feature there.</li>
+</ul>
+</div>
+<div class="section" id="id7">
+<h2 id="id7">1.1 (2008-04-24)<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h2>
+<ul>
+<li><p class="first">Fired events when the IQueues and IQueue objects are installed by the
+QueueInstaller (thanks to Fred Drake).</p>
+</li>
+<li><p class="first">Dispatchers make agent threads keep their connections, so each connection&#8217;s
+object cache use is optimized if the agent regularly requests jobs with
+the same objects.</p>
+</li>
+<li><p class="first">README improved (thanks to Benji York and Sebastian Ware).</p>
+</li>
+<li><p class="first">Callbacks are logged at start in the trace log.</p>
+</li>
+<li><p class="first">All job results (including callbacks) are logged, including verbose
+tracebacks if the callback generated a failure.</p>
+</li>
+<li><p class="first">Had the ThreadedDispatcherInstaller subscriber stash the thread on the
+dispatcher, so you can shut down tests like this:</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">callFromThread</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">thread</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="mf">3</span><span class="p">)</span>
+</pre></div>
+</li>
+<li><p class="first">Added <tt class="docutils literal"><span class="pre">getQueue</span></tt> to zc.async.local as a convenience (it does what you
+could already do: <tt class="docutils literal"><span class="pre">zc.async.local.getJob().queue</span></tt>).</p>
+</li>
+<li><p class="first">Clarified that <tt class="docutils literal"><span class="pre">IQueue.pull</span></tt> is the approved way of removing scheduled jobs
+from a queue in interfaces and README.</p>
+</li>
+<li><p class="first">reports in the logs of a job&#8217;s success or failure come before callbacks are
+started.</p>
+</li>
+<li><p class="first">Added a section showing how the basic_dispatcher_policy.zcml worked, which
+then pushed the former README_3 examples into README_3b.</p>
+</li>
+<li><p class="first">Put ZPL everywhere I was supposed to.</p>
+</li>
+<li><p class="first">Moved a number of helpful testing functions out of footnotes and into
+zc.async.testing, both so that zc.async tests don&#8217;t have to redefine them
+and client packages can reuse them.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id8">
+<h2 id="id8">1.0 (2008-04-09)<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h2>
+<p>Initial release.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><img class="logo" src="_static/zc_async.png" alt="Logo"/></p>
+            <h3>Table Of Contents</h3>
+            <ul>
+<li><a class="reference external" href="">Changes</a><ul>
+<li><a class="reference external" href="#id1">1.5.0 (2008-09-21)</a></li>
+<li><a class="reference external" href="#id2">1.4.1 (2008-07-30)</a></li>
+<li><a class="reference external" href="#id3">1.4.0 (2008-07-30)</a></li>
+<li><a class="reference external" href="#id4">1.3 (2008-07-04)</a></li>
+<li><a class="reference external" href="#id5">1.2 (2008-06-20)</a></li>
+<li><a class="reference external" href="#id6">1.1.1 (2008-05-14)</a></li>
+<li><a class="reference external" href="#id7">1.1 (2008-04-24)</a></li>
+<li><a class="reference external" href="#id8">1.0 (2008-04-09)</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="ftesting.html" title="previous chapter">Zope 3 Testing Tips and Tricks</a></p>
+            <h3>This Page</h3>
+            <ul class="this-page-menu">
+              <li><a href="_sources/CHANGES.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="ftesting.html" title="Zope 3 Testing Tips and Tricks"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2008, Gary Poster.
+      Last updated on Sep 21, 2008.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+    </div>
+  </body>
+</html>

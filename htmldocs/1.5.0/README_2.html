@@ -1,0 +1,871 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Configuration (without Zope 3) &mdash; zc.async v1.5.0 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '',
+          VERSION:     '1.5.0',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: ''
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/interface.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/favicon.ico"/>
+    <link rel="contents" title="Global table of contents" href="contents.html" />
+    <link rel="index" title="Global index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="zc.async v1.5.0 documentation" href="index.html" />
+    <link rel="next" title="Configuration with Zope 3" href="README_3.html" />
+    <link rel="prev" title="Usage" href="README_1.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="README_3.html" title="Configuration with Zope 3"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="README_1.html" title="Usage"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  
+  <div class="section" id="id1">
+<span id="configuration-without-zope-3"></span><h1 id="id1"><span id="configuration-without-zope-3"></span>Configuration (without Zope 3)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h1>
+<p>This section discusses setting up zc.async without Zope 3. Since Zope 3 is
+ill-defined, we will be more specific: this describes setting up zc.async
+without ZCML, without any zope.app packages, and with as few dependencies as
+possible. A casual way of describing the dependencies is &#8220;ZODB, Twisted, and
+zope.component,&#8221; though we directly depend on some smaller packages and
+indirectly on others <a class="footnote-reference" href="#specific-dependencies" id="id2">[1]</a>.</p>
+<p>You may have one or two kinds of configurations for your software using
+zc.async. The simplest approach is to have all processes able both to put items
+in queues, and to perform them with a dispatcher. You can then use on-the-fly
+ZODB configuration to determine what jobs, if any, each process&#8217; dispatcher
+performs. If a dispatcher has no agents in a given queue, as we&#8217;ll discuss
+below, the dispatcher will not perform any job for that queue.</p>
+<p>However, if you want to create some processes that can only put items in a
+queue, and do not have a dispatcher at all, that is easy to do. We&#8217;ll call this
+a &#8220;client&#8221; process, and the full configuration a &#8220;client/server process&#8221;. As
+you might expect, the configuration of a client process is a subset of the
+configuration of the client/server process.</p>
+<p>The <tt class="docutils literal"><span class="pre">zc.async.configure</span></tt> module helps with basic configuration.  The
+<a class="reference external" href="QUICKSTART_1_VIRTUALENV.html#quickstart-with-virtualenv"><em>Quickstart with virtualenv</em></a> shows an example of using this for a very
+:quick start.  The current text uses some of those conveniences, but focuses
+more on understanding the underlying patterns, rather than the conveniences.</p>
+<p>We will first describe setting up a client, non-dispatcher process, in which
+you only can put items in a zc.async queue; and then describe setting up a
+dispatcher client/server process that can be used both to request and to
+perform jobs.</p>
+<div class="section" id="configuring-a-client-process">
+<h2 id="configuring-a-client-process">Configuring a Client Process<a class="headerlink" href="#configuring-a-client-process" title="Permalink to this headline">¶</a></h2>
+<p>Generally, zc.async configuration has four basic parts: component
+registrations, ZODB setup, ZODB configuration, and process configuration.  For
+a client process, we&#8217;ll discuss required component registrations; ZODB
+setup;  minimal ZODB configuration; process configuration; and then circle
+back around for some optional component registrations.</p>
+<div class="section" id="required-component-registrations">
+<h3 id="required-component-registrations">Required Component Registrations<a class="headerlink" href="#required-component-registrations" title="Permalink to this headline">¶</a></h3>
+<p>The required registrations can be installed for you by the
+<tt class="docutils literal"><span class="pre">zc.async.configure.base</span></tt> function. Most other examples in this package,
+such as those in the <a class="reference external" href="README_1.html#usage"><em>Usage</em></a> section, use this in their
+test setup.</p>
+<p>Again, for a quick start, you might just want to use the helper
+<tt class="docutils literal"><span class="pre">zc.async.configure.base</span></tt> function, and move on to the <a class="reference internal" href="#required-zodb-set-up">Required ZODB Set
+Up</a> section below.</p>
+<p>Here, though, we will go over each required registration to briefly explain
+what they are.</p>
+<p>You must have three adapter registrations: IConnection to
+ITransactionManager, IPersistent to IConnection, and IPersistent to
+ITransactionManager.</p>
+<p>The <tt class="docutils literal"><span class="pre">zc.twist</span></tt> package provides all of these adapters.  However,
+zope.app.keyreference also provides a version of the <tt class="docutils literal"><span class="pre">connection</span></tt> adapter
+that is identical or very similar, and that should work fine if you are
+already using that package in your application.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.twist</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.component</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">twist</span><span class="o">.</span><span class="n">transactionManager</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">twist</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">ZODB.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">twist</span><span class="o">.</span><span class="n">transactionManager</span><span class="p">,</span> <span class="n">adapts</span><span class="o">=</span><span class="p">(</span><span class="n">ZODB</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IConnection</span><span class="p">,))</span>
+</pre></div>
+<p>We also need to be able to adapt functions and methods to jobs.  The
+zc.async.job.Job class is the expected implementation.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">types</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.job</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">adapts</span><span class="o">=</span><span class="p">(</span><span class="n">types</span><span class="o">.</span><span class="n">FunctionType</span><span class="p">,),</span>
+<span class="gp">... </span>    <span class="n">provides</span><span class="o">=</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IJob</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">adapts</span><span class="o">=</span><span class="p">(</span><span class="n">types</span><span class="o">.</span><span class="n">MethodType</span><span class="p">,),</span>
+<span class="gp">... </span>    <span class="n">provides</span><span class="o">=</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IJob</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span> <span class="c"># optional, rarely used</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">adapts</span><span class="o">=</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">twist</span><span class="o">.</span><span class="n">METHOD_WRAPPER_TYPE</span><span class="p">,),</span>
+<span class="gp">... </span>    <span class="n">provides</span><span class="o">=</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IJob</span><span class="p">)</span>
+</pre></div>
+<p>The queue looks for the UUID utility to set the <tt class="docutils literal"><span class="pre">assignerUUID</span></tt> job attribute,
+and may want to use it to optionally filter jobs during <tt class="docutils literal"><span class="pre">claim</span></tt> in the
+future. Also, the dispatcher will look for a UUID utility if a UUID is not
+specifically provided to its constructor.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">zc.async.instanceuuid</span> <span class="kn">import</span> <span class="n">UUID</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideUtility</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">UUID</span><span class="p">,</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IUUID</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)</span>
+</pre></div>
+<p>The UUID we register here is a UUID of the instance, which is expected
+to uniquely identify the process when in production. It is stored in
+the file specified by the <tt class="docutils literal"><span class="pre">ZC_ASYNC_UUID</span></tt> environment variable (or in
+<tt class="docutils literal"><span class="pre">os.join(os.getcwd(),</span> <span class="pre">'uuid.txt')</span></tt> if this is not specified, for easy
+initial experimentation with the package).</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">uuid</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">os</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s">&quot;ZC_ASYNC_UUID&quot;</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">uuid_hex</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">uuid</span> <span class="o">=</span> <span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">(</span><span class="n">uuid_hex</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">UUID</span> <span class="o">==</span> <span class="n">uuid</span>
+<span class="go">True</span>
+</pre></div>
+<p>The uuid.txt file is intended to stay in the instance home as a persistent
+identifier.</p>
+<p>Again, all of the required registrations above can be accomplished quickly with
+<tt class="docutils literal"><span class="pre">zc.async.configure.base</span></tt>.</p>
+</div>
+<div class="section" id="required-zodb-set-up">
+<h3 id="required-zodb-set-up">Required ZODB Set Up<a class="headerlink" href="#required-zodb-set-up" title="Permalink to this headline">¶</a></h3>
+<p>On a basic level, zc.async needs a setup that supports good conflict
+resolution.  Most or all production ZODB storages now have the necessary
+APIs to support MVCC.</p>
+<p>Of course, if you want to run multiple processes, you need ZEO. You should also
+then make sure that your ZEO server installation has all the code that includes
+conflict resolution, such as zc.queue, because, as of this writing, conflict
+resolution happens in the ZEO server, not in clients.</p>
+<p>A more subtle decision is whether to use multiple databases.  The zc.async
+dispatcher can generate a lot of database churn.  It may be wise to put the
+queue in a separate database from your content database(s).</p>
+<p>The downsides to this option include the fact that you must be careful to
+specify to which database objects belong; and that broken cross-database
+references are not handled gracefully in the ZODB as of this writing.</p>
+<p>We will use multiple databases for our example here, because we are trying to
+demonstrate production-quality examples. We will show this with a pure-Python
+approach, rather than the ZConfig approach usually used by Zope. If you know
+ZConfig, that will be a reasonable approach as well; see zope.app.appsetup
+for how Zope uses ZConfig to set up multidatabases.</p>
+<p>In our example, we create two file storages. In production, you might likely
+use ZEO; hooking ClientStorage up instead of FileStorage should be straight
+forward.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">databases</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">ZODB.FileStorage</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">storage</span> <span class="o">=</span> <span class="n">ZODB</span><span class="o">.</span><span class="n">FileStorage</span><span class="o">.</span><span class="n">FileStorage</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="s">&#39;main.fs&#39;</span><span class="p">,</span> <span class="n">create</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">async_storage</span> <span class="o">=</span> <span class="n">ZODB</span><span class="o">.</span><span class="n">FileStorage</span><span class="o">.</span><span class="n">FileStorage</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="s">&#39;async.fs&#39;</span><span class="p">,</span> <span class="n">create</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ZODB.DB</span> <span class="kn">import</span> <span class="n">DB</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">databases</span><span class="p">[</span><span class="s">&#39;&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">db</span> <span class="o">=</span> <span class="n">DB</span><span class="p">(</span><span class="n">storage</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">databases</span><span class="p">[</span><span class="s">&#39;async&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">async_db</span> <span class="o">=</span> <span class="n">DB</span><span class="p">(</span><span class="n">async_storage</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">async_db</span><span class="o">.</span><span class="n">databases</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">databases</span> <span class="o">=</span> <span class="n">databases</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">db</span><span class="o">.</span><span class="n">database_name</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">async_db</span><span class="o">.</span><span class="n">database_name</span> <span class="o">=</span> <span class="s">&#39;async&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">root</span><span class="p">()</span>
+</pre></div>
+</blockquote>
+</div>
+<div class="section" id="zodb-configuration">
+<h3 id="zodb-configuration">ZODB Configuration<a class="headerlink" href="#zodb-configuration" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="a-queue">
+<h4 id="a-queue">A Queue<a class="headerlink" href="#a-queue" title="Permalink to this headline">¶</a></h4>
+<p>All we must have for a client to be able to put jobs in a queue is ... a queue.</p>
+<p>For a quick start, the <tt class="docutils literal"><span class="pre">zc.async.subscribers</span></tt> module provides a subscriber to
+a DatabaseOpened event that does the right dance. See
+<tt class="docutils literal"><span class="pre">multidb_queue_installer</span></tt> and <tt class="docutils literal"><span class="pre">queue_installer</span></tt> in that module, and you can
+see that in use in <a class="reference external" href="README_3.html#configuration-with-zope-3"><em>Configuration with Zope 3</em></a>. For now, though, we&#8217;re taking
+things step by step and explaining what&#8217;s going on.</p>
+<p>Dispatchers look for queues in a mapping off the root of the database in
+a key defined as a constant: zc.async.interfaces.KEY.  This mapping should
+generally be a zc.async.queue.Queues object.</p>
+<p>If we were not using a multi-database for our example, we could simply install
+the queues mapping with this line:
+<tt class="docutils literal"><span class="pre">root[zc.async.interfaces.KEY]</span> <span class="pre">=</span> <span class="pre">zc.async.queue.Queues()</span></tt>.  We will need
+something a bit more baroque.  We will add the queues mapping to the &#8216;async&#8217;
+database, and then make it available in the main database (&#8216;&#8217;) with the proper
+key.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">conn2</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">get_connection</span><span class="p">(</span><span class="s">&#39;async&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.queue</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queues</span> <span class="o">=</span> <span class="n">conn2</span><span class="o">.</span><span class="n">root</span><span class="p">()[</span><span class="s">&#39;mounted_queues&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">Queues</span><span class="p">()</span>
+</pre></div>
+<p>Note that the &#8216;mounted_queues&#8217; key in the async database is arbitrary:
+what we care about is the key in the database that the dispatcher will
+see.</p>
+<p>Now we add the object explicitly to conn2, so that the ZODB will know the
+&#8220;real&#8221; database in which the object lives, even though it will be also
+accessible from the main database.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">conn2</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">queues</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">KEY</span><span class="p">]</span> <span class="o">=</span> <span class="n">queues</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<p>Now we need to put a queue in the queues collection.  We can have more than
+one, as discussed below, but we suggest a convention of the primary queue
+being available in a key of &#8216;&#8217; (empty string).</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span> <span class="o">=</span> <span class="n">queues</span><span class="p">[</span><span class="s">&#39;&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="section" id="quotas">
+<h4 id="quotas">Quotas<a class="headerlink" href="#quotas" title="Permalink to this headline">¶</a></h4>
+<p>We touched on quotas in the usage section.  Some jobs will need to
+access resources that are shared across processes.  A central data
+structure such as an index in the ZODB is a prime example, but other
+examples might include a network service that only allows a certain
+number of concurrent connections.  These scenarios can be helped by
+quotas.</p>
+<p>Quotas are demonstrated in the usage section.  For configuration, you
+should know these characteristics:</p>
+<ul class="simple">
+<li>you cannot add a job with a quota name that is not defined in the
+queue <a class="footnote-reference" href="#undefined-quota-name" id="id3">[2]</a>;</li>
+<li>you cannot add a quota name to a job in a queue if the quota name is not
+defined in the queue <a class="footnote-reference" href="#no-mutation-to-undefined" id="id4">[3]</a>;</li>
+<li>you can create and remove quotas on the queue <a class="footnote-reference" href="#create-remove-quotas" id="id5">[4]</a>;</li>
+<li>you can remove quotas if pending jobs have their quota names&#8211;the quota name
+is then ignored <a class="footnote-reference" href="#remove-quotas" id="id6">[5]</a>;</li>
+<li>quotas default to a size of 1 <a class="footnote-reference" href="#default-size" id="id7">[6]</a>;</li>
+<li>this can be changed at creation or later <a class="footnote-reference" href="#change-size" id="id8">[7]</a>; and</li>
+<li>decreasing the size of a quota while the old quota size is filled will
+not affect the currently running jobs <a class="footnote-reference" href="#decreasing-affects-future" id="id9">[8]</a>.</li>
+</ul>
+</div>
+<div class="section" id="multiple-queues">
+<h4 id="multiple-queues">Multiple Queues<a class="headerlink" href="#multiple-queues" title="Permalink to this headline">¶</a></h4>
+<p>Since we put our queues in a mapping of them, we can also create multiple
+queues.  This can make some scenarios more convenient and simpler to reason
+about.  For instance, while you might have agents filtering jobs as we
+describe above, it might be simpler to say that you have a queue for one kind
+of job&#8211;say, processing a video file or an audio file&#8211;and a queue for other
+kinds of jobs.  Then it is easy and obvious to set up simple FIFO agents
+as desired for different dispatchers.  The same kind of logic could be
+accomplished with agents, but it is easier to picture the multiple queues.</p>
+<p>Another use case for multiple queues might be for specialized queues, like ones
+that broadcast jobs. You could write a queue subclass that broadcasts copies of
+jobs they get to all dispatchers, aggregating results.  This could be used to
+send &#8220;events&#8221; to all processes, or to gather statistics on certain processes,
+and so on.</p>
+<p>Generally, any time the application wants to be able to assert a kind of job
+rather than letting the agents decide what to do, having separate queues is
+a reasonable tool.</p>
+</div>
+</div>
+<div class="section" id="process-configuration">
+<h3 id="process-configuration">Process Configuration<a class="headerlink" href="#process-configuration" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="daemonization">
+<h4 id="daemonization">Daemonization<a class="headerlink" href="#daemonization" title="Permalink to this headline">¶</a></h4>
+<p>You often want to daemonize your software, so that you can restart it if
+there&#8217;s a problem, keep track of it and monitor it, and so on.  ZDaemon
+(<a class="reference external" href="http://pypi.python.org/pypi/zdaemon">http://pypi.python.org/pypi/zdaemon</a>) and Supervisor (<a class="reference external" href="http://supervisord.org/">http://supervisord.org/</a>)
+are two fairly simple-to-use ways of doing this for both client and
+client/server processes. If your main application can be packaged as a
+setuptools distribution (egg or source release or even development egg) then
+you can have your main application as a zc.async client and your dispatchers
+running a separate zc.async-only main loop that simply includes your main
+application as a dependency, so the necessary software is around. You may have
+to do a bit more configuration on the client/server side to mimic global
+registries such as zope.component registrations and so on between the client
+and the client/servers, but this shouldn&#8217;t be too bad.</p>
+</div>
+<div class="section" id="uuid-file-location">
+<h4 id="uuid-file-location">UUID File Location<a class="headerlink" href="#uuid-file-location" title="Permalink to this headline">¶</a></h4>
+<p>As discussed above, the instanceuuid module will look for an environmental
+variable <tt class="docutils literal"><span class="pre">ZC_ASYNC_UUID</span></tt> to find the file name to use, and failing that will
+use <tt class="docutils literal"><span class="pre">os.join(os.getcwd(),</span> <span class="pre">'uuid.txt')</span></tt>.  It&#8217;s worth noting that daemonization
+tools such as ZDaemon and Supervisor (3 or greater) make setting environment
+values for child processes an easy (and repeatable) configuration file setting.</p>
+</div>
+</div>
+<div class="section" id="optional-component-registrations-for-a-client-process">
+<h3 id="optional-component-registrations-for-a-client-process">Optional Component Registrations for a Client Process<a class="headerlink" href="#optional-component-registrations-for-a-client-process" title="Permalink to this headline">¶</a></h3>
+<p>The only optional component registration potentially valuable for client
+instances that only put jobs in the queue is registering an adapter from
+persistent objects to a queue.  The <tt class="docutils literal"><span class="pre">zc.async.queue.getDefaultQueue</span></tt> adapter
+does this for an adapter to the queue named &#8216;&#8217; (empty string).  Since that&#8217;s
+what we have from the <a class="reference internal" href="#zodb-configuration">ZODB Configuration</a> above section, we&#8217;ll register it.
+Writing your own adapter is trivial, as you can see if you look at the
+implementation of this function.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideAdapter</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">getDefaultQueue</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IQueue</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="ow">is</span> <span class="n">queue</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="configuring-a-client-server-process">
+<h2 id="configuring-a-client-server-process">Configuring a Client/Server Process<a class="headerlink" href="#configuring-a-client-server-process" title="Permalink to this headline">¶</a></h2>
+<p>Configuring a client/server process&#8211;something that includes a running
+dispatcher&#8211;means doing everything described above, plus a bit more.  You
+need to set up and start a reactor and dispatcher; configure agents as desired
+to get the dispatcher to do some work; and optionally configure logging.</p>
+<p>For a quick start, the <tt class="docutils literal"><span class="pre">zc.async.subscribers</span></tt> module has some conveniences
+to start a threaded reactor and dispatcher, and to install agents.  You might
+want to look at those to get started.  They are also used in the Zope 3
+configuration (README_3).  Meanwhile, this document continues to go
+step-by-step instead, to try and explain the components and configuration.</p>
+<p>Even though it seems reasonable to first start a dispatcher and then set up its
+agents, we&#8217;ll first define a subscriber to create an agent. As we&#8217;ll see below,
+the dispatcher fires an event when it registers with a queue, and another when
+it activates the queue. These events give you the opportunity to register
+subscribers to add one or more agents to a queue, to tell the dispatcher what
+jobs to perform. zc.async.agent.addMainAgentActivationHandler is a reasonable
+starter: it adds a single agent named &#8216;main&#8217; if one does not exist. The agent
+has a simple indiscriminate FIFO policy for the queue. If you want to write
+your own subscriber, look at this, or at the more generic subscriber in the
+<tt class="docutils literal"><span class="pre">zc.async.subscribers</span></tt> module.</p>
+<p>Agents are an important part of the ZODB configuration, and so are described
+more in depth below.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.agent</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideHandler</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">agent</span><span class="o">.</span><span class="n">addMainAgentActivationHandler</span><span class="p">)</span>
+</pre></div>
+<p>This subscriber is registered for the IDispatcherActivated event; another
+approach might use the IDispatcherRegistered event.</p>
+<div class="section" id="starting-the-dispatcher">
+<h3 id="starting-the-dispatcher">Starting the Dispatcher<a class="headerlink" href="#starting-the-dispatcher" title="Permalink to this headline">¶</a></h3>
+<p>Now we can start the reactor, and start the dispatcher.
+In some applications this may be done with an event subscriber to
+DatabaseOpened, as is done in <tt class="docutils literal"><span class="pre">zc.async.subscribers</span></tt>. Here, we will do it
+inline.</p>
+<p>Any object that conforms to the specification of zc.async.interfaces.IReactor
+will be usable by the dispatcher.  For our example, we will use our own instance
+of the Twisted select-based reactor running in a separate thread.  This is
+separate from the Twisted reactor installed in twisted.internet.reactor, and
+so this approach can be used with an application that does not otherwise use
+Twisted (for instance, a Zope application using the &#8220;classic&#8221; zope publisher).</p>
+<p>The testing module also has a reactor on which the <cite>Usage</cite> section relies, if
+you would like to see a minimal contract.</p>
+<p>Configuring the basics is fairly simple, as we&#8217;ll see in a moment.  The
+trickiest part is to handle signals cleanly. It is also optional! The
+dispatcher will eventually figure out that there was not a clean shut down
+before and take care of it. Here, though, essentially as an optimization, we
+install signal handlers in the main thread using <tt class="docutils literal"><span class="pre">reactor._handleSignals</span></tt>.
+<tt class="docutils literal"><span class="pre">reactor._handleSignals</span></tt> may work in some real-world applications, but if
+your application already needs to handle signals you may need a more careful
+approach. Again, see <tt class="docutils literal"><span class="pre">zc.async.subscribers</span></tt> for some options you can explore.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">twisted.internet.selectreactor</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span> <span class="o">=</span> <span class="n">twisted</span><span class="o">.</span><span class="n">internet</span><span class="o">.</span><span class="n">selectreactor</span><span class="o">.</span><span class="n">SelectReactor</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">_handleSignals</span><span class="p">()</span>
+</pre></div>
+<p>Now we are ready to instantiate our dispatcher.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">Dispatcher</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">reactor</span><span class="p">)</span>
+</pre></div>
+<p>Notice it has the uuid defined in instanceuuid.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">UUID</span> <span class="o">==</span> <span class="n">UUID</span>
+<span class="go">True</span>
+</pre></div>
+<p>Now we can start the reactor and the dispatcher in a thread.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">threading</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">start</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="n">dispatcher</span><span class="o">.</span><span class="n">activate</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="n">reactor</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">installSignalHandlers</span><span class="o">=</span><span class="mf">0</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">start</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">thread</span><span class="o">.</span><span class="n">setDaemon</span><span class="p">(</span><span class="bp">True</span><span class="p">)</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</pre></div>
+</blockquote>
+<p>The dispatcher should be starting up now.  Let&#8217;s wait for it to activate.
+We&#8217;re using a test convenience, get_poll, defined in the testing module.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">zc.async.testing</span> <span class="kn">import</span> <span class="n">get_poll</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">poll</span> <span class="o">=</span> <span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">,</span> <span class="mf">0</span><span class="p">)</span>
+</pre></div>
+<p>We&#8217;re off!  The events have been fired for registering and activating the
+dispatcher.  Therefore, our subscriber to add our agent has fired.</p>
+<p>We need to begin our transaction to synchronize our view of the database.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+</pre></div>
+<p>We get the collection of dispatcher agents from the queue, using the UUID.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher_agents</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">dispatchers</span><span class="p">[</span><span class="n">UUID</span><span class="p">]</span>
+</pre></div>
+<p>It has one agent&#8211;the one placed by our subscriber.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher_agents</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<span class="go">[&#39;main&#39;]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span> <span class="o">=</span> <span class="n">dispatcher_agents</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+</pre></div>
+<p>Now we have our agent!  But...what is it <a class="footnote-reference" href="#stop-config-reactor" id="id10">[9]</a>?</p>
+</div>
+<div class="section" id="agents">
+<h3 id="agents">Agents<a class="headerlink" href="#agents" title="Permalink to this headline">¶</a></h3>
+<p>Agents are the way you control what a dispatcher&#8217;s worker threads do.  They
+pick the jobs and assign them to their dispatcher when the dispatcher asks.</p>
+<p><em>If a dispatcher does not have any agents in a given queue, it will not perform
+any tasks for that queue.</em></p>
+<p>We currently have an agent that simply asks for the next available FIFO job.
+We are using an agent implementation that allows you to specify a callable to
+filter the job.  That callable is now None.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">filter</span> <span class="ow">is</span> <span class="bp">None</span>
+<span class="go">True</span>
+</pre></div>
+<p>What does a filter do?  A filter takes a job and returns a value evaluated as a
+boolean.  For instance, let&#8217;s say we always wanted a certain number of threads
+available for working on a particular call; for the purpose of example, we&#8217;ll
+use <tt class="docutils literal"><span class="pre">operator.mul</span></tt>, though a more real-world example might be a network call
+or a particular call in your application.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">operator</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">chooseMul</span><span class="p">(</span><span class="n">job</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">job</span><span class="o">.</span><span class="n">callable</span> <span class="o">==</span> <span class="n">operator</span><span class="o">.</span><span class="n">mul</span>
+<span class="gp">...</span>
+</pre></div>
+<p>You might want something more sophisticated, such as preferring operator.mul,
+but if one is not in the queue, it will take any; or doing any other priority
+variations.  To do this, you&#8217;ll want to write your own agent&#8211;possibly
+inheriting from the provided one and overriding <tt class="docutils literal"><span class="pre">_choose</span></tt>.</p>
+<p>Let&#8217;s set up another agent, in addition to the default one, that has
+the <tt class="docutils literal"><span class="pre">chooseMul</span></tt> policy.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">agent2</span> <span class="o">=</span> <span class="n">dispatcher_agents</span><span class="p">[</span><span class="s">&#39;mul&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">agent</span><span class="o">.</span><span class="n">Agent</span><span class="p">(</span><span class="n">chooseMul</span><span class="p">)</span>
+</pre></div>
+<p>Another characteristic of agents is that they specify how many jobs they
+should pick at a time.  The dispatcher actually adjusts the size of the
+ZODB connection pool to accommodate its agents&#8217; size.  The default is 3.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">size</span>
+<span class="go">3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent2</span><span class="o">.</span><span class="n">size</span>
+<span class="go">3</span>
+</pre></div>
+<p>We can change that at creation or later.</p>
+<p>Finally, it&#8217;s worth noting that agents contain the jobs that are currently
+worked on by the dispatcher, on their behalf; and have a <tt class="docutils literal"><span class="pre">completed</span></tt>
+collection of the more recent completed jobs, beginning with the most recently
+completed job.</p>
+</div>
+<div class="section" id="logging-and-monitoring">
+<h3 id="logging-and-monitoring">Logging and Monitoring<a class="headerlink" href="#logging-and-monitoring" title="Permalink to this headline">¶</a></h3>
+<p>Logs are sent to the <tt class="docutils literal"><span class="pre">zc.async.events</span></tt> log for big events, like startup and
+shutdown, and errors.  Poll and job logs are sent to <tt class="docutils literal"><span class="pre">zc.async.trace</span></tt>.
+Configure the standard Python logging module as usual to send these logs where
+you need.  Be sure to auto-rotate the trace logs.</p>
+<p>The package supports monitoring using zc.monitor.  Using this package includes
+only a very few additional dependencies: zc.monitor, simplejson, and zc.ngi. An
+example of setting it up without Zope 3 is in the end of
+<a class="reference external" href="QUICKSTART_1_VIRTUALENV.html#quickstart-with-virtualenv"><em>Quickstart with virtualenv</em></a>.  If you would like to use it, see that
+document, monitor.txt in the package, and our next section:
+<a class="reference external" href="README_3.html#configuration-with-zope-3"><em>Configuration with Zope 3</em></a>.</p>
+<p>Otherwise, if you want to roll your own monitoring, glance at monitor.py and
+monitordb.py&#8211;you&#8217;ll see that you should be able to reuse most of the heavy
+lifting, so it should be pretty easy to hook up the basic data another way.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+</pre></div>
+<p class="rubric">Footnotes</p>
+<table class="docutils footnote" frame="void" id="specific-dependencies" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[1]</a></td><td><p class="first">More specifically, as of this writing,
+these are the minimal egg dependencies (including indirect
+dependencies):</p>
+<ul>
+<li><dl class="first docutils">
+<dt>pytz</dt>
+<dd><p class="first last">A Python time zone library</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>rwproperty</dt>
+<dd><p class="first last">A small package of descriptor conveniences</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>uuid</dt>
+<dd><p class="first last">The uuid module included in Python 2.5</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zc.dict</dt>
+<dd><p class="first last">A ZODB-aware dict implementation based on BTrees.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zc.queue</dt>
+<dd><p class="first last">A ZODB-aware queue</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zc.twist</dt>
+<dd><p class="first last">Conveniences for working with Twisted and the ZODB</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>twisted</dt>
+<dd><p class="first last">The Twisted internet library.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>ZConfig</dt>
+<dd><p class="first last">A general configuration package coming from the Zope project with which
+the ZODB tests.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zdaemon</dt>
+<dd><p class="first last">A general daemon tool coming from the Zope project.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>ZODB3</dt>
+<dd><p class="first last">The Zope Object Database.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.bforest</dt>
+<dd><p class="first last">Aggregations of multiple BTrees into a single dict-like structure,
+reasonable for rotating data structures, among other purposes.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.component</dt>
+<dd><p class="first last">A way to hook together code by contract.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.deferredimport</dt>
+<dd><p class="first last">A way to defer imports in Python packages, often to prevent circular
+import problems.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.deprecation</dt>
+<dd><p class="first last">A small framework for deprecating features.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.event</dt>
+<dd><p class="first last">An exceedingly small event framework that derives its power from
+zope.component.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.i18nmessageid</dt>
+<dd><p class="first last">A way to specify strings to be translated.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.interface</dt>
+<dd><p class="first last">A way to specify code contracts and other data structures.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.proxy</dt>
+<dd><p class="first last">A way to proxy other Python objects.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>zope.testing</dt>
+<dd><p class="first last">Testing extensions and helpers.</p>
+</dd>
+</dl>
+</li>
+</ul>
+<p class="last">The next section, <a class="reference external" href="README_3.html#configuration-with-zope-3"><em>Configuration with Zope 3</em></a>, still tries to limit
+dependencies&#8211;we only rely on additional packages zc.z3monitor, simplejson,
+and zope.app.appsetup ourselves&#8211;but as of this writing zope.app.appsetup
+ends up dragging in a large chunk of zope.app.* packages. Hopefully that
+will be refactored in Zope itself, and our full Zope 3 configuration can
+benefit from the reduced indirect dependencies.</p>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="undefined-quota-name" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[2]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">operator</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.job</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">operator</span><span class="o">.</span><span class="n">mul</span><span class="p">,</span> <span class="mf">5</span><span class="p">,</span> <span class="mf">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;content catalog&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">quota_names</span>
+<span class="go">(&#39;content catalog&#39;,)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">ValueError: (&#39;unknown quota name&#39;, &#39;content catalog&#39;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">0</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="no-mutation-to-undefined" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id4">[3]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;content catalog&#39;</span><span class="p">,)</span>
+<span class="gp">...</span>
+<span class="go">ValueError: (&#39;unknown quota name&#39;, &#39;content catalog&#39;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">quota_names</span>
+<span class="go">()</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="create-remove-quotas" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id5">[4]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">)</span>
+<span class="go">[]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&#39;testing&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">)</span>
+<span class="go">[&#39;testing&#39;]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s">&#39;testing&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">)</span>
+<span class="go">[]</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="remove-quotas" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id6">[5]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&#39;content catalog&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;content catalog&#39;</span><span class="p">,)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s">&#39;content catalog&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">quota_names</span>
+<span class="go">(&#39;content catalog&#39;,)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">0</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="default-size" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id7">[6]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&#39;content catalog&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">[</span><span class="s">&#39;content catalog&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">size</span>
+<span class="go">1</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="change-size" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id8">[7]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">[</span><span class="s">&#39;content catalog&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">size</span> <span class="o">=</span> <span class="mf">2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">[</span><span class="s">&#39;content catalog&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">size</span>
+<span class="go">2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&#39;frobnitz account&#39;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mf">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">[</span><span class="s">&#39;frobnitz account&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">size</span>
+<span class="go">3</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="decreasing-affects-future" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id9">[8]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">operator</span><span class="o">.</span><span class="n">mul</span><span class="p">,</span> <span class="mf">5</span><span class="p">,</span> <span class="mf">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">operator</span><span class="o">.</span><span class="n">mul</span><span class="p">,</span> <span class="mf">5</span><span class="p">,</span> <span class="mf">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job3</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">operator</span><span class="o">.</span><span class="n">mul</span><span class="p">,</span> <span class="mf">5</span><span class="p">,</span> <span class="mf">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="n">job2</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="n">job3</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">(</span>
+<span class="gp">... </span>    <span class="s">&#39;content catalog&#39;</span><span class="p">,)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job1</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job2</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job3</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job3</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quota</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="p">[</span><span class="s">&#39;content catalog&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">quota</span><span class="p">)</span>
+<span class="go">2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">quota</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job1</span><span class="p">,</span> <span class="n">job2</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quota</span><span class="o">.</span><span class="n">filled</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quota</span><span class="o">.</span><span class="n">size</span> <span class="o">=</span> <span class="mf">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quota</span><span class="o">.</span><span class="n">filled</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="p">()</span>
+<span class="go">10</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">quota</span><span class="p">)</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">quota</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job2</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span><span class="p">()</span>
+<span class="go">10</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job3</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">quota</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job3</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">quota</span><span class="p">)</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job3</span><span class="p">()</span>
+<span class="go">10</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quota</span><span class="o">.</span><span class="n">clean</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">quota</span><span class="p">)</span>
+<span class="go">0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quota</span><span class="o">.</span><span class="n">filled</span>
+<span class="go">False</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="stop-config-reactor" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id10">[9]</a></td><td><p class="first">We don&#8217;t want the live dispatcher for our demos,
+actually.  See dispatcher.txt to see the live dispatcher actually in use.
+So, here we&#8217;ll stop the &#8220;real&#8221; reactor and switch to a testing one.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">callFromThread</span><span class="p">(</span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">thread</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="mf">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">assert</span> <span class="ow">not</span> <span class="n">dispatcher</span><span class="o">.</span><span class="n">activated</span><span class="p">,</span> <span class="s">&#39;dispatcher did not deactivate&#39;</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.testing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">Reactor</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">_reactor</span> <span class="o">=</span> <span class="n">reactor</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activate</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><img class="logo" src="_static/zc_async.png" alt="Logo"/></p>
+            <h3>Table Of Contents</h3>
+            <ul>
+<li><a class="reference external" href="">Configuration (without Zope 3)</a><ul>
+<li><a class="reference external" href="#configuring-a-client-process">Configuring a Client Process</a><ul>
+<li><a class="reference external" href="#required-component-registrations">Required Component Registrations</a></li>
+<li><a class="reference external" href="#required-zodb-set-up">Required ZODB Set Up</a></li>
+<li><a class="reference external" href="#zodb-configuration">ZODB Configuration</a><ul>
+<li><a class="reference external" href="#a-queue">A Queue</a></li>
+<li><a class="reference external" href="#quotas">Quotas</a></li>
+<li><a class="reference external" href="#multiple-queues">Multiple Queues</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#process-configuration">Process Configuration</a><ul>
+<li><a class="reference external" href="#daemonization">Daemonization</a></li>
+<li><a class="reference external" href="#uuid-file-location">UUID File Location</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#optional-component-registrations-for-a-client-process">Optional Component Registrations for a Client Process</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#configuring-a-client-server-process">Configuring a Client/Server Process</a><ul>
+<li><a class="reference external" href="#starting-the-dispatcher">Starting the Dispatcher</a></li>
+<li><a class="reference external" href="#agents">Agents</a></li>
+<li><a class="reference external" href="#logging-and-monitoring">Logging and Monitoring</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="README_1.html" title="previous chapter">Usage</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="README_3.html" title="next chapter">Configuration with Zope 3</a></p>
+            <h3>This Page</h3>
+            <ul class="this-page-menu">
+              <li><a href="_sources/README_2.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="README_3.html" title="Configuration with Zope 3"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="README_1.html" title="Usage"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2008, Gary Poster.
+      Last updated on Sep 21, 2008.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+    </div>
+  </body>
+</html>

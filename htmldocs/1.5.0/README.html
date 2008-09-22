@@ -1,0 +1,338 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Introduction &mdash; zc.async v1.5.0 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '',
+          VERSION:     '1.5.0',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: ''
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/interface.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/favicon.ico"/>
+    <link rel="contents" title="Global table of contents" href="contents.html" />
+    <link rel="index" title="Global index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="zc.async v1.5.0 documentation" href="index.html" />
+    <link rel="next" title="Usage" href="README_1.html" />
+    <link rel="prev" title="Quickstart with Grok" href="QUICKSTART_2_GROK.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="README_1.html" title="Usage"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="QUICKSTART_2_GROK.html" title="Quickstart with Grok"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  
+  <div class="section" id="introduction">
+<h1 id="introduction">Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="goals">
+<h2 id="goals">Goals<a class="headerlink" href="#goals" title="Permalink to this headline">¶</a></h2>
+<p>The zc.async package provides a way to schedule jobs to be performed
+out-of-band from your current thread.  The job might be done in another thread
+or another process, possibly on another machine.  Here are some example core
+use cases.</p>
+<ul class="simple">
+<li>You want to let users do something that requires a lot of system
+resources from your application, such as creating a large PDF.  Naively
+done, six or seven simultaneous PDF requests will consume your
+application thread pool and could make your application unresponsive to
+any other users.</li>
+<li>You want to let users spider a web site; communicate with a credit card
+company; query a large, slow LDAP database on another machine; or do
+some other action that generates network requests from the server.
+System resources might not be a problem, but, again, if something goes
+wrong, several requests could make your application unresponsive.</li>
+<li>Perhaps because of resource contention, you want to serialize work
+that can be done asynchronously, such as updating a single data structure
+like a catalog index.</li>
+<li>You want to decompose and parallelize a single job across many machines so
+it can be finished faster.</li>
+<li>You have an application job that you discover is taking longer than users can
+handle, even after you optimize it.  You want a quick fix to move the work
+out-of-band.</li>
+</ul>
+<p>Many of these core use cases involve end-users being able to start potentially
+expensive processes, on demand.  Basic scheduled tasks are also provided by this
+package, though recurrence must be something you arrange.</p>
+</div>
+<div class="section" id="history">
+<h2 id="history">History<a class="headerlink" href="#history" title="Permalink to this headline">¶</a></h2>
+<p>This is a second-generation design.  The first generation was <cite>zasync</cite>,
+a mission-critical and successful Zope 2 product in use for a number of
+high-volume Zope 2 installations.  <a class="footnote-reference" href="#async-history" id="id1">[1]</a> It&#8217;s worthwhile noting
+that zc.async has absolutely no backwards compatibility with zasync and
+zc.async does not require Zope (although it can be used in conjunction with
+it).</p>
+</div>
+<div class="section" id="design-overview">
+<h2 id="design-overview">Design Overview<a class="headerlink" href="#design-overview" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="overview-usage">
+<h3 id="overview-usage">Overview: Usage<a class="headerlink" href="#overview-usage" title="Permalink to this headline">¶</a></h3>
+<p>Looking at the design from the perspective of regular usage, your code obtains
+a <tt class="docutils literal"><span class="pre">queue</span></tt>, which is a place to register jobs to be performed asynchronously.</p>
+<p>Your application calls <tt class="docutils literal"><span class="pre">put</span></tt> on the queue to register a job.  The job must be
+a pickleable, callable object.  A global function, a callable persistent
+object, a method of a persistent object, or a special zc.async.job.Job object
+(discussed later) are all examples of suitable objects.  The job by default is
+registered to be performed as soon as possible, but can be registered to be
+called at a certain time.</p>
+<p>The <tt class="docutils literal"><span class="pre">put</span></tt> call will return a zc.async.job.Job object.  This object represents
+both the callable and its deferred result.  It has information about the job
+requested, the current state of the job, and the result of performing the job.</p>
+<p>An example spelling for registering a job might be <tt class="docutils literal"><span class="pre">self.pending_result</span> <span class="pre">=</span>
+<span class="pre">queue.put(self.performSpider)</span></tt>.  The returned object can be stored and polled
+to see when the job is complete; or the job can be configured to do additional
+work when it completes (such as storing the result in a data structure).</p>
+</div>
+<div class="section" id="overview-mechanism">
+<h3 id="overview-mechanism">Overview: Mechanism<a class="headerlink" href="#overview-mechanism" title="Permalink to this headline">¶</a></h3>
+<p>Multiple processes, typically spread across multiple machines, can
+connect to the queue and claim and perform work.  As with other
+collections of processes that share pickled objects, these processes
+generally should share the same software (though some variations on this
+constraint should be possible).</p>
+<p>A process that should claim and perform work, in addition to a database
+connection and the necessary software, needs a <tt class="docutils literal"><span class="pre">dispatcher</span></tt> with a
+<tt class="docutils literal"><span class="pre">reactor</span></tt> to provide a heartbeat.  The dispatcher will rely on one or more
+persistent <tt class="docutils literal"><span class="pre">agents</span></tt> in the queue (in the database) to determine which jobs
+it should perform.</p>
+<p>A <tt class="docutils literal"><span class="pre">dispatcher</span></tt> is in charge of dispatching queued work for a given
+process to worker threads.  It works with one or more queues and a
+single reactor.  It has a universally unique identifier (UUID), which is
+usually an identifier of the application instance in which it is
+running.  The dispatcher starts jobs in dedicated threads.</p>
+<p>A <tt class="docutils literal"><span class="pre">reactor</span></tt> is something that can provide an eternal loop, or heartbeat,
+to power the dispatcher.  It can be the main twisted reactor (in the
+main thread); another instance of a twisted reactor (in a child thread);
+or any object that implements a small subset of the twisted reactor
+interface (see discussion in dispatcher.txt, and example testing reactor in
+testing.py, used below).</p>
+<p>An <tt class="docutils literal"><span class="pre">agent</span></tt> is a persistent object in a queue that is associated with a
+dispatcher and is responsible for picking jobs and keeping track of
+them. Zero or more agents within a queue can be associated with a
+dispatcher.  Each agent for a given dispatcher in a given queue is
+identified uniquely with a name <a class="footnote-reference" href="#identifying-agent" id="id2">[2]</a>.</p>
+<p>Generally, these work together as follows.  The reactor calls the
+dispatcher. The dispatcher tries to find the mapping of queues in the
+database root under a key of <tt class="docutils literal"><span class="pre">zc.async</span></tt> (see constant
+zc.async.interfaces.KEY).  If it finds the mapping, it iterates
+over the queues (the mapping&#8217;s values) and asks each queue for the
+agents associated with the dispatcher&#8217;s UUID.  The dispatcher then is
+responsible for seeing what jobs its agents want to do from the queue,
+and providing threads and connections for the work to be done.  The
+dispatcher then asks the reactor to call itself again in a few seconds.</p>
+<p class="rubric">Footnotes</p>
+<table class="docutils footnote" frame="void" id="async-history" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td><p class="first">The first generation, <tt class="docutils literal"><span class="pre">zasync</span></tt>, had the following goals:</p>
+<ul class="simple">
+<li>be scalable, so that another process or machine could do the asynchronous
+work;</li>
+<li>support lengthy jobs outside of the ZODB;</li>
+<li>support lengthy jobs inside the ZODB;</li>
+<li>be recoverable, so that crashes would not lose work;</li>
+<li>be discoverable, so that logs and web interfaces give a view into the
+work being done asynchronously;</li>
+<li>be easily extendible, to do new jobs; and</li>
+<li>support graceful job expiration and cancellation.</li>
+</ul>
+<p>It met its goals well in some areas and adequately in others.</p>
+<p>Based on experience with the first generation, this second generation
+identifies several areas of improvement from the first design, and adds
+several goals.</p>
+<ul class="last">
+<li><p class="first">Improvements</p>
+<ul>
+<li><p class="first">More carefully delineate the roles of the comprising components.</p>
+<p>The zc.async design has three main components, as divided by their
+roles: persistent deferreds, now called jobs; job queues (the original
+zasync&#8217;s &#8220;asynchronous call manager&#8221;); and dispatchers (the original
+zasync ZEO client). The zasync 1.x design blurred the lines between the
+three components such that the component parts could only be replaced
+with difficulty, if at all. A goal for the 2.x design is to clearly
+define the role for each of three components such that, for instance, a
+user of a queue does not need to know about the dispatcher or the
+agents.</p>
+</li>
+<li><p class="first">Improve scalability of asynchronous workers.</p>
+<p>The 1.x line was initially designed for a single asynchronous worker,
+which could be put on another machine thanks to ZEO. Tarek Ziade of
+Nuxeo wrote zasyncdispatcher, which allowed multiple asynchronous
+workers to accept work, allowing multiple processes and multiple
+machines to divide and conquer. It worked around the limitations of the
+original zasync design to provide even more scalability. However, it
+was forced to divide up work well before a given worker looks at the
+queue.</p>
+<p>While dividing work earlier allows guesses and heuristics a chance to
+predict what worker might be more free in the future, a more reliable
+approach is to let the worker gauge whether it should take a job at the
+time the job is taken. Perhaps the worker will choose based on the
+worker&#8217;s load, or other concurrent jobs in the process, or other
+details. A goal for the 2.x line is to more directly support this type
+of scalability.</p>
+</li>
+<li><p class="first">Improve scalability of registering jobs.</p>
+<p>The 1.x line initially wasn&#8217;t concerned about very many concurrent
+asynchronous requests. When this situation was encountered, it caused
+ConflictErrors between the worker process reading the deferred queue
+and the code that was adding the deferreds. Thanks to Nuxeo, this
+problem was addressed in the 1.x line. A goal for the new version is to
+include and improve upon the 1.x solution.</p>
+</li>
+<li><p class="first">Make it even simpler to provide new jobs.</p>
+<p>In the first version, <cite>plugins</cite> performed jobs. They had a specific API
+and they had to be configured. A goal for the new version is to require
+no specific API for jobs, and to not require any configuration.</p>
+</li>
+<li><p class="first">Improve report information, especially through the web.</p>
+<p>The component that the first version of zasync provided to do the
+asynchronous work, the zasync client, provided very verbose logs of the
+jobs done, but they were hard to read and also did not have a through-
+the-web parallel. Two goals for the new version are to improve the
+usefulness of the filesystem logs and to include more complete
+visibility of the status of the provided asynchronous clients.</p>
+</li>
+<li><p class="first">Make it easier to configure and start, especially for small
+deployments.</p>
+<p>A significant barrier to experimentation and deployment of the 1.x line
+was the difficulty in configuration. The 1.x line relied on ZConfig for
+zasync client configuration, demanding non-extensible
+similar-yet-subtly-different .conf files like the Zope conf files. The
+2.x line provides code that Zope 3 can configure to run in the same
+process as a standard Zope 3 application. This means that development
+instances can start a zasync quickly and easily. It also means that
+processes can be reallocated on the fly during production use, so that
+a machine being used as a zasync process can quickly be converted to a
+web server, if needed, and vice versa.</p>
+</li>
+</ul>
+</li>
+<li><p class="first">New goals</p>
+<ul>
+<li><p class="first">Support intermediate return calls so that jobs can report back how they
+are doing.</p>
+<p>A frequent request from users of zasync 1.x was the ability for a long-
+running asynchronous process to report back progress to the original
+requester. The 2.x line addresses this with three changes:</p>
+<ul class="simple">
+<li>jobs are annotatable;</li>
+<li>jobs should not be modified in an asynchronous worker that does work
+(though they may be read);</li>
+<li>jobs can request another job in a synchronous process that annotates
+the job with progress status or other information.</li>
+</ul>
+<p>Because of relatively recent changes in ZODB&#8211;multi version concurrency
+control&#8211;this simple pattern should not generate conflict errors.</p>
+</li>
+<li><p class="first">Support time-delayed calls.</p>
+<p>Retries and other use cases make time-delayed deferred calls desirable.
+The new design supports these sort of calls.</p>
+</li>
+</ul>
+</li>
+</ul>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="identifying-agent" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[2]</a></td><td>The combination of a queue name plus a
+dispatcher UUID plus an agent name uniquely identifies an agent.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><img class="logo" src="_static/zc_async.png" alt="Logo"/></p>
+            <h3>Table Of Contents</h3>
+            <ul>
+<li><a class="reference external" href="">Introduction</a><ul>
+<li><a class="reference external" href="#goals">Goals</a></li>
+<li><a class="reference external" href="#history">History</a></li>
+<li><a class="reference external" href="#design-overview">Design Overview</a><ul>
+<li><a class="reference external" href="#overview-usage">Overview: Usage</a></li>
+<li><a class="reference external" href="#overview-mechanism">Overview: Mechanism</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="QUICKSTART_2_GROK.html" title="previous chapter">Quickstart with Grok</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="README_1.html" title="next chapter">Usage</a></p>
+            <h3>This Page</h3>
+            <ul class="this-page-menu">
+              <li><a href="_sources/README.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="README_1.html" title="Usage"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="QUICKSTART_2_GROK.html" title="Quickstart with Grok"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2008, Gary Poster.
+      Last updated on Sep 21, 2008.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1281 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Usage &mdash; zc.async v1.5.0 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '',
+          VERSION:     '1.5.0',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: ''
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/interface.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/favicon.ico"/>
+    <link rel="contents" title="Global table of contents" href="contents.html" />
+    <link rel="index" title="Global index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="zc.async v1.5.0 documentation" href="index.html" />
+    <link rel="next" title="Configuration (without Zope 3)" href="README_2.html" />
+    <link rel="prev" title="Introduction" href="README.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="README_2.html" title="Configuration (without Zope 3)"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="README.html" title="Introduction"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  
+  <div class="section" id="id1">
+<span id="usage"></span><h1 id="id1"><span id="usage"></span>Usage<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="overview-and-basics">
+<h2 id="overview-and-basics">Overview and Basics<a class="headerlink" href="#overview-and-basics" title="Permalink to this headline">¶</a></h2>
+<p>The basic usage of zc.async does not depend on a particular configuration
+of the back-end mechanism for getting the jobs done.  Moreover, on some
+teams, it will be the responsibility of one person or group to configure
+zc.async, but a service available to the code of all team members.  Therefore,
+we begin our detailed discussion with regular usage, assuming configuration
+has already happened.  Subsequent sections discuss configuring zc.async
+with and without Zope 3.</p>
+<p>So, let&#8217;s assume we have a queue with dispatchers, reactors and agents all
+waiting to fulfill jobs placed into the queue.  We start with a connection
+object, <tt class="docutils literal"><span class="pre">conn</span></tt>, and some convenience functions introduced along the way that
+help us simulate time passing and work being done <a class="footnote-reference" href="#usagesetup" id="id2">[1]</a>.</p>
+<div class="section" id="obtaining-the-queue">
+<h3 id="obtaining-the-queue">Obtaining the queue<a class="headerlink" href="#obtaining-the-queue" title="Permalink to this headline">¶</a></h3>
+<p>First, how do we get the queue?  Your installation may have some
+conveniences.  For instance, the Zope 3 configuration described below
+makes it possible to get the primary queue with an adaptation call like
+<tt class="docutils literal"><span class="pre">zc.async.interfaces.IQueue(a_persistent_object_with_db_connection)</span></tt>.</p>
+<p>But failing that, queues are always expected to be in a zc.async.queue.Queues
+mapping found off the ZODB root in a key defined by the constant
+zc.async.interfaces.KEY.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">KEY</span>
+<span class="go">&#39;zc.async&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">root</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queues</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">KEY</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.queue</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">queues</span><span class="p">,</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">Queues</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+<p>As the name implies, <tt class="docutils literal"><span class="pre">queues</span></tt> is a collection of queues. As discussed later,
+it&#8217;s possible to have multiple queues, as a tool to distribute and control
+work. We will assume a convention of a queue being available in the &#8216;&#8217; (empty
+string).</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">queues</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<span class="go">[&#39;&#39;]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span> <span class="o">=</span> <span class="n">queues</span><span class="p">[</span><span class="s">&#39;&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+<div class="section" id="queue-put">
+<h3 id="queue-put"><tt class="docutils literal"><span class="pre">queue.put</span></tt><a class="headerlink" href="#queue-put" title="Permalink to this headline">¶</a></h3>
+<p>Now we want to actually get some work done.  The simplest case is simple
+to perform: pass a persistable callable to the queue&#8217;s <tt class="docutils literal"><span class="pre">put</span></tt> method and
+commit the transaction.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">send_message</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">print</span> <span class="s">&quot;imagine this sent a message to another machine&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">send_message</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<p>Note that this won&#8217;t really work in an interactive session: the callable needs
+to be picklable, as discussed above, so <tt class="docutils literal"><span class="pre">send_message</span></tt> would need to be
+a module global, for instance.</p>
+<p>The <tt class="docutils literal"><span class="pre">put</span></tt> returned a job.  Now we need to wait for the job to be
+performed.  We would normally do this by really waiting.  For our
+examples, we will use a helper method on the testing reactor to <tt class="docutils literal"><span class="pre">wait_for</span></tt>
+the job to be completed.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">imagine this sent a message to another machine</span>
+</pre></div>
+<p>We also could have used the method of a persistent object.  Here&#8217;s another
+quick example.</p>
+<p>First we define a simple persistent.Persistent subclass and put an instance of
+it in the database <a class="footnote-reference" href="#commit-for-multidatabase" id="id3">[2]</a>.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">persistent</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">class</span> <span class="nc">Demo</span><span class="p">(</span><span class="n">persistent</span><span class="o">.</span><span class="n">Persistent</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">counter</span> <span class="o">=</span> <span class="mf">0</span>
+<span class="gp">... </span>    <span class="k">def</span> <span class="nf">increase</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">1</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="bp">self</span><span class="o">.</span><span class="n">counter</span> <span class="o">+=</span> <span class="n">value</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Demo</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<p>Now we can put the <tt class="docutils literal"><span class="pre">demo.increase</span></tt> method in the queue.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">counter</span>
+<span class="go">0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">increase</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">counter</span>
+<span class="go">1</span>
+</pre></div>
+</blockquote>
+<p>The method was called, and the persistent object modified!</p>
+<p>To reiterate, only pickleable callables such as global functions and the
+methods of persistent objects can be used. This rules out, for instance,
+lambdas and other functions created dynamically. As we&#8217;ll see below, the job
+instance can help us out there somewhat by offering closure-like features.</p>
+</div>
+<div class="section" id="queue-pull-and-queue-remove">
+<h3 id="queue-pull-and-queue-remove"><tt class="docutils literal"><span class="pre">queue.pull</span></tt> and <tt class="docutils literal"><span class="pre">queue.remove</span></tt><a class="headerlink" href="#queue-pull-and-queue-remove" title="Permalink to this headline">¶</a></h3>
+<p>If you put a job into a queue and it hasn&#8217;t been claimed yet and you want to
+cancel the job, <tt class="docutils literal"><span class="pre">pull</span></tt> or <tt class="docutils literal"><span class="pre">remove</span></tt> it from the queue.</p>
+<p>The <tt class="docutils literal"><span class="pre">pull</span></tt> method removes the first job, or takes an integer index.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">send_message</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">send_message</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">pull</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job2</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job1</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job2</span><span class="p">,</span> <span class="n">job1</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">pull</span><span class="p">(</span><span class="o">-</span><span class="mf">1</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">pull</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">0</span>
+</pre></div>
+<p>The <tt class="docutils literal"><span class="pre">remove</span></tt> method removes the specific given job.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">send_message</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">send_message</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">job1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job2</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job1</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job2</span><span class="p">,</span> <span class="n">job1</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">job1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="n">job2</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">job2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">0</span>
+</pre></div>
+</div>
+<div class="section" id="scheduled-calls">
+<h3 id="scheduled-calls">Scheduled Calls<a class="headerlink" href="#scheduled-calls" title="Permalink to this headline">¶</a></h3>
+<p>When using <tt class="docutils literal"><span class="pre">put</span></tt>, you can also pass a datetime.datetime to schedule a call. A
+datetime without a timezone is considered to be in the UTC timezone.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">datetime</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">pytz</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">pytz</span><span class="o">.</span><span class="n">UTC</span><span class="p">)</span>
+<span class="go">datetime.datetime(2006, 8, 10, 15, 44, 33, 211, tzinfo=&lt;UTC&gt;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">send_message</span><span class="p">,</span> <span class="n">begin_after</span><span class="o">=</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="mf">2006</span><span class="p">,</span> <span class="mf">8</span><span class="p">,</span> <span class="mf">10</span><span class="p">,</span> <span class="mf">15</span><span class="p">,</span> <span class="mf">56</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="n">pytz</span><span class="o">.</span><span class="n">UTC</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">begin_after</span>
+<span class="go">datetime.datetime(2006, 8, 10, 15, 56, tzinfo=&lt;UTC&gt;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mf">2</span><span class="p">)</span> <span class="c"># +5 virtual seconds</span>
+<span class="go">TIME OUT</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mf">2</span><span class="p">)</span> <span class="c"># +5 virtual seconds</span>
+<span class="go">TIME OUT</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">pytz</span><span class="o">.</span><span class="n">UTC</span><span class="p">)</span>
+<span class="go">datetime.datetime(2006, 8, 10, 15, 44, 43, 211, tzinfo=&lt;UTC&gt;)</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">set_now</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="mf">2006</span><span class="p">,</span> <span class="mf">8</span><span class="p">,</span> <span class="mf">10</span><span class="p">,</span> <span class="mf">15</span><span class="p">,</span> <span class="mf">56</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="n">pytz</span><span class="o">.</span><span class="n">UTC</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">imagine this sent a message to another machine</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">pytz</span><span class="o">.</span><span class="n">UTC</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">job</span><span class="o">.</span><span class="n">begin_after</span>
+<span class="go">True</span>
+</pre></div>
+</blockquote>
+<p>If you set a time that has already passed, it will be run as if it had
+been set to run as soon as possible <a class="footnote-reference" href="#already-passed" id="id4">[3]</a>...unless the job
+has already timed out, in which case the job fails with an
+abort <a class="footnote-reference" href="#already-passed-timed-out" id="id5">[4]</a>.</p>
+<p>The queue&#8217;s <tt class="docutils literal"><span class="pre">put</span></tt> method is the essential API. <tt class="docutils literal"><span class="pre">pull</span></tt> is used rarely. Other
+methods are used to introspect, but are not needed for basic usage.</p>
+<p>But what is that result of the <tt class="docutils literal"><span class="pre">put</span></tt> call in the examples above?  A
+job?  What do you do with that?</p>
+</div>
+</div>
+<div class="section" id="jobs">
+<h2 id="jobs">Jobs<a class="headerlink" href="#jobs" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="overview">
+<h3 id="overview">Overview<a class="headerlink" href="#overview" title="Permalink to this headline">¶</a></h3>
+<p>The result of a call to <tt class="docutils literal"><span class="pre">put</span></tt> returns an <tt class="docutils literal"><span class="pre">IJob</span></tt>. The job represents the
+pending result. This object has a lot of functionality that&#8217;s explored in other
+documents in this package, and demonstrated a bit below, but here&#8217;s a summary.</p>
+<ul class="simple">
+<li>You can introspect, and even modify, the call and its arguments.</li>
+<li>You can specify that the job should be run serially with others of a given
+identifier.</li>
+<li>You can specify other calls that should be made on the basis of the result of
+this call.</li>
+<li>You can persist a reference to it, and periodically (after syncing your
+connection with the database, which happens whenever you begin or commit a
+transaction) check its <tt class="docutils literal"><span class="pre">status</span></tt> to see if it is equal to
+<tt class="docutils literal"><span class="pre">zc.async.interfaces.COMPLETED</span></tt>. When it is, the call has run to completion,
+either to success or an exception.</li>
+<li>You can look at the result of the call (once <tt class="docutils literal"><span class="pre">COMPLETED</span></tt>). It might be the
+result you expect, or a <tt class="docutils literal"><span class="pre">zc.twist.Failure</span></tt>, a subclass of
+<tt class="docutils literal"><span class="pre">twisted.python.failure.Failure</span></tt>, which is a way to safely communicate
+exceptions across connections and machines and processes.</li>
+</ul>
+</div>
+<div class="section" id="results">
+<h3 id="results">Results<a class="headerlink" href="#results" title="Permalink to this headline">¶</a></h3>
+<p>So here&#8217;s a simple story.  What if you want to get a result back from a
+call?  Look at the job.result after the call is <tt class="docutils literal"><span class="pre">COMPLETED</span></tt>.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">imaginaryNetworkCall</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="c"># let&#39;s imagine this makes a network call...</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&quot;200 OK&quot;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">imaginaryNetworkCall</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">PENDING</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;200 OK&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">COMPLETED</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+<div class="section" id="closures">
+<h3 id="closures">Closures<a class="headerlink" href="#closures" title="Permalink to this headline">¶</a></h3>
+<p>What&#8217;s more, you can pass a Job to the <tt class="docutils literal"><span class="pre">put</span></tt> call.  This means that you
+aren&#8217;t constrained to simply having simple non-argument calls performed
+asynchronously, but you can pass a job with a call, arguments, and
+keyword arguments&#8211;effectively, a kind of closure.  Here&#8217;s a quick example.
+We&#8217;ll use the demo object, and its increase method, that we introduced
+above, but this time we&#8217;ll include some arguments <a class="footnote-reference" href="#job" id="id6">[5]</a>.</p>
+<p>With positional arguments:</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">increase</span><span class="p">,</span> <span class="mf">5</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">counter</span>
+<span class="go">6</span>
+</pre></div>
+<p>With keyword arguments (<tt class="docutils literal"><span class="pre">value</span></tt>):</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">increase</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">10</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span><span class="p">[</span><span class="s">&#39;demo&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">counter</span>
+<span class="go">16</span>
+</pre></div>
+<p>Note that arguments to these jobs can be any persistable object.</p>
+</div>
+<div class="section" id="failures">
+<h3 id="failures">Failures<a class="headerlink" href="#failures" title="Permalink to this headline">¶</a></h3>
+<p>What happens if a call raises an exception?  The return value is a Failure.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">I_am_a_bad_bad_function</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">foo</span> <span class="o">+</span> <span class="n">bar</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">I_am_a_bad_bad_function</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&lt;zc.twist.Failure exceptions.NameError&gt;</span>
+</pre></div>
+<p>Failures can provide useful information such as tracebacks.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">job</span><span class="o">.</span><span class="n">result</span><span class="o">.</span><span class="n">getTraceback</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS +NORMALIZE_WHITESPACE</span>
+<span class="gp">...</span>
+<span class="go">exceptions.NameError: global name &#39;foo&#39; is not defined</span>
+<span class="go">&lt;BLANKLINE&gt;</span>
+</pre></div>
+</div>
+<div class="section" id="callbacks">
+<h3 id="callbacks">Callbacks<a class="headerlink" href="#callbacks" title="Permalink to this headline">¶</a></h3>
+<p>You can register callbacks to handle the result of a job, whether a
+Failure or another result.</p>
+<p>Note that, unlike callbacks on a Twisted deferred, these callbacks do not
+change the result of the original job. Since callbacks are jobs, you can chain
+results, but generally callbacks for the same job all get the same result as
+input.</p>
+<p>Also note that, during execution of a callback, there is no guarantee that
+the callback will be processed on the same machine as the main call.  Also,
+some of the <tt class="docutils literal"><span class="pre">local</span></tt> functions, discussed below, will not work as desired.</p>
+<p>Here&#8217;s a simple example of reacting to a success.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">I_scribble_on_strings</span><span class="p">(</span><span class="n">string</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">string</span> <span class="o">+</span> <span class="s">&quot;: SCRIBBLED&quot;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">imaginaryNetworkCall</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span><span class="n">I_scribble_on_strings</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;200 OK&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;200 OK: SCRIBBLED&#39;</span>
+</pre></div>
+<p>Here&#8217;s a more complex example of handling a Failure, and then chaining
+a subsequent callback.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">I_handle_NameErrors</span><span class="p">(</span><span class="n">failure</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">failure</span><span class="o">.</span><span class="n">trap</span><span class="p">(</span><span class="ne">NameError</span><span class="p">)</span> <span class="c"># see twisted.python.failure.Failure docs</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;I handled a name error&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">I_am_a_bad_bad_function</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback1</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">addCallbacks</span><span class="p">(</span><span class="n">failure</span><span class="o">=</span><span class="n">I_handle_NameErrors</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback2</span> <span class="o">=</span> <span class="n">callback1</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span><span class="n">I_scribble_on_strings</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&lt;zc.twist.Failure exceptions.NameError&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback1</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;I handled a name error&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback2</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;I handled a name error: SCRIBBLED&#39;</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="advanced-techniques-and-tools">
+<h2 id="advanced-techniques-and-tools">Advanced Techniques and Tools<a class="headerlink" href="#advanced-techniques-and-tools" title="Permalink to this headline">¶</a></h2>
+<p><strong>Important</strong></p>
+<p>The job and its functionality described above are the core zc.async tools.</p>
+<p>The following are advanced techniques and tools of various complexities. You
+can use zc.async very productively without ever understanding or using them. If
+the following do not make sense to you now, please just move on for now.</p>
+<div class="section" id="zc-async-local">
+<h3 id="zc-async-local">zc.async.local<a class="headerlink" href="#zc-async-local" title="Permalink to this headline">¶</a></h3>
+<p>Jobs always run their callables in a thread, within the context of a
+connection to the ZODB. The callables have access to five special
+thread-local functions if they need them for special uses.  These are
+available off of zc.async.local.</p>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">zc.async.local.getJob()</span></tt></dt>
+<dd>The <tt class="docutils literal"><span class="pre">getJob</span></tt> function can be used to examine the job, to get
+a connection off of <tt class="docutils literal"><span class="pre">_p_jar</span></tt>, to get the queue into which the job
+was put, or other uses.</dd>
+<dt><tt class="docutils literal"><span class="pre">zc.async.local.getQueue()</span></tt></dt>
+<dd>The <tt class="docutils literal"><span class="pre">getQueue</span></tt> function can be used to examine the queue, to put another
+task into the queue, or other uses. It is sugar for
+<tt class="docutils literal"><span class="pre">zc.async.local.getJob().queue</span></tt>.</dd>
+<dt><tt class="docutils literal"><span class="pre">zc.async.local.setLiveAnnotation(name,</span> <span class="pre">value,</span> <span class="pre">job=None)</span></tt></dt>
+<dd><p class="first">The <tt class="docutils literal"><span class="pre">setLiveAnnotation</span></tt> tells the agent to set an annotation on a job,
+by default the current job, <em>in another connection</em>.  This makes it
+possible to send messages about progress or for coordination while in the
+middle of other work.</p>
+<p class="last">As a simple rule, only send immutable objects like strings or
+numbers as values <a class="footnote-reference" href="#setliveannotation" id="id7">[6]</a>.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">zc.async.local.getLiveAnnotation(name,</span> <span class="pre">default=None,</span> <span class="pre">timeout=0,</span> <span class="pre">poll=1,</span> <span class="pre">job=None)</span></tt></dt>
+<dd><p class="first">The <tt class="docutils literal"><span class="pre">getLiveAnnotation</span></tt> tells the agent to get an annotation for a job,
+by default the current job, <em>from another connection</em>.  This makes it
+possible to send messages about progress or for coordination while in the
+middle of other work.</p>
+<p>As a simple rule, only ask for annotation values that will be
+immutable objects like strings or numbers <a class="footnote-reference" href="#getliveannotation" id="id8">[7]</a>.</p>
+<p class="last">If the <tt class="docutils literal"><span class="pre">timeout</span></tt> argument is set to a positive float or int, the function
+will wait at least that number of seconds until an annotation of the
+given name is available. Otherwise, it will return the <tt class="docutils literal"><span class="pre">default</span></tt> if the
+name is not present in the annotations. The <tt class="docutils literal"><span class="pre">poll</span></tt> argument specifies
+approximately how often to poll for the annotation, in seconds (to be more
+precise, a subsequent poll will be min(poll, remaining seconds until
+timeout) seconds away).</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">zc.async.local.getReactor()</span></tt></dt>
+<dd>The <tt class="docutils literal"><span class="pre">getReactor</span></tt> function returns the job&#8217;s dispatcher&#8217;s reactor.  The
+<tt class="docutils literal"><span class="pre">getLiveAnnotation</span></tt> and <tt class="docutils literal"><span class="pre">setLiveAnnotation</span></tt> functions use this,
+along with the zc.twist package, to work their magic; if you are feeling
+adventurous, you can do the same.</dd>
+<dt><tt class="docutils literal"><span class="pre">zc.async.local.getDispatcher()</span></tt></dt>
+<dd>The <tt class="docutils literal"><span class="pre">getDispatcher</span></tt> function returns the job&#8217;s dispatcher.  This might
+be used to analyze its non-persistent poll data structure, for instance
+(described later in configuration discussions).</dd>
+</dl>
+<p>Let&#8217;s give three of those a whirl. We will write a function that examines the
+job&#8217;s state while it is being called, and sets the state in an annotation, then
+waits for our flag to finish.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">annotateStatus</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">setLiveAnnotation</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="s">&#39;zc.async.test.status&#39;</span><span class="p">,</span>
+<span class="gp">... </span>        <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">getJob</span><span class="p">()</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">getLiveAnnotation</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="s">&#39;zc.async.test.flag&#39;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">5</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">42</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">annotateStatus</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">time</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">wait_for_annotation</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">reactor</span><span class="o">.</span><span class="n">time_flies</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">poll_interval</span><span class="p">)</span> <span class="c"># starts thread</span>
+<span class="gp">... </span>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mf">10</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="k">while</span> <span class="n">reactor</span><span class="o">.</span><span class="n">time_passes</span><span class="p">():</span>
+<span class="gp">... </span>            <span class="k">pass</span>
+<span class="gp">... </span>        <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">... </span>        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">job</span><span class="o">.</span><span class="n">annotations</span><span class="p">:</span>
+<span class="gp">... </span>            <span class="k">break</span>
+<span class="gp">... </span>        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="k">else</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="k">print</span> <span class="s">&#39;Timed out&#39;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">annotations</span><span class="p">))</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">wait_for_annotation</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="s">&#39;zc.async.test.status&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">annotations</span><span class="p">[</span><span class="s">&#39;zc.async.test.status&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">ACTIVE</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">ACTIVE</span>
+<span class="go">True</span>
+</pre></div>
+<p><a class="footnote-reference" href="#stats-1" id="id9">[8]</a></p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">annotations</span><span class="p">[</span><span class="s">&#39;zc.async.test.flag&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">42</span>
+</pre></div>
+<p><a class="footnote-reference" href="#stats-2" id="id10">[9]</a> <tt class="docutils literal"><span class="pre">getReactor</span></tt> and <tt class="docutils literal"><span class="pre">getDispatcher</span></tt> are for advanced use
+cases and are not explored further here.</p>
+</div>
+<div class="section" id="job-quotas">
+<h3 id="job-quotas">Job Quotas<a class="headerlink" href="#job-quotas" title="Permalink to this headline">¶</a></h3>
+<p>One class of asynchronous jobs are ideally serialized.  For instance,
+you may want to reduce or eliminate the chance of conflict errors when
+updating a text index.  One way to do this kind of serialization is to
+use the <tt class="docutils literal"><span class="pre">quota_names</span></tt> attribute of the job.</p>
+<p>For example, let&#8217;s first show two non-serialized jobs running at the
+same time, and then two serialized jobs created at the same time.
+The first part of the example does not use queue_names, to show a contrast.</p>
+<p>For our parallel jobs, we&#8217;ll do something that would create a deadlock
+if they were serial.  Notice that we are mutating the job arguments after
+creation to accomplish this, which is supported.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">waitForParallel</span><span class="p">(</span><span class="n">other</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">setLiveAnnotation</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="s">&#39;zc.async.test.flag&#39;</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">getLiveAnnotation</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="s">&#39;zc.async.test.flag&#39;</span><span class="p">,</span> <span class="n">job</span><span class="o">=</span><span class="n">other</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">poll</span><span class="o">=</span><span class="mf">0</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">waitForParallel</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">waitForParallel</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job1</span><span class="p">,</span> <span class="n">job2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">COMPLETED</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">COMPLETED</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="o">.</span><span class="n">result</span> <span class="ow">is</span> <span class="n">job2</span><span class="o">.</span><span class="n">result</span> <span class="ow">is</span> <span class="bp">None</span>
+<span class="go">True</span>
+</pre></div>
+<p>On the other hand, for our serial jobs, we&#8217;ll do something that would fail
+if it were parallel.  We&#8217;ll rely on <tt class="docutils literal"><span class="pre">quota_names</span></tt>.</p>
+<p>Quotas verge on configuration, which is not what this section is about,
+because they must be configured on the queue.  However, they also affect
+usage, so we show them here.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">pause</span><span class="p">(</span><span class="n">other</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">setLiveAnnotation</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="s">&#39;zc.async.test.flag&#39;</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">res</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">getLiveAnnotation</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="s">&#39;zc.async.test.flag&#39;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">poll</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">job</span><span class="o">=</span><span class="n">other</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">pause</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">imaginaryNetworkCall</span><span class="p">)</span>
+</pre></div>
+<p>You can&#8217;t put a name in <tt class="docutils literal"><span class="pre">quota_names</span></tt> unless the quota has been created
+in the queue.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;test&#39;</span><span class="p">,)</span>
+<span class="gp">...</span>
+<span class="go">ValueError: (&#39;unknown quota name&#39;, &#39;test&#39;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">quotas</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&#39;test&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;test&#39;</span><span class="p">,)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span><span class="o">.</span><span class="n">quota_names</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;test&#39;</span><span class="p">,)</span>
+</pre></div>
+<p>Now we can see the two jobs being performed serially.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job1</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">time_flies</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">poll_interval</span><span class="p">)</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mf">10</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="k">if</span> <span class="n">job1</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">ACTIVE</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="k">break</span>
+<span class="gp">... </span>    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+<span class="gp">... </span><span class="k">else</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="k">print</span> <span class="s">&#39;TIME OUT&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">PENDING</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job2</span><span class="o">.</span><span class="n">annotations</span><span class="p">[</span><span class="s">&#39;zc.async.test.flag&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">job1</span><span class="o">.</span><span class="n">result</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">job2</span><span class="o">.</span><span class="n">result</span>
+<span class="go">200 OK</span>
+</pre></div>
+<p>Quotas can be configured for limits greater than one at a time, if desired.
+This may be valuable when a needed resource is only available in limited
+numbers at a time.</p>
+<p>Note that, while quotas are valuable tools for doing serialized work such as
+updating a text index, other optimization features sometimes useful for this
+sort of task, such as collapsing similar jobs, are not provided directly by
+this package. This functionality could be trivially built on top of zc.async,
+however <a class="footnote-reference" href="#idea-for-collapsing-jobs" id="id11">[10]</a>.</p>
+</div>
+<div class="section" id="returning-jobs">
+<h3 id="returning-jobs">Returning Jobs<a class="headerlink" href="#returning-jobs" title="Permalink to this headline">¶</a></h3>
+<p>Our examples so far have done work directly.  What if the job wants to
+orchestrate other work?  One way this can be done is to return another
+job.  The result of the inner job will be the result of the first
+job once the inner job is finished.  This approach can be used to
+break up the work of long running processes; to be more cooperative to
+other jobs; and to make parts of a job that can be parallelized available
+to more workers.</p>
+<div class="section" id="serialized-work">
+<h4 id="serialized-work">Serialized Work<a class="headerlink" href="#serialized-work" title="Permalink to this headline">¶</a></h4>
+<p>First, consider a serialized example.  This simple pattern is one approach.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">second_job</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="c"># imagine a lot of work goes on...</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">value</span> <span class="o">*</span> <span class="mf">2</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">first_job</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="c"># imagine a lot of work goes on...</span>
+<span class="gp">... </span>    <span class="n">intermediate_value</span> <span class="o">=</span> <span class="mf">21</span>
+<span class="gp">... </span>    <span class="n">queue</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">getJob</span><span class="p">()</span><span class="o">.</span><span class="n">queue</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">second_job</span><span class="p">,</span> <span class="n">intermediate_value</span><span class="p">))</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">first_job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mf">3</span><span class="p">)</span>
+<span class="go">TIME OUT</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">agent</span><span class="p">)</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mf">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">42</span>
+</pre></div>
+<p>The job is now out of the agent.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">agent</span><span class="p">)</span>
+<span class="go">0</span>
+</pre></div>
+<p>The second_job could also have returned a job, allowing for additional
+legs.  Once the last job returns a real result, it will cascade through the
+past jobs back up to the original one.</p>
+<p>A different approach could have used callbacks.  Using callbacks can be
+somewhat more complicated to follow, but can allow for a cleaner
+separation of code: dividing code that does work from code that orchestrates
+the jobs. The <tt class="docutils literal"><span class="pre">serial</span></tt> helper function in the job module uses this pattern.
+Here&#8217;s a quick example of the helper function <a class="footnote-reference" href="#define-longer-wait" id="id12">[11]</a>.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">job_zero</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">0</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">job_one</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">1</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">job_two</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">2</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">postprocess</span><span class="p">(</span><span class="n">zero</span><span class="p">,</span> <span class="n">one</span><span class="p">,</span> <span class="n">two</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">zero</span><span class="o">.</span><span class="n">result</span><span class="p">,</span> <span class="n">one</span><span class="o">.</span><span class="n">result</span><span class="p">,</span> <span class="n">two</span><span class="o">.</span><span class="n">result</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">serial</span><span class="p">(</span><span class="n">job_zero</span><span class="p">,</span> <span class="n">job_one</span><span class="p">,</span> <span class="n">job_two</span><span class="p">,</span>
+<span class="gp">... </span>                                    <span class="n">postprocess</span><span class="o">=</span><span class="n">postprocess</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">wait_repeatedly</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">TIME OUT...</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">(0, 1, 2)</span>
+</pre></div>
+</blockquote>
+<p><a class="footnote-reference" href="#extra-serial-tricks" id="id13">[12]</a></p>
+<p>The <tt class="docutils literal"><span class="pre">parallel</span></tt> example we use below follows a similar pattern.</p>
+</div>
+<div class="section" id="parallelized-work">
+<h4 id="parallelized-work">Parallelized Work<a class="headerlink" href="#parallelized-work" title="Permalink to this headline">¶</a></h4>
+<p>Now how can we set up parallel jobs?  There are other good ways, but we
+can describe one way that avoids potential problems with the
+current-as-of-this-writing (ZODB 3.8 and trunk) default optimistic MVCC
+serialization behavior in the ZODB.  The solution uses callbacks, which
+also allows us to cleanly divide the &#8220;work&#8221; code from the synchronization
+code, as described in the previous paragraph.</p>
+<p>First, we&#8217;ll define the jobs that do work.  <tt class="docutils literal"><span class="pre">job_A</span></tt>, <tt class="docutils literal"><span class="pre">job_B</span></tt>, and
+<tt class="docutils literal"><span class="pre">job_C</span></tt> will be jobs that can be done in parallel, and
+<tt class="docutils literal"><span class="pre">postprocess</span></tt> will be a function that assembles the job results for a
+final result.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">job_A</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="c"># imaginary work...</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">7</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">job_B</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="c"># imaginary work...</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">14</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">job_C</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="c"># imaginary work...</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">21</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">postprocess</span><span class="p">(</span><span class="o">*</span><span class="n">jobs</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="c"># this callable represents one that needs to wait for the</span>
+<span class="gp">... </span>    <span class="c"># parallel jobs to be done before it can process them and return</span>
+<span class="gp">... </span>    <span class="c"># the final result</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">result</span> <span class="k">for</span> <span class="n">job</span> <span class="ow">in</span> <span class="n">jobs</span><span class="p">)</span>
+<span class="gp">...</span>
+</pre></div>
+<p>This can be handled by a convenience function, <tt class="docutils literal"><span class="pre">parallel</span></tt>, that will arrange
+everything for you.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">parallel</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">job_A</span><span class="p">,</span> <span class="n">job_B</span><span class="p">,</span> <span class="n">job_C</span><span class="p">,</span> <span class="n">postprocess</span><span class="o">=</span><span class="n">postprocess</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<p>Now we just wait for the result.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">wait_repeatedly</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">TIME OUT...</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">42</span>
+</pre></div>
+</blockquote>
+<p>Ta-da! <a class="footnote-reference" href="#extra-parallel-tricks" id="id14">[13]</a></p>
+<p>Now, how did this work?  Let&#8217;s look at a simple implementation directly.  We&#8217;ll
+use a slightly different postprocess, that expects results directly rather than
+the jobs.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">postprocess</span><span class="p">(</span><span class="o">*</span><span class="n">results</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="c"># this callable represents one that needs to wait for the</span>
+<span class="gp">... </span>    <span class="c"># parallel jobs to be done before it can process them and return</span>
+<span class="gp">... </span>    <span class="c"># the final result</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+<span class="gp">...</span>
+</pre></div>
+<p>This code works with jobs to get everything done. Note, in the callback
+function, that mutating the same object we are checking (job.args) is the way
+we are enforcing necessary serializability with MVCC turned on.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">callback</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">job</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mf">3</span><span class="p">:</span> <span class="c"># all results are in</span>
+<span class="gp">... </span>        <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">getJob</span><span class="p">()</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">main_job</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="n">job</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">postprocess</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">queue</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">getJob</span><span class="p">()</span><span class="o">.</span><span class="n">queue</span>
+<span class="gp">... </span>    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="p">(</span><span class="n">job_A</span><span class="p">,</span> <span class="n">job_B</span><span class="p">,</span> <span class="n">job_C</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">j</span><span class="p">)</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span>
+<span class="gp">... </span>            <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">callback</span><span class="p">,</span> <span class="n">job</span><span class="p">))</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">job</span>
+<span class="gp">...</span>
+</pre></div>
+<p>That may be a bit mind-blowing at first.  The trick to catch here is that,
+because the main_job returns a job, the result of that job will become the
+result of the main_job once the returned (<tt class="docutils literal"><span class="pre">post_process</span></tt>) job is done.</p>
+<p>Now we&#8217;ll put this in and let it cook.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">main_job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">wait_repeatedly</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">TIME OUT...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">42</span>
+</pre></div>
+</blockquote>
+<p>Once again, ta-da!</p>
+<p>For real-world usage, you&#8217;d also probably want to deal with the possibility of
+one or more of the jobs generating a Failure, among other edge cases.  The
+<tt class="docutils literal"><span class="pre">parallel</span></tt> function introduced above helps you handle this by returning
+jobs, rather than results, so you can analyze what went wrong and try to handle
+it.</p>
+</div>
+</div>
+<div class="section" id="returning-deferreds">
+<h3 id="returning-deferreds">Returning Deferreds<a class="headerlink" href="#returning-deferreds" title="Permalink to this headline">¶</a></h3>
+<p>What if you want to do work that doesn&#8217;t require a ZODB connection?  You
+can also return a Twisted deferred (twisted.internet.defer.Deferred).
+When you then <tt class="docutils literal"><span class="pre">callback</span></tt> the deferred with the eventual result, the
+agent will be responsible for setting that value on the original
+deferred and calling its callbacks.  This can be a useful trick for
+making network calls using Twisted or zc.ngi, for instance.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">imaginaryNetworkCall2</span><span class="p">(</span><span class="n">deferred</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="c"># make a network call...</span>
+<span class="gp">... </span>    <span class="n">deferred</span><span class="o">.</span><span class="n">callback</span><span class="p">(</span><span class="s">&#39;200 OK&#39;</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">twisted.internet.defer</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">threading</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">delegator</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="n">deferred</span> <span class="o">=</span> <span class="n">twisted</span><span class="o">.</span><span class="n">internet</span><span class="o">.</span><span class="n">defer</span><span class="o">.</span><span class="n">Deferred</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="n">t</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">target</span><span class="o">=</span><span class="n">imaginaryNetworkCall2</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">deferred</span><span class="p">,))</span>
+<span class="gp">... </span>    <span class="n">t</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">deferred</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">delegator</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;200 OK&#39;</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="conclusion">
+<h2 id="conclusion">Conclusion<a class="headerlink" href="#conclusion" title="Permalink to this headline">¶</a></h2>
+<p>This concludes our discussion of zc.async usage. The <a class="reference external" href="README_2.html#configuration-without-zope-3"><em>next section</em></a> shows how to configure zc.async without
+Zope 3 <a class="footnote-reference" href="#stop-usage-reactor" id="id15">[14]</a>.</p>
+<p class="rubric">Footnotes</p>
+<table class="docutils footnote" frame="void" id="usagesetup" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[1]</a></td><td><p class="first">We set up the configuration for our usage examples here.</p>
+<p>You must have two adapter registrations: IConnection to
+ITransactionManager, and IPersistent to IConnection.  We will also
+register IPersistent to ITransactionManager because the adapter is
+designed for it.</p>
+<p>We also need to be able to get data manager partials for functions and
+methods; normal partials for functions and methods; and a data manager for
+a partial. Here are the necessary registrations.</p>
+<p>The dispatcher will look for a UUID utility, so we also need one of these.</p>
+<p>The <tt class="docutils literal"><span class="pre">zc.async.configure.base</span></tt> function performs all of these
+registrations. If you are working with zc.async without ZCML you might want
+to use it or <tt class="docutils literal"><span class="pre">zc.async.configure.minimal</span></tt> as a convenience.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.configure</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">configure</span><span class="o">.</span><span class="n">base</span><span class="p">()</span>
+</pre></div>
+<p>Now we&#8217;ll set up the database, and make some policy decisions.  As
+the subsequent <tt class="docutils literal"><span class="pre">configuration</span></tt> sections discuss, some helpers are
+available for you to set this up if you&#8217;d like, though it&#8217;s not too
+onerous to do it by hand.</p>
+<p>We&#8217;ll use a test reactor that we can control.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.testing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">Reactor</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">start</span><span class="p">()</span> <span class="c"># this monkeypatches datetime.datetime.now</span>
+</pre></div>
+<p>We need to instantiate the dispatcher with a reactor and a DB.  We
+have the reactor, so here is the DB.  We use a FileStorage rather
+than a MappingStorage variant typical in tests and examples because
+we want MVCC.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">ZODB.FileStorage</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">storage</span> <span class="o">=</span> <span class="n">ZODB</span><span class="o">.</span><span class="n">FileStorage</span><span class="o">.</span><span class="n">FileStorage</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="s">&#39;zc_async.fs&#39;</span><span class="p">,</span> <span class="n">create</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ZODB.DB</span> <span class="kn">import</span> <span class="n">DB</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">db</span> <span class="o">=</span> <span class="n">DB</span><span class="p">(</span><span class="n">storage</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">root</span><span class="p">()</span>
+</pre></div>
+<p>Now let&#8217;s create the mapping of queues, and a single queue.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.queue</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mapping</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">KEY</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">Queues</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span> <span class="o">=</span> <span class="n">mapping</span><span class="p">[</span><span class="s">&#39;&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<p>Now we can instantiate, activate, and perform some reactor work in order
+to let the dispatcher register with the queue.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">Dispatcher</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">reactor</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activate</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">time_flies</span><span class="p">(</span><span class="mf">1</span><span class="p">)</span>
+<span class="go">1</span>
+</pre></div>
+<p>The UUID is set on the dispatcher.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.component</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">UUID</span> <span class="o">=</span> <span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">getUtility</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IUUID</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">UUID</span> <span class="o">==</span> <span class="n">UUID</span>
+<span class="go">True</span>
+</pre></div>
+<p>Here&#8217;s an agent named &#8216;main&#8217;</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.agent</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">agent</span><span class="o">.</span><span class="n">Agent</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="o">.</span><span class="n">dispatchers</span><span class="p">[</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">UUID</span><span class="p">][</span><span class="s">&#39;main&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">agent</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">filter</span> <span class="ow">is</span> <span class="bp">None</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">size</span>
+<span class="go">3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="commit-for-multidatabase" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[2]</a></td><td><p class="first">We commit before we do the next step as a
+good practice, in case the queue is from a different database than
+the root.  See the configuration sections for a discussion about
+why putting the queue in another database might be a good idea.</p>
+<p class="last">Rather than committing the transaction,
+<tt class="docutils literal"><span class="pre">root._p_jar.add(root['demo'])</span></tt> would also accomplish the same
+thing from a multi-database perspective, without a commit.  It was
+not used in the example because the author judged the
+<tt class="docutils literal"><span class="pre">transaction.commit()</span></tt> to be less jarring to the reader.  If you
+are down here reading this footnote, maybe the author was wrong. :-)</p>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="already-passed" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id4">[3]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">send_message</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="mf">2006</span><span class="p">,</span> <span class="mf">8</span><span class="p">,</span> <span class="mf">10</span><span class="p">,</span> <span class="mf">15</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="n">pytz</span><span class="o">.</span><span class="n">UTC</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">imagine this sent a message to another machine</span>
+</pre></div>
+<p class="last">It&#8217;s worth noting that this situation constitutes a small exception
+in the handling of scheduled calls.  Scheduled calls usually get
+preference when jobs are handed out over normal non-scheduled &#8220;as soon as
+possible&#8221; jobs.  However, setting the begin_after date to an earlier
+time puts the job at the end of the (usually) FIFO queue of non-scheduled
+tasks: it is treated exactly as if the date had not been specified.</p>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="already-passed-timed-out" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id5">[4]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">send_message</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="mf">2006</span><span class="p">,</span> <span class="mf">7</span><span class="p">,</span> <span class="mf">21</span><span class="p">,</span> <span class="mf">12</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="n">pytz</span><span class="o">.</span><span class="n">UTC</span><span class="p">),</span>
+<span class="gp">... </span>    <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">hours</span><span class="o">=</span><span class="mf">1</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&lt;zc.twist.Failure zc.async.interfaces.TimeoutError&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">sys</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span><span class="o">.</span><span class="n">printTraceback</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span> <span class="c"># doctest: +NORMALIZE_WHITESPACE</span>
+<span class="gt">Traceback (most recent call last):</span>
+<span class="nc">Failure</span>: <span class="n-Identifier">zc.async.interfaces.TimeoutError:</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="job" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id6">[5]</a></td><td>The Job class can take arguments and keyword arguments
+for the wrapped callable at call time as well, similar to Python
+2.5&#8217;s <cite>partial</cite>.  This will be important when we use the Job as
+a callback.  For this use case, though, realize that the job
+will be called with no arguments, so you must supply all necessary
+arguments for the callable at creation time.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="setliveannotation" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id7">[6]</a></td><td>Here&#8217;s the real rule, which is more complex.
+<em>Do not send non-persistent mutables or a persistent.Persistent
+object without a connection, unless you do not refer to it again in
+the current job.</em></td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="getliveannotation" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id8">[7]</a></td><td>Here&#8217;s the real rule. <em>To prevent surprising
+errors, do not request an annotation that might be a persistent
+object.</em></td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="stats-1" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id9">[8]</a></td><td><p class="first">The dispatcher has a getStatistics method.  It also shows the
+fact that there is an active task.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">pprint</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">getStatistics</span><span class="p">())</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">{&#39;failed&#39;: 2,</span>
+<span class="go"> &#39;longest active&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;longest failed&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;longest successful&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;shortest active&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;shortest failed&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;shortest successful&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;started&#39;: 12,</span>
+<span class="go"> &#39;statistics end&#39;: datetime.datetime(2006, 8, 10, 15, 44, 22, 211),</span>
+<span class="go"> &#39;statistics start&#39;: datetime.datetime(2006, 8, 10, 15, 56, 47, 211),</span>
+<span class="go"> &#39;successful&#39;: 9,</span>
+<span class="go"> &#39;unknown&#39;: 0}</span>
+</pre></div>
+<p>We can also see the active job with <tt class="docutils literal"><span class="pre">getActiveJobIds</span></tt></p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job_ids</span> <span class="o">=</span> <span class="n">dispatcher</span><span class="o">.</span><span class="n">getActiveJobIds</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">job_ids</span><span class="p">)</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">info</span> <span class="o">=</span> <span class="n">dispatcher</span><span class="o">.</span><span class="n">getJobInfo</span><span class="p">(</span><span class="o">*</span><span class="n">job_ids</span><span class="p">[</span><span class="mf">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">info</span><span class="p">)</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">{&#39;agent&#39;: &#39;main&#39;,</span>
+<span class="go"> &#39;call&#39;: &quot;&lt;zc.async.job.Job (oid ..., db &#39;unnamed&#39;) ``zc.async.doctest_test.annotateStatus()``&gt;&quot;,</span>
+<span class="go"> &#39;completed&#39;: None,</span>
+<span class="go"> &#39;failed&#39;: False,</span>
+<span class="go"> &#39;poll id&#39;: ...,</span>
+<span class="go"> &#39;queue&#39;: &#39;&#39;,</span>
+<span class="go"> &#39;quota names&#39;: (),</span>
+<span class="go"> &#39;reassigned&#39;: False,</span>
+<span class="go"> &#39;result&#39;: None,</span>
+<span class="go"> &#39;started&#39;: datetime.datetime(...),</span>
+<span class="go"> &#39;thread&#39;: ...}</span>
+<span class="go"> &gt;&gt;&gt; info[&#39;thread&#39;] is not None</span>
+<span class="go"> True</span>
+<span class="go"> &gt;&gt;&gt; info[&#39;poll id&#39;] is not None</span>
+<span class="go"> True</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="stats-2" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id10">[9]</a></td><td><p class="first">Now the task is done, as the stats reflect.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">getStatistics</span><span class="p">())</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">{&#39;failed&#39;: 2,</span>
+<span class="go"> &#39;longest active&#39;: None,</span>
+<span class="go"> &#39;longest failed&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;longest successful&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;shortest active&#39;: None,</span>
+<span class="go"> &#39;shortest failed&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;shortest successful&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;started&#39;: 12,</span>
+<span class="go"> &#39;statistics end&#39;: datetime.datetime(2006, 8, 10, 15, 44, 22, 211),</span>
+<span class="go"> &#39;statistics start&#39;: datetime.datetime(2006, 8, 10, 15, 56, 52, 211),</span>
+<span class="go"> &#39;successful&#39;: 10,</span>
+<span class="go"> &#39;unknown&#39;: 0}</span>
+</pre></div>
+<p>Note that these statistics eventually rotate out. By default, poll info
+will eventually rotate out after about 30 minutes (400 polls), and job info
+will only keep the most recent 200 stats in-memory. To look in history
+beyond these limits, check your logs.</p>
+<p>The <tt class="docutils literal"><span class="pre">getActiveJobIds</span></tt> list is empty now.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">getActiveJobIds</span><span class="p">()</span>
+<span class="go">[]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">info</span> <span class="o">=</span> <span class="n">dispatcher</span><span class="o">.</span><span class="n">getJobInfo</span><span class="p">(</span><span class="o">*</span><span class="n">job_ids</span><span class="p">[</span><span class="mf">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">info</span><span class="p">)</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">{&#39;agent&#39;: &#39;main&#39;,</span>
+<span class="go"> &#39;call&#39;: &quot;&lt;zc.async.job.Job (oid ..., db &#39;unnamed&#39;) ``zc.async.doctest_test.annotateStatus()``&gt;&quot;,</span>
+<span class="go"> &#39;completed&#39;: datetime.datetime(...),</span>
+<span class="go"> &#39;failed&#39;: False,</span>
+<span class="go"> &#39;poll id&#39;: ...,</span>
+<span class="go"> &#39;queue&#39;: &#39;&#39;,</span>
+<span class="go"> &#39;quota names&#39;: (),</span>
+<span class="go"> &#39;reassigned&#39;: False,</span>
+<span class="go"> &#39;result&#39;: &#39;42&#39;,</span>
+<span class="go"> &#39;started&#39;: datetime.datetime(...),</span>
+<span class="go"> &#39;thread&#39;: ...}</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">info</span><span class="p">[</span><span class="s">&#39;thread&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">info</span><span class="p">[</span><span class="s">&#39;poll id&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span>
+<span class="go">True</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="idea-for-collapsing-jobs" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id11">[10]</a></td><td><p class="first">For instance, here is one approach.  Imagine
+you are queueing the job of indexing documents. If the same document has a
+request to index, the job could simply walk the queue and remove (<tt class="docutils literal"><span class="pre">pull</span></tt>)
+similar tasks, perhaps aggregating any necessary data. Since the jobs are
+serial because of a quota, no other worker should be trying to work on
+those jobs.</p>
+<p class="last">Alternatively, you could use a standalone, non-zc.async queue of things to
+do, and have the zc.async job just pull from that queue.  You might use
+zc.queue for this stand-alone queue, or zc.catalogqueue.</p>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="define-longer-wait" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id12">[11]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">wait_repeatedly</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mf">10</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="n">reactor</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mf">3</span><span class="p">)</span>
+<span class="gp">... </span>        <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">COMPLETED</span><span class="p">:</span>
+<span class="gp">... </span>            <span class="k">break</span>
+<span class="gp">... </span>    <span class="k">else</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&#39;never completed&#39;</span>
+<span class="gp">...</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="extra-serial-tricks" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id13">[12]</a></td><td><p class="first">The <tt class="docutils literal"><span class="pre">serial</span></tt> helper can accept a partial closure
+for a <tt class="docutils literal"><span class="pre">postprocess</span></tt> argument.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">postprocess</span><span class="p">(</span><span class="n">extra_info</span><span class="p">,</span> <span class="o">*</span><span class="n">jobs</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">extra_info</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">result</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">jobs</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">serial</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">job_zero</span><span class="p">,</span> <span class="n">job_one</span><span class="p">,</span> <span class="n">job_two</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">postprocess</span><span class="o">=</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">postprocess</span><span class="p">,</span> <span class="s">&#39;foo&#39;</span><span class="p">)))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">wait_repeatedly</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">TIME OUT...</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">(&#39;foo&#39;, (0, 1, 2))</span>
+</pre></div>
+<p>The list of jobs can be extended by adding them to the args of the job
+returned by <tt class="docutils literal"><span class="pre">serial</span></tt> under these circumstances:</p>
+<ul class="simple">
+<li>before the job has started,</li>
+<li>by an inner job while it is running, or</li>
+<li>by any callback added to any inner job <em>before</em> that inner job has begun.</li>
+</ul>
+<p>Here&#8217;s an example.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">postprocess</span><span class="p">(</span><span class="o">*</span><span class="n">jobs</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="p">[</span><span class="n">j</span><span class="o">.</span><span class="n">result</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">jobs</span><span class="p">]</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">serial</span><span class="p">(</span><span class="n">postprocess</span><span class="o">=</span><span class="n">postprocess</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">second_job</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;second&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">third_job</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;third&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">schedule_third</span><span class="p">(</span><span class="n">main_job</span><span class="p">,</span> <span class="n">ignored</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">main_job</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">third_job</span><span class="p">))</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">first_job</span><span class="p">(</span><span class="n">main_job</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">j</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">second_job</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">main_job</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">j</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">schedule_third</span><span class="p">,</span> <span class="n">main_job</span><span class="p">))</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;first&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">first_job</span><span class="p">,</span> <span class="n">job</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">wait_repeatedly</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">TIME OUT...</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">[&#39;first&#39;, &#39;second&#39;, &#39;third&#39;]</span>
+</pre></div>
+<p class="last">Be warned, these sort of constructs allow infinite loops!</p>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="extra-parallel-tricks" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id14">[13]</a></td><td><p class="first">The <tt class="docutils literal"><span class="pre">parallel</span></tt> helper can accept a partial closure
+for a <tt class="docutils literal"><span class="pre">postprocess</span></tt> argument.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">postprocess</span><span class="p">(</span><span class="n">extra_info</span><span class="p">,</span> <span class="o">*</span><span class="n">jobs</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">extra_info</span><span class="p">,</span> <span class="nb">sum</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">result</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">jobs</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">parallel</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">job_A</span><span class="p">,</span> <span class="n">job_B</span><span class="p">,</span> <span class="n">job_C</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">postprocess</span><span class="o">=</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">postprocess</span><span class="p">,</span> <span class="s">&#39;foo&#39;</span><span class="p">)))</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">wait_repeatedly</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">TIME OUT...</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">(&#39;foo&#39;, 42)</span>
+</pre></div>
+<p>The list of jobs can be extended by adding them to the args of the job
+returned by <tt class="docutils literal"><span class="pre">parallel</span></tt> under these circumstances:</p>
+<ul class="simple">
+<li>before the job has started,</li>
+<li>by an inner job while it is running,</li>
+<li>by any callback added to any inner job <em>before</em> that inner job has begun.</li>
+</ul>
+<p>Here&#8217;s an example.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">postprocess</span><span class="p">(</span><span class="o">*</span><span class="n">jobs</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="p">[</span><span class="n">j</span><span class="o">.</span><span class="n">result</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">jobs</span><span class="p">]</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">parallel</span><span class="p">(</span><span class="n">postprocess</span><span class="o">=</span><span class="n">postprocess</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">second_job</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;second&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">third_job</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;third&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">schedule_third</span><span class="p">(</span><span class="n">main_job</span><span class="p">,</span> <span class="n">ignored</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">main_job</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">third_job</span><span class="p">))</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">first_job</span><span class="p">(</span><span class="n">main_job</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">j</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">second_job</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">main_job</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">j</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">schedule_third</span><span class="p">,</span> <span class="n">main_job</span><span class="p">))</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;first&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">job</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">first_job</span><span class="p">,</span> <span class="n">job</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">wait_repeatedly</span><span class="p">()</span>
+<span class="gp">... </span><span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">TIME OUT...</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">[&#39;first&#39;, &#39;second&#39;, &#39;third&#39;]</span>
+</pre></div>
+<p class="last">As with <tt class="docutils literal"><span class="pre">serial</span></tt>, be warned, these sort of constructs allow infinite
+loops!</p>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="stop-usage-reactor" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id15">[14]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">threads</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">queue_pools</span> <span class="ow">in</span> <span class="n">dispatcher</span><span class="o">.</span><span class="n">queues</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">for</span> <span class="n">pool</span> <span class="ow">in</span> <span class="n">queue_pools</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<span class="gp">... </span>        <span class="n">threads</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">pool</span><span class="o">.</span><span class="n">threads</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_deactivation</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">thread</span> <span class="ow">in</span> <span class="n">threads</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="n">thread</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="mf">3</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">getStatistics</span><span class="p">())</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">{&#39;failed&#39;: 2,</span>
+<span class="go"> &#39;longest active&#39;: None,</span>
+<span class="go"> &#39;longest failed&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;longest successful&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;shortest active&#39;: None,</span>
+<span class="go"> &#39;shortest failed&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;shortest successful&#39;: (..., &#39;unnamed&#39;),</span>
+<span class="go"> &#39;started&#39;: 54,</span>
+<span class="go"> &#39;statistics end&#39;: datetime.datetime(2006, 8, 10, 15, 44, 22, 211),</span>
+<span class="go"> &#39;statistics start&#39;: datetime.datetime(2006, 8, 10, 16, ...),</span>
+<span class="go"> &#39;successful&#39;: 52,</span>
+<span class="go"> &#39;unknown&#39;: 0}</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><img class="logo" src="_static/zc_async.png" alt="Logo"/></p>
+            <h3>Table Of Contents</h3>
+            <ul>
+<li><a class="reference external" href="">Usage</a><ul>
+<li><a class="reference external" href="#overview-and-basics">Overview and Basics</a><ul>
+<li><a class="reference external" href="#obtaining-the-queue">Obtaining the queue</a></li>
+<li><a class="reference external" href="#queue-put"><tt class="docutils literal"><span class="pre">queue.put</span></tt></a></li>
+<li><a class="reference external" href="#queue-pull-and-queue-remove"><tt class="docutils literal"><span class="pre">queue.pull</span></tt> and <tt class="docutils literal"><span class="pre">queue.remove</span></tt></a></li>
+<li><a class="reference external" href="#scheduled-calls">Scheduled Calls</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#jobs">Jobs</a><ul>
+<li><a class="reference external" href="#overview">Overview</a></li>
+<li><a class="reference external" href="#results">Results</a></li>
+<li><a class="reference external" href="#closures">Closures</a></li>
+<li><a class="reference external" href="#failures">Failures</a></li>
+<li><a class="reference external" href="#callbacks">Callbacks</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#advanced-techniques-and-tools">Advanced Techniques and Tools</a><ul>
+<li><a class="reference external" href="#zc-async-local">zc.async.local</a></li>
+<li><a class="reference external" href="#job-quotas">Job Quotas</a></li>
+<li><a class="reference external" href="#returning-jobs">Returning Jobs</a><ul>
+<li><a class="reference external" href="#serialized-work">Serialized Work</a></li>
+<li><a class="reference external" href="#parallelized-work">Parallelized Work</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#returning-deferreds">Returning Deferreds</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#conclusion">Conclusion</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="README.html" title="previous chapter">Introduction</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="README_2.html" title="next chapter">Configuration (without Zope 3)</a></p>
+            <h3>This Page</h3>
+            <ul class="this-page-menu">
+              <li><a href="_sources/README_1.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="README_2.html" title="Configuration (without Zope 3)"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="README.html" title="Introduction"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2008, Gary Poster.
+      Last updated on Sep 21, 2008.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+    </div>
+  </body>
+</html>

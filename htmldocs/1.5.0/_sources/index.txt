@@ -1,0 +1,136 @@
+|async|
+=======
+
+What is it?
+-----------
+
+The |async|_ package provides **an easy-to-use Python tool that schedules
+durable tasks across multiple processes and machines.**
+
+For instance...
+
+- *Web apps*: 
+
+  maybe your web application lets users request the creation of a large PDF, or
+  some other expensive task.
+
+- *Postponed work*:
+
+  maybe you have a job that needs to be done at a certain time, not right now.
+
+- *Parallel processing*: 
+
+  maybe you have a long-running problem that can be made to complete faster by
+  splitting it up into discrete parts, each performed in parallel, across
+  multiple machines.
+
+- *Serial processing*:
+
+  maybe you want to decompose and serialize a job.
+
+High-level features include the following.
+
+- **Easy to use.**
+
+  At its simplest, put a function in a |async| queue and commit a
+  transaction.  See the quick-starts for examples.
+
+- **Flexible configuration, changeable dynamically in production.**
+
+  Add and remove worker processes on the fly, with configurable policy on how
+  to handle interrupts.  Let processes decide how many of which tasks to
+  perform.  Configuration for each process is stored in the database so no
+  restarts are needed and a change can happen for any process from any
+  database client.
+
+- **Reliable and fault tolerant, supporting high availability.**
+
+  Configurable policy lets |async| know when, how, and under what circumstances
+  to retry jobs that encounter problems.  Multiple processes and machines can
+  be available to work on jobs, and a machine or process that suddenly dies
+  lets siblings decide what to do with incomplete jobs, with policy on a
+  per-job basis.  The central ZODB_ database server can be replicated with
+  commercial tools (ZRS_) or open-source tools (RelStorage_ plus, for instance
+  PostgreSQL and slony; or `gocept.zeoraid`_).
+
+- **Good debugging tools.**
+
+  Exceptions generate persistent ``Failure`` objects (from the Twisted_
+  project) for analysis, and verbose log messages.
+
+- **Well-tested.**
+
+  The package has good automated tests and is in use in mission-critical
+  applications for large software deployments.
+
+- **Friendly to testing.**
+
+  The package exposes testing helpers for a variety of circumstances, to make
+  writing automated tests for zc.async-enabled software fairly painless.
+
+While developed as part of the Zope project, zc.async can be used stand-alone,
+as seen in the quick-starts and the majority of the tests.
+
+How does it work?
+-----------------
+
+The system uses the Zope Object Database (ZODB_), a transactional, pickle-based
+Python object database, for communication and coordination among participating
+processes.
+
+|async| participants can each run in their own process, or share a process
+(run in threads) with other code.
+
+The Twisted_ framework supplies some code (failures and reactor
+implementations, primarily) and some concepts to the package.
+
+Quick starts
+------------
+
+These quick-starts can help you get a feel for the package.  **Please note:
+the Grok quickstart is only just begun, and should be regarded mostly
+as a placeholder.**
+
+.. toctree::
+   :maxdepth: 1
+   
+   QUICKSTART_1_VIRTUALENV
+   QUICKSTART_2_GROK
+
+Documentation
+-------------
+
+Contents:
+
+.. toctree::
+   :maxdepth: 2
+
+   README
+   README_1
+   README_2
+   README_3
+   tips
+   CHANGES
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+
+
+
+.. |async| replace:: ``zc.async``
+
+.. _`async`: http://pypi.python.org/pypi/zc.async
+
+.. _Twisted: http://pypi.python.org/pypi/Twisted
+
+.. _ZODB: http://pypi.python.org/pypi/ZODB3
+
+.. _ZRS: http://www.zope.com/products/zope_replication_services.html
+
+.. _RelStorage: http://wiki.zope.org/ZODB/RelStorage
+
+.. _`gocept.zeoraid`: http://pypi.python.org/pypi/gocept.zeoraid

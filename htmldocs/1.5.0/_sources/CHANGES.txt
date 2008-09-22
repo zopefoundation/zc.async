@@ -1,0 +1,355 @@
+=======
+Changes
+=======
+
+1.5.0 (2008-09-21)
+==================
+
+- Documentation improvements.  Converted documentation into Sphinx system.
+
+- Made "other" commit errors for the ``RetryCommonForever`` retry policy have
+  an incremental backoff.  By default, this starts at 0 seconds, and increments
+  by a second to a maximum of 60 seconds.
+
+- Work around a memory leak in zope.i18nmessageid
+  (https://bugs.launchpad.net/zope3/+bug/257657).  The change should be
+  backward-compatible.  It also will produce slightly smaller pickles for Jobs,
+  but that was really not a particular goal.
+
+- Added zc.async.partial.Partial for backward compatibility purposes.
+
+- Fix support for Twisted installed reactor.
+
+- Fix retry behavior for parallel and serial jobs
+
+- Tweaked the uuid.txt to mention zdaemon/supervisor rather than Zope 3.
+
+- Fixed some bugs in egg creation.
+
+- Changed quotas to not use a container that has conflict resolution, since
+  these values should be a strict maximum.
+
+- We only want to claim a job if we are activated.   Make the agent check the
+  ``activated`` and ``dead`` attributes of the parent dispatcher before
+  claiming.
+
+- When activating, also clean out jobs from the dispatcher's agents, just as
+  with deactivating.  This should protect from unusual race conditions in
+  which the dispatcher got a job after being deactivated.
+
+- Change dispatcher to ping before claiming jobs.
+
+- when a ping reactivates a dispatcher, use new method ``reactivate`` rather
+  than ``activate``.  This fires a new ``DispatcherReactivated`` event.
+
+- It's still theoretically possible (for instance, with a
+  badly-behaved long commit that causes a sibling to believe that the
+  process is dead) that an async worker process would be working on a
+  job that it shouldn't be.  For instance, the job has been taken away,
+  and is another process' responsibility now.  Now, whenever a
+  process is about to start any work (especially a retry), it should
+  double-check that the job is registered as being performed by itself.
+  If not, the process should abort the transaction, make an error
+  log, and give up on the job.  Write conflict errors on the job should
+  protect us from the edge cases in this story.
+
+- The dispatcher's ``getActiveJobs`` method now actually tells you information
+  about what's going on in the threads at this instant, rather than what's
+  going on in the database.  The poll's ``active jobs`` keys continues to
+  report what was true *in the database* as of *the last poll*.  This change
+  also affects the ``async jobs`` monitor command.
+
+- The dispatcher method ``getJobInfo`` (and the monitor command ``async job``)
+  now returns the name of the queue for the job, the name of the agent for the
+  job, and whether the job has been, or was reassigned.
+
+- zc.async events inherit from 'zc.component.interfaces.IObjectEvent' instead
+  of a zc.async specific IObjectEvent (thanks to Satchit Haridas).
+
+- Added new monitoring and introspection tools: the ``asyncdb`` zc.monitor
+  command (and, for Python, the code in monitordb.py).  This code provides
+  easy spellings to examine the database's view of what is happening in
+  zc.async.  Because it is the database, it also has a much longer historical
+  view than the ``async`` tools.  The best way to learn about these tools is
+  to read the extensive documentation provided within zc.monitor by
+  using ``asyncdb help`` and ``asyncdb help <TOOL NAME>``.
+
+- Added new preferred way of filtering agent choices: the new ``filter``
+  attribute.  Using filters, rather than "choosers," allows several ``asyncdb``
+  tools to filter pending jobs based on what an agent is willing to do.  It
+  also is a smaller contract, and so a filter requires less code than a chooser
+  in the common case.  On the other hand, using a filter alone doesn't allow
+  the agent to try to *prefer* certain tasks.
+
+- Deprecated agent.chooseFirst.  It is no longer necesary, since an agent
+  without a chooser and with a filter of None has the same behavior.  It is
+  retained for legacy databases.
+
+- Moved deprecated legacy code to new ``legacy`` module.
+
+- Tried to be significantly reduce the chance of spurious timing errors in the
+  tests, at the expense of causing the tests to take longer to run.
+
+- monitoring support depends on the new zc.monitor package, which is not Zope
+  specific.  This means non-Zope 3 apps can take advantage of the monitoring
+  support.  To use, use the [monitor] target; this only adds simplejson,
+  zc.ngi, and zc.monitor to the basic dependencies.
+
+- Make ftesting try to join worker threads, in addition to polling thread,
+  to try to eliminate intermittent test-runner warnings in ftests that a
+  thread is left behind.  If the threads do not end, inform the user what jobs
+  are not letting go.  (thanks to Patrick Strawderman)
+
+1.4.1 (2008-07-30)
+==================
+
+- The new ``serial`` and ``parallel`` helpers did not allow the
+  ``postprocess`` argument to be a partial closure, and were being naughty.
+  Fixed.
+
+- Added tests and demos for advanced features of ``serial`` and ``parallel``.
+
+- More tweaks to the new Quickstart S5 document.
+
+1.4.0 (2008-07-30)
+==================
+
+- Mentioned in ftesting.txt that Zope 3 users should uses zope.app.testing
+  3.4.2 or newer.  Also added a summary section at the beginning of that file.
+
+- Added logging of critical messages to __stdout__ for ``ftesting.setUp``.
+  This can help discovering problems in callback transactions.  This uses a new
+  helper function , ``print_logs``, in zc.async.testing, which is primarily
+  intended to be used for quick and dirty debugging
+
+- Changed testing.wait_for_result and testing.wait_for_annotation to ignore
+  ReadConflictErrors, so they can be used more reliably in tests that use
+  MappingStorage, and other storages without MVCC.
+
+- Support <type 'builtin_function_or_method'> for adaptation to Job.
+
+- Add warning about long commits to tips and tricks.
+
+- After complaining about a polling dispatcher that is deactivated not really
+  being dead in the logs, reactivate.
+
+- No longer use intermediate job to implement the success/failure addCallbacks
+  behavior.  Introduce an ICallbackProxy that can be used for this kind of
+  behavior instead.  This change was driven by two desires.
+
+  - Don't log the intermediate result.  It makes logs harder to read with
+    unnecessary duplications of pertinent data hidden within unimportant
+    differences in the log entries.
+
+  - Don't unnecessarily remember errors in success/failure callbacks.  This can
+    cause unnecessary failures in unusual situations.
+
+  The callback proxy accepts callbacks, which are added to the selected job
+  (success or failure) when the job is selected.
+
+  This change introduces some hopefully trivial incompatibilities, which
+  basically come down to the callback being a proxy, not a real job. Use the
+  convenience properties ``success`` and ``failure`` on the proxy to look at
+  the respective jobs. After the proxy is evaluated, the ``job`` attribute
+  will hold the job that was actually run. ``status`` and ``result`` are
+  conveniences to get the status and result of the selected job.
+
+- Add ``parallel`` and ``serial`` convenience functions to zc.async.job to make
+  it trivial to schedule and process decomposed jobs.
+
+- Add ``start`` convenience function to zc.async.configure to make it trivial
+  to start up a common-case configuration of a zc.async dispatcher.
+
+- No longer use protected attributes of callbacks in ``resumeCallbacks``.
+
+- The "local" code is now moved out from the dispatcher module to
+  threadlocal.  This is to recognize that the local code is now modified
+  outside of the dispatcher module, as described in the next bullet.
+
+- Jobs, when called, are responsible for setting the "local" job value.  This
+  means that zc.async.local.getJob() always returns the currently running job,
+  whether it is a top-level job (as before) or a callback (now).
+
+- Start on S5 QuickStart presentation (see QUICKSTART_1_VIRTUALENV.txt in
+  package).
+
+1.3 (2008-07-04)
+================
+
+- added "Tips and Tricks" and incorporated into the PyPI page.
+
+- added ``setUp`` and ``tearDown`` hooks to Job class so that code can run
+  before and after the main job's code.  The output of ``setUp`` is passed as
+  an argument to ``tearDown`` so that one can pass state to the other, if
+  needed. ``setUp`` is run immediately before the actual job call.
+  ``tearDown`` runs after the transaction is committed, or after it was aborted
+  if there was a failure.   A retry requested by a retry policy causes the
+  methods to be run again.  A failure in ``setUp`` is considered to be a
+  failure in the job, as far as the retryPolicy is concerned (i.e., the job
+  calls the retry policy's ``jobError`` method).  If ``setUp`` fails, the job
+  is not called, bit ``tearDown`` is.  ``tearDown`` will fail with a critical
+  log message, but then processing will continue.
+
+- using the new ``setUp`` and ``tearDown`` hooks, added a Zope 3-specific Job
+  subclass (see zc.async.z3.Job) that remembers the zope.app.component site and
+  interaction participants when instantiated. These can be mutated. Then, when
+  the job is run, the ``setUp`` sets up the site and a security interaction
+  with the old participants, and then the ``tearDown`` tears it all down after
+  the transaction has committed.
+
+- changed retry policy logs to "WARNING" level, from "INFO" level.
+
+- changed many dispatcher errors to "CRITICAL" level from "ERROR" level.
+
+- added "CRITICAL" level logs for "other" commit retries on the
+  RetryCommonForever retry policy.
+
+- added ``remove`` method on queue.
+
+- added helpers for setting up and tearing down Zope 3 functional tests
+  (ftesting.py), and a discussion of how to write Zope 3 functional tests with
+  layers (zope.app.testing.functional) in ftesting.txt.
+
+- remove obsolete retry approach for success/failure callbacks
+  (``completeStartedJobArguments``): it is now handled by retry policies.
+
+- remove odd full-path self-references within the utils module.
+
+- renamed ``zc.async.utils.try_transaction_five_times`` to
+  ``zc.async.utils.try_five_times``.
+
+- doc improvements and fixes (thanks to Zvezdan Petkovic and Gintautas
+  Miliauskas).
+
+- the ``z3`` "extra" distutils target now explicitly depends on zope.security,
+  zope.app.security, and zope.app.component.  This almost certainly does not
+  increase the practical dependencies of the ``z3`` extras, but it does reflect
+  new direct dependencies of the z3-specific modules in the package.
+
+1.2 (2008-06-20)
+================
+
+- made the log for finding an activated agent report the pertinent queue's oid
+  as an unpacked integer, rather than the packed string blob. Use
+  ``ZODB.utils.p64`` to convert back to an oid that the ZODB will recognize.
+
+- Bugfix: in failing a job, the job thought it was in its old agent, and the
+  ``fail`` call failed. This is now tested by the first example in new doctest
+  ``catastrophes.txt``.
+
+- jobs no longer default to a ``begin_by`` value of one hour after the
+  ``begin_after``.  The default now is no limit.
+
+- Made dispatcher much more robust to transaction errors and ZEO
+  ClientDisconnected errors.
+
+- Jobs now use an IRetryPolicy to decide what to do on failure within a job,
+  within the commit of the result, and if the job is interrupted.  This allows
+  support of transactional jobs, transactional jobs that critically must be
+  run to completion, and non-transactional jobs such as communicating with an
+  external service.
+
+- The default retry policy supports retries for ClientDisconnected errors,
+  transaction errors, and interruptions.
+
+- ``job.txt`` has been expanded significantly to show error handling and the
+  use of retry policies. New file ``catastrophes.txt`` shows handling of other
+  catastrophes, such as interruptions to polling.
+
+- job errors now go in the main zc.async.event log rather than in the
+  zc.async.trace log.  Successes continue to go in the trace log.
+
+- callback failures go to the main log as a CRITICAL error, by default.
+
+- ``handleInterrupt`` is the new protocol on jobs to inform them that they were
+  active in a dispatcher that is now dead. They either fail or reschedule,
+  depending on the associated IRetryPolicy for the job. If they reschedule,
+  this should either be a datetime or timedelta. The job calls the agent's
+  ``reschedule`` method. If the timedelta is empty or negative, or the datetime
+  is earlier than now, the job is put back in the queue with a new ``putBack``
+  method on the queue. This is intended to be the opposite of ``claim``. Jobs
+  put in the queue with ``putBack`` will be pulled out before any others.
+
+- convert to using zope.minmax rather than locally defined ``Atom``.
+
+- Fix (and simplify) last_ping code so as to reduce unnecessarily writing the
+  state of the parent DispatcherAgents collection to the database whenever the
+  atom changed.
+
+- Depends on new release of zc.twist (1.3)
+
+- Switched dispatcher's in-memory storage of job and poll information to be per
+  job or per poll, respectively, rather than per time period, so as to try and
+  make memory usage more predictable (for instance, whether a dispatcher is
+  whipping through lots of jobs quickly, or doing work more slowly).
+
+1.1.1 (2008-05-14)
+==================
+
+- more README tweaks.
+
+- converted all reports from the dispatcher, including the monitor output,
+  to use "unpacked" integer oids.  This addresses a problem that simplejson
+  was having in trying to interpret the packed string blobs as unicode, and
+  then making zc.ngi fall over.  To get the object, then, you'll need to
+  use ``ZODB.utils.p64``, like this:
+  ``connection.get(ZODB.utils.p64(INTEGER_OID))``, where ``INTEGER_OID``
+  indicates the integer oid of the object you want to examine.
+
+- added several more tests for the monitor code.
+
+- made the ``async jobs`` monitor command be "up to the minute".  Before, it
+  included all of the new and active jobs from the previous poll; now, it
+  also filters out those that have since completed.
+
+- The ``async job`` command was broken, as revealed by a new monitor test.
+  Fixed, which also means we need a new version of zope.bforest (1.2) for a new
+  feature there.
+
+1.1 (2008-04-24)
+================
+
+- Fired events when the IQueues and IQueue objects are installed by the
+  QueueInstaller (thanks to Fred Drake).
+
+- Dispatchers make agent threads keep their connections, so each connection's
+  object cache use is optimized if the agent regularly requests jobs with
+  the same objects.
+
+- README improved (thanks to Benji York and Sebastian Ware).
+
+- Callbacks are logged at start in the trace log.
+
+- All job results (including callbacks) are logged, including verbose
+  tracebacks if the callback generated a failure.
+
+- Had the ThreadedDispatcherInstaller subscriber stash the thread on the
+  dispatcher, so you can shut down tests like this:
+
+  >>> import zc.async.dispatcher
+  >>> dispatcher = zc.async.dispatcher.get()
+  >>> dispatcher.reactor.callFromThread(dispatcher.reactor.stop)
+  >>> dispatcher.thread.join(3)
+
+- Added ``getQueue`` to zc.async.local as a convenience (it does what you
+  could already do: ``zc.async.local.getJob().queue``).
+
+- Clarified that ``IQueue.pull`` is the approved way of removing scheduled jobs
+  from a queue in interfaces and README.
+
+- reports in the logs of a job's success or failure come before callbacks are
+  started.
+
+- Added a section showing how the basic_dispatcher_policy.zcml worked, which
+  then pushed the former README_3 examples into README_3b.
+
+- Put ZPL everywhere I was supposed to.
+
+- Moved a number of helpful testing functions out of footnotes and into
+  zc.async.testing, both so that zc.async tests don't have to redefine them
+  and client packages can reuse them.
+
+1.0 (2008-04-09)
+================
+
+Initial release.

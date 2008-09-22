@@ -1,0 +1,167 @@
+Zope 3 General Tips and Tricks
+==============================
+
+If you use Zope 3, sometimes you want async jobs that have local sites and
+security set up. ``zc.async.z3.Job`` is a subclass of the main
+``zc.async.job.Job`` implementation that leverages the ``setUp`` and
+``tearDown`` hooks to accomplish this.
+
+It takes the site and the ids of the principals in the security context at its
+instantiation. The values can be mutated. Then when the job runs it sets the
+context up for the job's code, and then tears it down after the work has been
+committed (or aborted, if there was a failure). This can be very convenient for
+jobs that care about site-based component registries, or that care about the
+participants in zope.security interactions.
+
+This is different than a ``try: finally:`` wrapper around your main code that
+does the work, both because it is handled for you transparently, and because
+the context is cleaned up *after* the job's main transaction is committed. This
+means that code that expects a security or site context during a
+pre-transaction hook will be satisfied.
+
+For instance, let's imagine we have a database, and we establish a local site
+and an interaction with a request. [#zope3job_database_setup]_ [#empty_setup]_
+Unfortunately, this is a lot of set up. [#zope3job_setup]_
+
+    >>> import zope.app.component.hooks
+    >>> zope.app.component.hooks.setSite(site)
+    >>> import zope.security.management
+    >>> import zc.async.z3
+    >>> zope.security.management.newInteraction(
+    ...     zc.async.z3.Participation(mickey)) # usually would be a request
+
+Now we create a new job.
+
+    >>> def reportOnContext():
+    ...     print (zope.app.component.hooks.getSite().__class__.__name__,
+    ...             tuple(p.principal.id for p in
+    ...             zope.security.management.getInteraction().participations))
+    >>> j = root['j'] = zc.async.z3.Job(reportOnContext)
+
+The ids of the principals in the participations in the current interaction
+are in a ``participants`` tuple.  The site is on the job's ``site`` attribute.
+
+    >>> j.participants
+    ('mickey',)
+    >>> j.site is site
+    True
+
+If we end the interaction, clear the local site, and run the job, the job we
+used (``reportOnContext`` above) shows that the context was correctly in place.
+
+    >>> zope.security.management.endInteraction()
+    >>> zope.app.component.hooks.setSite(None)
+    >>> transaction.commit()
+    >>> j()
+    ('StubSite', ('mickey',))
+
+However, now the site and interaction are empty.
+
+    >>> print zope.security.management.queryInteraction()
+    None
+    >>> print zope.app.component.hooks.getSite()
+    None
+
+As mentioned, the context will be maintained through the transaction's commit.
+Let's illustrate.
+
+    >>> import zc.async
+    >>> import transaction.interfaces
+    >>> def setTransactionHook():
+    ...     t = transaction.interfaces.ITransactionManager(j).get()
+    ...     t.addBeforeCommitHook(reportOnContext)
+    ...
+    >>> zope.app.component.hooks.setSite(site)
+    >>> zope.security.management.newInteraction(
+    ...     zc.async.z3.Participation(mickey), zc.async.z3.Participation(jack),
+    ...     zc.async.z3.Participation(foo)) # >1 == rare but possible scenario
+    >>> j = root['j'] = zc.async.z3.Job(setTransactionHook)
+    >>> j.participants
+    ('mickey', 'jack', 'foo')
+    >>> j.site is site
+    True
+
+    >>> zope.security.management.endInteraction()
+    >>> zope.app.component.hooks.setSite(None)
+    >>> transaction.commit()
+    >>> j()
+    ('StubSite', ('mickey', 'jack', 'foo'))
+
+    >>> print zope.security.management.queryInteraction()
+    None
+    >>> print zope.app.component.hooks.getSite()
+    None
+
+.. rubric:: Footnotes
+
+.. [#zope3job_database_setup]
+
+    >>> from ZODB.tests.util import DB
+    >>> db = DB()
+    >>> conn = db.open()
+    >>> root = conn.root()
+
+    >>> import zc.async.configure
+    >>> zc.async.configure.base()
+
+    >>> import zc.async.testing
+    >>> zc.async.testing.setUpDatetime() # pins datetimes
+
+.. [#empty_setup] Without a site or an interaction, you can still instantiate
+    and run the job normally.
+
+    >>> import zc.async.z3
+    >>> import operator
+    >>> j = root['j'] = zc.async.z3.Job(operator.mul, 6, 7)
+    >>> j.participants
+    ()
+    >>> print j.site
+    None
+    >>> import transaction
+    >>> transaction.commit()
+    >>> j()
+    42
+
+.. [#zope3job_setup] To do this, we need to set up the zope.app.component
+    hooks, create a site, set up an authentication utility, and create some
+    principals that the authentication utility can return.
+
+    >>> import zope.app.component.hooks
+    >>> zope.app.component.hooks.setHooks()
+
+    >>> import zope.app.component.site
+    >>> import persistent
+    >>> class StubSite(persistent.Persistent,
+    ...                zope.app.component.site.SiteManagerContainer):
+    ...     pass
+    >>> site = root['site'] = StubSite()
+    >>> sm = zope.app.component.site.LocalSiteManager(site)
+    >>> site.setSiteManager(sm)
+
+    >>> import zope.security.interfaces
+    >>> import zope.app.security.interfaces
+    >>> import zope.interface
+    >>> import zope.location
+    >>> class StubPrincipal(object):
+    ...     zope.interface.implements(zope.security.interfaces.IPrincipal)
+    ...     def __init__(self, identifier, title, description=''):
+    ...         self.id = identifier
+    ...         self.title = title
+    ...         self.description = description
+    ...
+    >>> class StubPersistentAuth(persistent.Persistent,
+    ...                          zope.location.Location):
+    ...     zope.interface.implements(
+    ...         zope.app.security.interfaces.IAuthentication)
+    ...     _mapping = {'foo': 'Foo Fighter',
+    ...                 'jack': 'Jack, Giant Killer',
+    ...                 'mickey': 'Mickey Mouse'}
+    ...     def getPrincipal(self, principal_id):
+    ...         return StubPrincipal(principal_id, self._mapping[principal_id])
+    ...
+    >>> auth = StubPersistentAuth()
+    >>> sm.registerUtility(auth, zope.app.security.interfaces.IAuthentication)
+    >>> transaction.commit()
+    >>> mickey = auth.getPrincipal('mickey')
+    >>> jack = auth.getPrincipal('jack')
+    >>> foo = auth.getPrincipal('foo')

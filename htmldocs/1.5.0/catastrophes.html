@@ -1,0 +1,946 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Recovering from Catastrophes &mdash; zc.async v1.5.0 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '',
+          VERSION:     '1.5.0',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: ''
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/interface.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/favicon.ico"/>
+    <link rel="contents" title="Global table of contents" href="contents.html" />
+    <link rel="index" title="Global index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="zc.async v1.5.0 documentation" href="index.html" />
+    <link rel="up" title="Tips and Tricks" href="tips.html" />
+    <link rel="next" title="Zope 3 General Tips and Tricks" href="z3.html" />
+    <link rel="prev" title="Tips and Tricks" href="tips.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="z3.html" title="Zope 3 General Tips and Tricks"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="tips.html" title="Tips and Tricks"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+          <li><a href="tips.html" accesskey="U">Tips and Tricks</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  
+  <div class="section" id="id1">
+<span id="recovering-from-catastrophes"></span><h1 id="id1"><span id="recovering-from-catastrophes"></span>Recovering from Catastrophes<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="what-might-go-wrong">
+<h2 id="what-might-go-wrong">What Might Go Wrong?<a class="headerlink" href="#what-might-go-wrong" title="Permalink to this headline">¶</a></h2>
+<p>Sometimes bad things happen in the course of processing tasks. What might go
+wrong? How does zc.async handle these errors? What are your responsibilities?</p>
+<p>First, what might go wrong?</p>
+<ul class="simple">
+<li>zc.async could have a problem while polling for jobs.  We&#8217;ll call this a
+&#8220;polling exception.&#8221;</li>
+<li>zc.async could have a problem while performing a particular job.  We&#8217;ll call
+this a &#8220;job-related exception.&#8221;</li>
+</ul>
+<p>For the purpose of this discussion, we will omit the possibility that zc.async
+has a bug. That is certainly a possibility, but the recovery story is not
+predictable, and if we knew of a bug, we&#8217;d try to fix it, rather than discuss
+it here!</p>
+<p>We&#8217;ll discuss both polling exceptions and job related exceptions, then drill
+down into some specific scenarios. This will illuminate how your code and
+zc.async&#8217;s can work together to handle them.</p>
+<div class="section" id="polling-exceptions">
+<h3 id="polling-exceptions">Polling Exceptions<a class="headerlink" href="#polling-exceptions" title="Permalink to this headline">¶</a></h3>
+<p>Polling exceptions are, at least in theory, the least of your worries. You
+shouldn&#8217;t have to worry about them; and if you do, it is probably a basic
+configuration problem that you need to address, such as making sure that the
+dispatcher process has access to the needed databases and software; or making
+sure that the dispatcher process is run by a daemonizing software that will
+restart if needed, such as zdaemon (<a class="reference external" href="http://pypi.python.org/pypi/zdaemon">http://pypi.python.org/pypi/zdaemon</a>) or
+supervisor (<a class="reference external" href="http://supervisord.org/">http://supervisord.org/</a>).</p>
+<p>zc.async is largely responsible for dealing with polling exceptions. What does
+it have to handle?</p>
+<ul class="simple">
+<li>The process running the poll ends, perhaps in the middle of a poll.</li>
+<li>zc.async cannot commit a transaction during the poll, for instance because of
+a ConflictError, or because the database is unavailable.</li>
+</ul>
+<p>What needs to happen to handle these problems?</p>
+<div class="section" id="process-ends-while-polling">
+<h4 id="process-ends-while-polling">Process Ends while Polling<a class="headerlink" href="#process-ends-while-polling" title="Permalink to this headline">¶</a></h4>
+<p>If the process ends, your daemonizing front-end (zdaemon, supervisor, etc.)
+needs to restart it. The ZODB will discard incomplete transaction data, if any.</p>
+<p>The only thing a zc.async dispatcher needs to handle is clean up.</p>
+<ul class="simple">
+<li>Ideally it will be able to deactivate its record in the ZODB during the
+process shutdown.</li>
+<li>Instead, if it was a &#8220;hard crash&#8221; that didn&#8217;t allow deactivation, a sibling
+dispatcher will realize that the dispatcher is down and deactivate it.</li>
+<li>Or, finally, if it was a hard crash without a sibling, and the daemon
+restarts a process for the original dispatcher instance, the new process
+needs to realize that the old process is dead, not competing with it.</li>
+</ul>
+</div>
+<div class="section" id="transaction-error-while-polling">
+<h4 id="transaction-error-while-polling">Transaction Error while Polling<a class="headerlink" href="#transaction-error-while-polling" title="Permalink to this headline">¶</a></h4>
+<p>If the poll gets a conflict error, it should simply abort and retry the poll,
+forever, with a small back-off.</p>
+<p>If the database goes away (perhaps the ZEO server goes down for a bit, and the
+ZEO client to which the dispatcher is connected is trying to reconnect) it
+should gracefully try to wait for the database to return, and resume when it
+does.</p>
+<p>Other, more dramatic errors, such as POSKey errors, are generally considered to
+be out of zc.async&#8217;s domain and control. It should ideally continue to try to
+resume as long as the process is alive, in case somehow the situation improves,
+but this may be difficult and the expectations for zc.async&#8217;s recovery are
+lower than with ConflictErrors and ClientDisconnected errors.</p>
+</div>
+<div class="section" id="summary-of-polling-exceptions">
+<h4 id="summary-of-polling-exceptions">Summary of Polling Exceptions<a class="headerlink" href="#summary-of-polling-exceptions" title="Permalink to this headline">¶</a></h4>
+<p>To repeat, then, polling exceptions have two basic scenarios.</p>
+<p>If a dispatcher process ends, it needs to deactivate its record in the ZODB, or
+let another process know to deactivate it.</p>
+<p>If a ZODB.POSException.ConflictError occurs, retry forever with a small
+backoff; or if ZEO.Exceptions.ClientDisconnected occurs, retry forever with a
+small backoff, waiting for the database to come back.</p>
+<p>Most anything else will ideally keep zc.async attempting to re-poll, but it may
+not happen: expectations are lower.</p>
+</div>
+</div>
+<div class="section" id="job-related-exceptions">
+<h3 id="job-related-exceptions">Job-Related Exceptions<a class="headerlink" href="#job-related-exceptions" title="Permalink to this headline">¶</a></h3>
+<p>What about job-related exceptions? Responsibility for handling job-related
+exceptions is shared between your code and zc.async&#8217;s.  What might happen?</p>
+<ul class="simple">
+<li>Your job might fail internally.</li>
+<li>The process running your task ends before completing your task.</li>
+<li>zc.async cannot commit a transaction after your task completes, for instance
+because of a ConflictError, or because the database is unavailable.</li>
+</ul>
+<p>What should occur to handle these problems?</p>
+<div class="section" id="job-fails">
+<h4 id="job-fails">Job Fails<a class="headerlink" href="#job-fails" title="Permalink to this headline">¶</a></h4>
+<p>As discussed elsewhere, if your job fails in your own code, this is mostly
+your responsibility. You should handle possible errors both within your job&#8217;s
+code, and in callbacks, as appropriate.</p>
+<p>The other tool at your disposal for this situation, as with others below, is a
+retry policy. Retry policies let you determine what zc.async should do when
+your job fails. The default retry policy for job failures (as well as commit
+failures, below) is that transaction errors, such as conflict errors, are
+retried five times, and a ZEO ClientDisconnected error is retried forever with
+a backoff. You can customize these.</p>
+<p>Other than supporting these tools, zc.async&#8217;s only other responsibilities are
+to report.</p>
+<p>By default, zc.async will log a failure of a job entered in a queue at the
+&#8220;ERROR&#8221; level in the <tt class="docutils literal"><span class="pre">zc.async.events</span></tt> log, and it will log a failure of a
+callback or other internal job at the &#8220;CRITICAL&#8221; level. This can be controlled
+per-process and per-job, as we&#8217;ll see below. These tracebacks include
+information about the local and global variables for each frame in the stack,
+which can be useful to deduce the problem that occurred.</p>
+<p>zc.async also includes a <tt class="docutils literal"><span class="pre">Failure</span></tt> object on the job as a result, to let you
+react to the problem in a callback, and analyze it later.  This is discussed in
+detail in other documents.</p>
+</div>
+<div class="section" id="process-ends-during-job">
+<h4 id="process-ends-during-job">Process Ends During Job<a class="headerlink" href="#process-ends-during-job" title="Permalink to this headline">¶</a></h4>
+<p>If a process ends while it is performing a job, that is similar, in large part,
+to the possibility of the process ending the polling job: we need to restart
+the process, and realize that we had started the job. But should we restart the
+job, or abort it?</p>
+<p>Answering this question is a matter of policy, and requires knowing what each
+job does.</p>
+<p>Generally, if a job is fully transactional, such as writing something to the
+ZODB, and the job has not timed out yet, you&#8217;ll want to restart it. You might
+want to restart some reasonably large number of times, and then suspect that,
+since you can&#8217;t seem to finish the job, maybe the job is causing the process to
+die, and you should abort.  Or perhaps you want to restart for ever.</p>
+<p>If the job isn&#8217;t transactional, such as communicating with an external service,
+you might want to abort the job, and set up some callbacks to handle the
+fallout.</p>
+<p>As we&#8217;ll see below, zc.async defaults to guessing that jobs placed directly in
+a queue are transactional, and can be tried up to ten times; and that jobs
+used as callbacks are also transactional, and can be tried until they
+succeed.  The defaults can be changed and the behavior of an individual
+job can be changed.</p>
+<p>These settings are controlled with a RetryPolicy, discussed below.</p>
+</div>
+<div class="section" id="transaction-error-during-job">
+<h4 id="transaction-error-during-job">Transaction Error During Job<a class="headerlink" href="#transaction-error-during-job" title="Permalink to this headline">¶</a></h4>
+<p>Handling transaction errors after processing a job is also similar to the
+handling of transaction errors for polling exceptions. ConflictErrors and
+ClientDisconnected errors should often cause jobs to be aborted and restarted.
+However, if the job is not transactional, such as communicating with an
+external service, a simple abort and retry may be hazardous. Also, many jobs
+should be stopped if they retry on ConflictError more than some number of
+times&#8211;a heuristic bellweather&#8211;with the logic that they may be simply doing
+something too problematic, and they are blocking other tasks from starting. But
+other jobs should be retried until they complete.</p>
+<p>As mentioned above, zc.async defaults to guessing that jobs are transactional.
+Client Disconnected errors are retried forever, with a small backoff. Jobs
+placed in a queue retry transaction errors, such as ConflictErrors, four times,
+while callbacks retry them forever. The defaults can be changed and the
+behavior of an individual job can be changed, using the RetryPolicy described
+below.</p>
+</div>
+<div class="section" id="summary-of-job-related-exceptions">
+<h4 id="summary-of-job-related-exceptions">Summary of Job-Related Exceptions<a class="headerlink" href="#summary-of-job-related-exceptions" title="Permalink to this headline">¶</a></h4>
+<p>If an exception occurs in your job&#8217;s code, zc.async will log it as an ERROR
+if a main queue job and as CRITICAL if it is a callback; and it will make the
+result of the call a <tt class="docutils literal"><span class="pre">Failure</span></tt> with error information, as shown elsewhere.
+Everything else is your responsibility, to be handled with try:except or
+try:finally blocks in your code, callbacks, or custom RetryPolicies.</p>
+<p>Process death, conflict errors, and <tt class="docutils literal"><span class="pre">ClientDisconnected</span></tt> errors all may need
+to be handled differently for different jobs. zc.async has a default policy for
+jobs placed in a queue, and for callback jobs. The default policy, a
+RetryPolicy, can be changed and can be set explicitly per-job.</p>
+</div>
+</div>
+<div class="section" id="your-responsibilities">
+<h3 id="your-responsibilities">Your Responsibilities<a class="headerlink" href="#your-responsibilities" title="Permalink to this headline">¶</a></h3>
+<p>As the author of a zc.async job, your responsibilities, then, are to handle
+your own exceptions; and to make sure that the retry policy for each job is
+appropriate.  This is controlled with an IRetryPolicy, as shown below.</p>
+<p>As someone configuring a running dispatcher, you need to make sure that you
+give the dispatcher the necessary access to databases and software to perform
+your jobs, and you need to review (and rotate!) your logs.</p>
+</div>
+<div class="section" id="zc-async-s-responsibilities">
+<h3 id="zc-async-s-responsibilities">zc.async&#8217;s Responsibilities<a class="headerlink" href="#zc-async-s-responsibilities" title="Permalink to this headline">¶</a></h3>
+<p>zc.async needs to have polling robust in the face of restarts, ConflictErrors
+and ClientDisconnected errors. It needs to give your code a chance to decide
+what to do in these circumstances, and log your errors.</p>
+</div>
+<div class="section" id="retry-policies">
+<h3 id="retry-policies">Retry Policies<a class="headerlink" href="#retry-policies" title="Permalink to this headline">¶</a></h3>
+<p>The rest of the document uses scenarios to illustrate how zc.async handles
+errors, and how you might want to configure retry policies.</p>
+<p>What is a retry policy?  It is used in three circumstances.</p>
+<ul class="simple">
+<li>When the job starts but fails to complete because the system is interrupted,
+the job will try to call <tt class="docutils literal"><span class="pre">retry_policy.interrupted()</span></tt> to get a boolean as
+to whether the job should be retried.</li>
+<li>When the code the job ran fails, the job will try to call
+<tt class="docutils literal"><span class="pre">retry_policy.jobError(failure,</span> <span class="pre">data_cache)</span></tt> to get a boolean as to whether
+the job should be retried.</li>
+<li>When the commit fails, the job will try to call
+<tt class="docutils literal"><span class="pre">retry_policy.commitError(failure,</span> <span class="pre">data_cache)</span></tt> to get a boolean as to
+whether the job should be retried.</li>
+</ul>
+<p>Why does this need to be a policy?  Can&#8217;t it be a simpler arrangement?</p>
+<p>The heart of the problem is that different jobs need different error
+resolutions.</p>
+<p>In some cases, jobs may not be fully transactional.  For instance, the job
+may be communicating with an external system, such as a credit card system.
+The retry policy here should typically be &#8220;never&#8221;: perhaps a callback should be
+in charge of determining what to do next.</p>
+<p>If a job is fully transactional, it can be retried.  But even then the desired
+behavior may differ.</p>
+<ul class="simple">
+<li>In typical cases, some errors should simply cause a failure, while other
+errors, such as database conflict errors, should cause a limited number of
+retries.</li>
+<li>In some jobs, conflict errors should be retried forever, because the job must
+be run to completion or else the system should fall over. Callbacks that try
+to handle errors themselves may take this approach, for instance.</li>
+</ul>
+<p>zc.async currently ships with three retry policies.</p>
+<ol class="arabic simple">
+<li>The default, appropriate for most fully transactional jobs, is the
+zc.async.job.RetryCommonFourTimes.  This retries ZEO disconnects forever;
+and interrupts and transaction errors such as conflicts a set number of
+times.</li>
+<li>The other available (pre-written) option for transactional jobs is
+zc.async.job.RetryCommonForever. Callbacks will get this policy by
+default.  This retries ZEO disconnects, transaction errors such as conflict
+errors, interrupts, and <em>anything</em> that happens during the job&#8217;s commit,
+forever.</li>
+<li>The last retry policy is zc.async.job.NeverRetry.  This is appropriate for
+non-transactional jobs. You&#8217;ll still typically need to handle errors in
+your callbacks.</li>
+</ol>
+<p>If you look at these, you will see that it is trivial to write your own, if
+desired.</p>
+</div>
+<div class="section" id="scenarios">
+<h3 id="scenarios">Scenarios<a class="headerlink" href="#scenarios" title="Permalink to this headline">¶</a></h3>
+<p>We&#8217;ll examine polling error scenarios and job error scenarios.</p>
+<ul class="simple">
+<li>Polling errors<ul>
+<li>The system is polling and gets a ConflictError.</li>
+<li>The system is polling and gets a ClientDisconnected error.</li>
+</ul>
+</li>
+<li>Job errors<ul>
+<li>A worker process is working on a job with the default retry policy. The
+process dies gracefully and restarts.</li>
+<li>Like the previous scenario, a worker process is working on a job with the
+default retry policy. The process crashes hard (does not die gracefully)
+and restarts.</li>
+<li>Like the previous scenario, a worker process is working on a job with the
+default retry policy. The process crashes hard (does not die gracefully)
+and a sibling notices and takes over.</li>
+<li>A worker process is working on a job with the default retry policy and gets
+an error during the job or the commit.</li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="scenarios-polling-errors">
+<h2 id="scenarios-polling-errors">Scenarios: Polling Errors<a class="headerlink" href="#scenarios-polling-errors" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="conflicterror">
+<h3 id="conflicterror">ConflictError<a class="headerlink" href="#conflicterror" title="Permalink to this headline">¶</a></h3>
+<p>A common place for a conflict error is with two dispatchers trying to claim the
+same job from the queue.  This example will mimic that situation.</p>
+<p>Imagine we have a full set up with a dispatcher, agent, and queue. <a class="footnote-reference" href="#setup" id="id2">[1]</a>
+We&#8217;ll actually replace the agent&#8217;s chooser with one that behaves badly: it
+blocks, waiting for our lock.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">threading</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock1</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock2</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock1</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock2</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">acquireLockAndChooseFirst</span><span class="p">(</span><span class="n">agent</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">res</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="k">if</span> <span class="n">res</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="n">lock2</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+<span class="gp">... </span>        <span class="n">lock1</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">res</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.instanceuuid</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.testing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">pprint</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">,</span> <span class="mf">0</span><span class="p">))</span>
+<span class="go">{&#39;&#39;: {&#39;main&#39;: {&#39;active jobs&#39;: [],</span>
+<span class="go">               &#39;error&#39;: None,</span>
+<span class="go">               &#39;len&#39;: 0,</span>
+<span class="go">               &#39;new jobs&#39;: [],</span>
+<span class="go">               &#39;size&#39;: 3}}}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queues</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">KEY</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span> <span class="o">=</span> <span class="n">queues</span><span class="p">[</span><span class="s">&#39;&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">dispatchers</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">instanceuuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span> <span class="o">=</span> <span class="n">da</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">chooser</span> <span class="o">=</span> <span class="n">acquireLockAndChooseFirst</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">returnSomething</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">42</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">returnSomething</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<p>Now, when the agent tries to get our job, we&#8217;ll start and commit another
+transaction that removes it from the queue.  This will generate a conflict
+error for the poll&#8217;s thread and transaction, because it cannot also remove the
+same job.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">lock2</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">pull</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock1</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+</pre></div>
+<p>However, the ConflictError is handled, and polling continues.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.agent</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">chooser</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">agent</span><span class="o">.</span><span class="n">chooseFirst</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.testing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">))</span>
+<span class="go">{&#39;&#39;: {&#39;main&#39;: {&#39;active jobs&#39;: [],</span>
+<span class="go">               &#39;error&#39;: None,</span>
+<span class="go">               &#39;len&#39;: 0,</span>
+<span class="go">               &#39;new jobs&#39;: [],</span>
+<span class="go">               &#39;size&#39;: 3}}}</span>
+</pre></div>
+<p>And if we put the job back, it will be performed.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">is</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">42</span>
+</pre></div>
+</div>
+<div class="section" id="client-disconnected">
+<h3 id="client-disconnected">Client Disconnected<a class="headerlink" href="#client-disconnected" title="Permalink to this headline">¶</a></h3>
+<p>The story is very similar if the ZEO connection goes away for a while.  We&#8217;ll
+mimic a ZEO ClientDisconnected error by monkeypatching
+transaction.TranasctionManager.commit.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">lock1</span><span class="o">.</span><span class="n">locked</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock2</span><span class="o">.</span><span class="n">locked</span><span class="p">()</span>
+<span class="go">True</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">chooser</span> <span class="o">=</span> <span class="n">acquireLockAndChooseFirst</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">returnSomething</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">lock2</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">ZEO.Exceptions</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">commit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">raise</span> <span class="n">ZEO</span><span class="o">.</span><span class="n">Exceptions</span><span class="o">.</span><span class="n">ClientDisconnected</span><span class="p">()</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">old_commit</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">TransactionManager</span><span class="o">.</span><span class="n">commit</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">TransactionManager</span><span class="o">.</span><span class="n">commit</span> <span class="o">=</span> <span class="n">commit</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">time</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sleep_requests</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">sleep</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">sleep_requests</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">old_sleep</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">sleep</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">time</span><span class="o">.</span><span class="n">sleep</span> <span class="o">=</span> <span class="n">sleep</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">chooser</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">agent</span><span class="o">.</span><span class="n">chooseFirst</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock1</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">info</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)[</span><span class="s">&#39;&#39;</span><span class="p">][</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s">&#39;active jobs&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">info</span><span class="p">[</span><span class="s">&#39;new jobs&#39;</span><span class="p">])</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">TransactionManager</span><span class="o">.</span><span class="n">commit</span> <span class="o">=</span> <span class="n">old_commit</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">42</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">sleep_requests</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</blockquote>
+<p>Here&#8217;s another variant that mimics being unable to read the storage during a
+poll, and then recuperating.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">error_raised</span> <span class="o">=</span> <span class="bp">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">raiseDisconnectedThenChooseFirst</span><span class="p">(</span><span class="n">agent</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">global</span> <span class="n">error_raised</span>
+<span class="gp">... </span>    <span class="k">if</span> <span class="ow">not</span> <span class="n">error_raised</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="n">error_raised</span> <span class="o">=</span> <span class="bp">True</span>
+<span class="gp">... </span>        <span class="k">raise</span> <span class="n">ZEO</span><span class="o">.</span><span class="n">Exceptions</span><span class="o">.</span><span class="n">ClientDisconnected</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="n">agent</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">claim</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">agent</span><span class="o">.</span><span class="n">chooser</span> <span class="o">=</span> <span class="n">raiseDisconnectedThenChooseFirst</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">returnSomething</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="mf">42</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">returnSomething</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">))</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">{&#39;&#39;: {&#39;main&#39;: {&#39;active jobs&#39;: [],</span>
+<span class="go">               &#39;error&#39;: &lt;zc.twist.Failure ...ClientDisconnected&gt;,</span>
+<span class="go">               &#39;len&#39;: 0,</span>
+<span class="go">               &#39;new jobs&#39;: [],</span>
+<span class="go">               &#39;size&#39;: 3}}}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">42</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="scenarios-job-related-errors">
+<h2 id="scenarios-job-related-errors">Scenarios: Job-Related Errors<a class="headerlink" href="#scenarios-job-related-errors" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="graceful-shutdown-during-job">
+<h3 id="graceful-shutdown-during-job">Graceful Shutdown During Job<a class="headerlink" href="#graceful-shutdown-during-job" title="Permalink to this headline">¶</a></h3>
+<p>First let&#8217;s consider how a failed job with a callback or two is handled when
+the dispatcher dies.</p>
+<p>Here we start a job.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.component</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.testing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.dispatcher</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">KEY</span><span class="p">][</span><span class="s">&#39;&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lock</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">fail_flag</span> <span class="o">=</span> <span class="bp">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">wait_for_me</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">global</span> <span class="n">fail_flag</span>
+<span class="gp">... </span>    <span class="k">if</span> <span class="n">fail_flag</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="n">fail_flag</span> <span class="o">=</span> <span class="bp">False</span>
+<span class="gp">... </span>        <span class="n">lock</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="gp">... </span>        <span class="n">lock</span><span class="o">.</span><span class="n">release</span><span class="p">()</span> <span class="c"># so we can use the same lock again later</span>
+<span class="gp">... </span>        <span class="k">raise</span> <span class="ne">SystemExit</span><span class="p">()</span> <span class="c"># this will cause the worker thread to exit</span>
+<span class="gp">... </span>    <span class="k">else</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="k">return</span> <span class="mf">42</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">handle_result</span><span class="p">(</span><span class="n">result</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">return</span> <span class="s">&#39;I got result </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">result</span><span class="p">,)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">wait_for_me</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span><span class="n">handle_result</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">poll</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_start</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+</pre></div>
+</blockquote>
+<p>In this scenario, <tt class="docutils literal"><span class="pre">wait_for_me</span></tt> is a job that, the first time it is run, will
+&#8220;unexpectedly&#8221; be lost while the dispatcher stops working. <tt class="docutils literal"><span class="pre">handle_result</span></tt>
+will simply show us that callbacks will be called successfully.</p>
+<p>The job has started. Now, the dispatcher suddenly dies without the thread
+performing <tt class="docutils literal"><span class="pre">wait_for_me</span></tt> getting a chance to finish. For our first example,
+let&#8217;s give the dispatcher a graceful exit. The dispatcher gets a chance to
+clean up its dispatcher agents, and job.handleInterrupt() goes into the queue.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">callFromThread</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">stop</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_deactivation</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">ACTIVE</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">interrupt_job</span> <span class="o">=</span> <span class="n">queue</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">interrupt_job</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">&lt;zc.async.job.Job ... ``zc.async.job.Job ... :handleInterrupt()``&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="o">.</span><span class="n">callable</span> <span class="c"># doctest: +ELLIPSIS</span>
+<span class="go">&lt;bound method Job.handleInterrupt of &lt;...Job ... ``...wait_for_me()``&gt;&gt;</span>
+</pre></div>
+<p>Now when the process starts back up again, <tt class="docutils literal"><span class="pre">handleInterrupt</span></tt> checks with the
+default retry policy as to what should be done. It requests that the job be
+retried. It&#8217;s put back in the queue, and it is called again normally.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">old_dispatcher</span> <span class="o">=</span> <span class="n">dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">subscribers</span><span class="o">.</span><span class="n">ThreadedDispatcherInstaller</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">poll_interval</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">DatabaseOpened</span><span class="p">(</span><span class="n">db</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">interrupt_job</span><span class="p">)</span>
+</pre></div>
+<p>Now we need to wait for the job.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">42</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">COMPLETED</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;I got result 42&#39;</span>
+</pre></div>
+<p>The job now has a retry policy with some currently non-interface values that
+are still worth showing here.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">policy</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">getRetryPolicy</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">policy</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;interruptions&#39;</span><span class="p">)</span>
+<span class="go">1</span>
+</pre></div>
+<p>This shows that the policy registered one interruption. <a class="footnote-reference" href="#cleanup1" id="id3">[2]</a></p>
+</div>
+<div class="section" id="hard-crash-during-job">
+<h3 id="hard-crash-during-job">Hard Crash During Job<a class="headerlink" href="#hard-crash-during-job" title="Permalink to this headline">¶</a></h3>
+<p>Our next catastrophe only changes one aspect to the previous one: the
+dispatcher does not stop gracefully, and does not have a chance to clean up its
+active jobs.  It is a &#8220;hard&#8221; crash.</p>
+<p>To show this, we will start a job, simulate the dispatcher dying &#8220;hard,&#8221; and
+restart it so it clean up.</p>
+<p>So, first we start a long-running job in the dispatcher.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">lock</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">fail_flag</span> <span class="o">=</span> <span class="bp">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">wait_for_me</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span><span class="n">handle_result</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">poll</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_start</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+</pre></div>
+<p>Now we&#8217;ll &#8220;crash&#8221; the dispatcher.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activated</span> <span class="o">=</span> <span class="bp">False</span> <span class="c"># this will make polling stop, without</span>
+<span class="gp">... </span>                             <span class="c"># cleanup</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">callFromThread</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">crash</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">thread</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="mf">3</span><span class="p">)</span>
+</pre></div>
+<p>Hard crashes can be detected because the dispatchers write datetimes to the
+database every few polls. A given dispatcher instance does this for each queue
+on a <tt class="docutils literal"><span class="pre">DispatcherAgents</span></tt> object available in <tt class="docutils literal"><span class="pre">queue.dispatchers[UUID]</span></tt>,
+where <tt class="docutils literal"><span class="pre">UUID</span></tt> is the uuid of that dispatcher.</p>
+<p>The <tt class="docutils literal"><span class="pre">DispatcherAgents</span></tt> object has four pertinent attributes:
+<tt class="docutils literal"><span class="pre">ping_interval</span></tt>, <tt class="docutils literal"><span class="pre">ping_death_interval</span></tt>, <tt class="docutils literal"><span class="pre">last_ping.value</span></tt>, and <tt class="docutils literal"><span class="pre">dead</span></tt>.
+About every <tt class="docutils literal"><span class="pre">ping_interval</span></tt> (a <tt class="docutils literal"><span class="pre">datetime.timedelta</span></tt>), the dispatcher is
+supposed to write a <tt class="docutils literal"><span class="pre">datetime</span></tt> to <tt class="docutils literal"><span class="pre">last_ping.value</span></tt>. If the
+<tt class="docutils literal"><span class="pre">last_ping.value</span></tt> plus the <tt class="docutils literal"><span class="pre">ping_death_interval</span></tt> (also a <tt class="docutils literal"><span class="pre">timedelta</span></tt>) is
+older than now, the dispatcher is considered to be <tt class="docutils literal"><span class="pre">dead</span></tt>, and old jobs
+should be cleaned up.</p>
+<p>The <tt class="docutils literal"><span class="pre">ping_interval</span></tt> defaults to 30 seconds, and the <tt class="docutils literal"><span class="pre">ping_death_interval</span></tt>
+defaults to 60 seconds. Generally, the <tt class="docutils literal"><span class="pre">ping_death_interval</span></tt> should be at
+least two or three poll intervals (<tt class="docutils literal"><span class="pre">zc.async.dispatcher.get().poll_interval</span></tt>)
+greater than the <tt class="docutils literal"><span class="pre">ping_interval</span></tt>.</p>
+<p>The ping hasn&#8217;t timed out yet, so the dispatcher isn&#8217;t considered dead yet.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.instanceuuid</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">dispatchers</span><span class="p">[</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">instanceuuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">ping_death_interval</span>
+<span class="go">datetime.timedelta(0, 60)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">ping_interval</span>
+<span class="go">datetime.timedelta(0, 30)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">dead</span>
+<span class="go">False</span>
+</pre></div>
+<p>Therefore, the job is still sitting around in the dispatcher&#8217;s pile in the
+database (the <tt class="docutils literal"><span class="pre">main</span></tt> key is for the <tt class="docutils literal"><span class="pre">main</span></tt> agent installed in this
+dispatcher in the set up for these examples).</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">in</span> <span class="n">da</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">ACTIVE</span>
+<span class="go">True</span>
+</pre></div>
+<p>Let&#8217;s start our dispatcher up again.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">old_dispatcher</span> <span class="o">=</span> <span class="n">dispatcher</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">subscribers</span><span class="o">.</span><span class="n">ThreadedDispatcherInstaller</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">poll_interval</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">DatabaseOpened</span><span class="p">(</span><span class="n">db</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+</pre></div>
+<p>Initially, it&#8217;s going to be a bit confused, because it sees that the
+DispatcherAgents object is <tt class="docutils literal"><span class="pre">activated</span></tt>, and not <tt class="docutils literal"><span class="pre">dead</span></tt>. It can&#8217;t tell if
+there&#8217;s another process using its same UUID, or if it is looking at the result
+of a hard crash.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">seconds</span><span class="o">=</span><span class="mf">1</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">AssertionError: job never completed</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">,</span> <span class="n">seconds</span><span class="o">=</span><span class="mf">1</span><span class="p">)</span>
+<span class="go">{&#39;&#39;: None}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">reversed</span><span class="p">(</span><span class="n">event_logs</span><span class="o">.</span><span class="n">records</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">levelname</span> <span class="o">==</span> <span class="s">&#39;ERROR&#39;</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="k">break</span>
+<span class="gp">... </span><span class="k">else</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&#39;did not find log&#39;</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">r</span><span class="o">.</span><span class="n">getMessage</span><span class="p">()</span> <span class="c"># doctest: +ELLIPSIS +NORMALIZE_WHITESPACE</span>
+<span class="go">UUID ... already activated in queue  (oid 4): another process?</span>
+<span class="go">(To stop poll attempts in this process, set</span>
+<span class="go">``zc.async.dispatcher.get().activated = False``.  To stop polls</span>
+<span class="go">permanently, don&#39;t start a zc.async.dispatcher!)</span>
+</pre></div>
+<p>To speed up the realization of our dispatcher that the previous activation is
+<tt class="docutils literal"><span class="pre">dead</span></tt>, we&#8217;ll set the ping_death_interval to just one second.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">dead</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">in</span> <span class="n">da</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+<span class="go">0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">datetime</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">ping_death_interval</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mf">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_death</span><span class="p">(</span><span class="n">da</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+<p>After the next poll, the dispatcher will have cleaned up its old tasks in the
+same way we saw in the previous example. The job&#8217;s <tt class="docutils literal"><span class="pre">handleInterrupt</span></tt> method
+will be called, and the job will be put back in the queue to be retried. The
+DispatcherAgents object is no longer dead, because it is tied to the new
+instance of the dispatcher.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">poll</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">ping_death_interval</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mf">60</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">zc.async.testing</span> <span class="kn">import</span> <span class="n">time_sleep</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">wait_for_pending</span><span class="p">(</span><span class="n">job</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mf">600</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">... </span>        <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="ow">in</span> <span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">PENDING</span><span class="p">):</span>
+<span class="gp">... </span>            <span class="k">break</span>
+<span class="gp">... </span>        <span class="n">time_sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="k">else</span><span class="p">:</span>
+<span class="gp">... </span>        <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&#39;job never pending: &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">wait_for_pending</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">in</span> <span class="n">da</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">dead</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">job</span>
+<span class="go">True</span>
+</pre></div>
+<p>Now we need to wait for the job.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">42</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">COMPLETED</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;I got result 42&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">policy</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">getRetryPolicy</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">policy</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;interruptions&#39;</span><span class="p">)</span>
+<span class="go">1</span>
+</pre></div>
+<p>The dispatcher cleaned up its own &#8220;hard&#8221; crash.</p>
+<p><a class="footnote-reference" href="#cleanup1" id="id4">[2]</a></p>
+</div>
+<div class="section" id="hard-crash-during-job-with-sibling-recovery">
+<span id="hard-crash-with-sibling-recovery"></span><h3 id="hard-crash-during-job-with-sibling-recovery"><span id="hard-crash-with-sibling-recovery"></span>Hard Crash During Job with Sibling Recovery<a class="headerlink" href="#hard-crash-during-job-with-sibling-recovery" title="Permalink to this headline">¶</a></h3>
+<p>Our next catastrophe is the same as the one before, except, after one
+dispatcher&#8217;s hard crash, another dispatcher is around to clean up the dead
+jobs.</p>
+<p>To show this, we will start a job, start a second dispatcher, simulate the
+first dispatcher dying &#8220;hard,&#8221; and watch the second dispatcher clean up
+after the first one.</p>
+<p>So, first we start a long-running job in the dispatcher as before.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">lock</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">fail_flag</span> <span class="o">=</span> <span class="bp">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">wait_for_me</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">addCallback</span><span class="p">(</span><span class="n">handle_result</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">poll</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_start</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">seconds</span><span class="o">=</span><span class="mf">30</span><span class="p">)</span> <span class="c"># XXX not sure why so long</span>
+</pre></div>
+<p>Now we&#8217;ll start up an alternate dispatcher.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">uuid</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">alt_uuid</span> <span class="o">=</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid1</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">subscribers</span><span class="o">.</span><span class="n">ThreadedDispatcherInstaller</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">poll_interval</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">uuid</span><span class="o">=</span><span class="n">alt_uuid</span><span class="p">)(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">DatabaseOpened</span><span class="p">(</span><span class="n">db</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">alt_dispatcher</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">alt_uuid</span><span class="p">)</span>
+</pre></div>
+<p>Now we&#8217;ll &#8220;crash&#8221; the dispatcher.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">activated</span> <span class="o">=</span> <span class="bp">False</span> <span class="c"># this will make polling stop, without</span>
+<span class="gp">... </span>                             <span class="c"># cleanup</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">callFromThread</span><span class="p">(</span><span class="n">dispatcher</span><span class="o">.</span><span class="n">reactor</span><span class="o">.</span><span class="n">crash</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">thread</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="mf">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispatcher</span><span class="o">.</span><span class="n">thread</span><span class="o">.</span><span class="n">isAlive</span><span class="p">()</span>
+<span class="go">False</span>
+</pre></div>
+<p>As discussed in the previous example, the polling hasn&#8217;t timed out yet, so the
+alternate dispatcher can&#8217;t know that the first one is dead. Therefore, the job
+is still sitting around in the old dispatcher&#8217;s pile in the database.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">dead</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">ACTIVE</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">alt_poll_1</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">alt_dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">in</span> <span class="n">da</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">dead</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">alt_poll_2</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">alt_dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">in</span> <span class="n">da</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">dead</span>
+<span class="go">False</span>
+</pre></div>
+<p>Above, the ping_death_interval was returned to the default of 60 seconds. To
+speed up the realization of our second dispatcher that the first one is dead,
+we&#8217;ll set the ping_death_interval back down to just one second.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">ping_death_interval</span>
+<span class="go">datetime.timedelta(0, 60)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">datetime</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">ping_death_interval</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mf">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_death</span><span class="p">(</span><span class="n">da</span><span class="p">)</span>
+</pre></div>
+<p>After the second dispatcher gets a poll&#8211;a chance to notice&#8211;it will have
+cleaned up the first dispatcher&#8217;s old tasks in the same way we saw in the
+previous example.  The job&#8217;s <tt class="docutils literal"><span class="pre">handleInterrupt</span></tt> method will be called, which
+in this case will put it back in the queue to be claimed and performed.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">alt_poll_3</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">get_poll</span><span class="p">(</span><span class="n">alt_dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">job</span> <span class="ow">in</span> <span class="n">da</span><span class="p">[</span><span class="s">&#39;main&#39;</span><span class="p">]</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">activated</span><span class="p">)</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">da</span><span class="o">.</span><span class="n">dead</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">wait_for_pending</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">queue</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">job</span>
+<span class="go">True</span>
+</pre></div>
+<p>Now we need to wait for the job.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">wait_for_result</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<span class="go">42</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">COMPLETED</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">callback_job</span><span class="o">.</span><span class="n">result</span>
+<span class="go">&#39;I got result 42&#39;</span>
+</pre></div>
+<p>The sibling, then, was able to clean up the mess left by the &#8220;hard&#8221; crash of
+the first dispatcher.</p>
+<p><a class="footnote-reference" href="#cleanup2" id="id5">[3]</a></p>
+</div>
+<div class="section" id="other-job-related-errors">
+<h3 id="other-job-related-errors">Other Job-Related Errors<a class="headerlink" href="#other-job-related-errors" title="Permalink to this headline">¶</a></h3>
+<p>Other problems&#8211;errors when performing or committing jobs&#8211;are handled within
+jobs, getting the decisions from retry policies as described above.  These
+are demonstrated in the job.txt document.</p>
+<p class="rubric">Footnotes</p>
+<table class="docutils footnote" frame="void" id="setup" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[1]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">ZODB.FileStorage</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">storage</span> <span class="o">=</span> <span class="n">ZODB</span><span class="o">.</span><span class="n">FileStorage</span><span class="o">.</span><span class="n">FileStorage</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="s">&#39;main.fs&#39;</span><span class="p">,</span> <span class="n">create</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ZODB.DB</span> <span class="kn">import</span> <span class="n">DB</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">db</span> <span class="o">=</span> <span class="n">DB</span><span class="p">(</span><span class="n">storage</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">root</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.configure</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">configure</span><span class="o">.</span><span class="n">base</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.subscribers</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.component</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideHandler</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">subscribers</span><span class="o">.</span><span class="n">queue_installer</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideHandler</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">subscribers</span><span class="o">.</span><span class="n">ThreadedDispatcherInstaller</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">poll_interval</span><span class="o">=</span><span class="mf">0.1</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">provideHandler</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">subscribers</span><span class="o">.</span><span class="n">agent_installer</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.event</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">notify</span><span class="p">(</span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">DatabaseOpened</span><span class="p">(</span><span class="n">db</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="cleanup1" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[2]</td><td><em>(<a class="fn-backref" href="#id3">1</a>, <a class="fn-backref" href="#id4">2</a>)</em> <div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">lock</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">tear_down_dispatcher</span><span class="p">(</span><span class="n">old_dispatcher</span><span class="p">)</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="cleanup2" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id5">[3]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">lock</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">tear_down_dispatcher</span><span class="p">(</span><span class="n">dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">tear_down_dispatcher</span><span class="p">(</span><span class="n">alt_dispatcher</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">time</span><span class="o">.</span><span class="n">sleep</span> <span class="o">=</span> <span class="n">old_sleep</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><img class="logo" src="_static/zc_async.png" alt="Logo"/></p>
+            <h3>Table Of Contents</h3>
+            <ul>
+<li><a class="reference external" href="">Recovering from Catastrophes</a><ul>
+<li><a class="reference external" href="#what-might-go-wrong">What Might Go Wrong?</a><ul>
+<li><a class="reference external" href="#polling-exceptions">Polling Exceptions</a><ul>
+<li><a class="reference external" href="#process-ends-while-polling">Process Ends while Polling</a></li>
+<li><a class="reference external" href="#transaction-error-while-polling">Transaction Error while Polling</a></li>
+<li><a class="reference external" href="#summary-of-polling-exceptions">Summary of Polling Exceptions</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#job-related-exceptions">Job-Related Exceptions</a><ul>
+<li><a class="reference external" href="#job-fails">Job Fails</a></li>
+<li><a class="reference external" href="#process-ends-during-job">Process Ends During Job</a></li>
+<li><a class="reference external" href="#transaction-error-during-job">Transaction Error During Job</a></li>
+<li><a class="reference external" href="#summary-of-job-related-exceptions">Summary of Job-Related Exceptions</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#your-responsibilities">Your Responsibilities</a></li>
+<li><a class="reference external" href="#zc-async-s-responsibilities">zc.async&#8217;s Responsibilities</a></li>
+<li><a class="reference external" href="#retry-policies">Retry Policies</a></li>
+<li><a class="reference external" href="#scenarios">Scenarios</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#scenarios-polling-errors">Scenarios: Polling Errors</a><ul>
+<li><a class="reference external" href="#conflicterror">ConflictError</a></li>
+<li><a class="reference external" href="#client-disconnected">Client Disconnected</a></li>
+</ul>
+</li>
+<li><a class="reference external" href="#scenarios-job-related-errors">Scenarios: Job-Related Errors</a><ul>
+<li><a class="reference external" href="#graceful-shutdown-during-job">Graceful Shutdown During Job</a></li>
+<li><a class="reference external" href="#hard-crash-during-job">Hard Crash During Job</a></li>
+<li><a class="reference external" href="#hard-crash-during-job-with-sibling-recovery">Hard Crash During Job with Sibling Recovery</a></li>
+<li><a class="reference external" href="#other-job-related-errors">Other Job-Related Errors</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="tips.html" title="previous chapter">Tips and Tricks</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="z3.html" title="next chapter">Zope 3 General Tips and Tricks</a></p>
+            <h3>This Page</h3>
+            <ul class="this-page-menu">
+              <li><a href="_sources/catastrophes.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="z3.html" title="Zope 3 General Tips and Tricks"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="tips.html" title="Tips and Tricks"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+          <li><a href="tips.html" accesskey="U">Tips and Tricks</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2008, Gary Poster.
+      Last updated on Sep 21, 2008.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,279 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Zope 3 General Tips and Tricks &mdash; zc.async v1.5.0 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '',
+          VERSION:     '1.5.0',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: ''
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/interface.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/favicon.ico"/>
+    <link rel="contents" title="Global table of contents" href="contents.html" />
+    <link rel="index" title="Global index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="zc.async v1.5.0 documentation" href="index.html" />
+    <link rel="up" title="Tips and Tricks" href="tips.html" />
+    <link rel="next" title="Zope 3 Testing Tips and Tricks" href="ftesting.html" />
+    <link rel="prev" title="Recovering from Catastrophes" href="catastrophes.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="ftesting.html" title="Zope 3 Testing Tips and Tricks"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="catastrophes.html" title="Recovering from Catastrophes"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+          <li><a href="tips.html" accesskey="U">Tips and Tricks</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  
+  <div class="section" id="zope-3-general-tips-and-tricks">
+<h1 id="zope-3-general-tips-and-tricks">Zope 3 General Tips and Tricks<a class="headerlink" href="#zope-3-general-tips-and-tricks" title="Permalink to this headline">¶</a></h1>
+<p>If you use Zope 3, sometimes you want async jobs that have local sites and
+security set up. <tt class="docutils literal"><span class="pre">zc.async.z3.Job</span></tt> is a subclass of the main
+<tt class="docutils literal"><span class="pre">zc.async.job.Job</span></tt> implementation that leverages the <tt class="docutils literal"><span class="pre">setUp</span></tt> and
+<tt class="docutils literal"><span class="pre">tearDown</span></tt> hooks to accomplish this.</p>
+<p>It takes the site and the ids of the principals in the security context at its
+instantiation. The values can be mutated. Then when the job runs it sets the
+context up for the job&#8217;s code, and then tears it down after the work has been
+committed (or aborted, if there was a failure). This can be very convenient for
+jobs that care about site-based component registries, or that care about the
+participants in zope.security interactions.</p>
+<p>This is different than a <tt class="docutils literal"><span class="pre">try:</span> <span class="pre">finally:</span></tt> wrapper around your main code that
+does the work, both because it is handled for you transparently, and because
+the context is cleaned up <em>after</em> the job&#8217;s main transaction is committed. This
+means that code that expects a security or site context during a
+pre-transaction hook will be satisfied.</p>
+<p>For instance, let&#8217;s imagine we have a database, and we establish a local site
+and an interaction with a request. <a class="footnote-reference" href="#zope3job-database-setup" id="id1">[1]</a> <a class="footnote-reference" href="#empty-setup" id="id2">[2]</a>
+Unfortunately, this is a lot of set up. <a class="footnote-reference" href="#zope3job-setup" id="id3">[3]</a></p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.app.component.hooks</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">setSite</span><span class="p">(</span><span class="n">site</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.security.management</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.z3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">management</span><span class="o">.</span><span class="n">newInteraction</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">z3</span><span class="o">.</span><span class="n">Participation</span><span class="p">(</span><span class="n">mickey</span><span class="p">))</span> <span class="c"># usually would be a request</span>
+</pre></div>
+<p>Now we create a new job.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">reportOnContext</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">print</span> <span class="p">(</span><span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">getSite</span><span class="p">()</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+<span class="gp">... </span>            <span class="nb">tuple</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">principal</span><span class="o">.</span><span class="n">id</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span>
+<span class="gp">... </span>            <span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">management</span><span class="o">.</span><span class="n">getInteraction</span><span class="p">()</span><span class="o">.</span><span class="n">participations</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="s">&#39;j&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">z3</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">reportOnContext</span><span class="p">)</span>
+</pre></div>
+<p>The ids of the principals in the participations in the current interaction
+are in a <tt class="docutils literal"><span class="pre">participants</span></tt> tuple.  The site is on the job&#8217;s <tt class="docutils literal"><span class="pre">site</span></tt> attribute.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="o">.</span><span class="n">participants</span>
+<span class="go">(&#39;mickey&#39;,)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="o">.</span><span class="n">site</span> <span class="ow">is</span> <span class="n">site</span>
+<span class="go">True</span>
+</pre></div>
+<p>If we end the interaction, clear the local site, and run the job, the job we
+used (<tt class="docutils literal"><span class="pre">reportOnContext</span></tt> above) shows that the context was correctly in place.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">management</span><span class="o">.</span><span class="n">endInteraction</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">setSite</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="p">()</span>
+<span class="go">(&#39;StubSite&#39;, (&#39;mickey&#39;,))</span>
+</pre></div>
+<p>However, now the site and interaction are empty.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">management</span><span class="o">.</span><span class="n">queryInteraction</span><span class="p">()</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">getSite</span><span class="p">()</span>
+<span class="go">None</span>
+</pre></div>
+<p>As mentioned, the context will be maintained through the transaction&#8217;s commit.
+Let&#8217;s illustrate.</p>
+<blockquote>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">setTransactionHook</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="n">t</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">ITransactionManager</span><span class="p">(</span><span class="n">j</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+<span class="gp">... </span>    <span class="n">t</span><span class="o">.</span><span class="n">addBeforeCommitHook</span><span class="p">(</span><span class="n">reportOnContext</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">setSite</span><span class="p">(</span><span class="n">site</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">management</span><span class="o">.</span><span class="n">newInteraction</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">z3</span><span class="o">.</span><span class="n">Participation</span><span class="p">(</span><span class="n">mickey</span><span class="p">),</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">z3</span><span class="o">.</span><span class="n">Participation</span><span class="p">(</span><span class="n">jack</span><span class="p">),</span>
+<span class="gp">... </span>    <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">z3</span><span class="o">.</span><span class="n">Participation</span><span class="p">(</span><span class="n">foo</span><span class="p">))</span> <span class="c"># &gt;1 == rare but possible scenario</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="s">&#39;j&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">z3</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">setTransactionHook</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="o">.</span><span class="n">participants</span>
+<span class="go">(&#39;mickey&#39;, &#39;jack&#39;, &#39;foo&#39;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="o">.</span><span class="n">site</span> <span class="ow">is</span> <span class="n">site</span>
+<span class="go">True</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">management</span><span class="o">.</span><span class="n">endInteraction</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">setSite</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="p">()</span>
+<span class="go">(&#39;StubSite&#39;, (&#39;mickey&#39;, &#39;jack&#39;, &#39;foo&#39;))</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">management</span><span class="o">.</span><span class="n">queryInteraction</span><span class="p">()</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">getSite</span><span class="p">()</span>
+<span class="go">None</span>
+</pre></div>
+</blockquote>
+<p class="rubric">Footnotes</p>
+<table class="docutils footnote" frame="void" id="zope3job-database-setup" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ZODB.tests.util</span> <span class="kn">import</span> <span class="n">DB</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">db</span> <span class="o">=</span> <span class="n">DB</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">root</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">root</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.configure</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">configure</span><span class="o">.</span><span class="n">base</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.testing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">setUpDatetime</span><span class="p">()</span> <span class="c"># pins datetimes</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="empty-setup" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[2]</a></td><td><p class="first">Without a site or an interaction, you can still instantiate
+and run the job normally.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zc.async.z3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">operator</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="s">&#39;j&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">zc</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">z3</span><span class="o">.</span><span class="n">Job</span><span class="p">(</span><span class="n">operator</span><span class="o">.</span><span class="n">mul</span><span class="p">,</span> <span class="mf">6</span><span class="p">,</span> <span class="mf">7</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="o">.</span><span class="n">participants</span>
+<span class="go">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="n">j</span><span class="o">.</span><span class="n">site</span>
+<span class="go">None</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">transaction</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">j</span><span class="p">()</span>
+<span class="go">42</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="zope3job-setup" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[3]</a></td><td><p class="first">To do this, we need to set up the zope.app.component
+hooks, create a site, set up an authentication utility, and create some
+principals that the authentication utility can return.</p>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.app.component.hooks</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">hooks</span><span class="o">.</span><span class="n">setHooks</span><span class="p">()</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.app.component.site</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">persistent</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">class</span> <span class="nc">StubSite</span><span class="p">(</span><span class="n">persistent</span><span class="o">.</span><span class="n">Persistent</span><span class="p">,</span>
+<span class="gp">... </span>               <span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">site</span><span class="o">.</span><span class="n">SiteManagerContainer</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">pass</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">site</span> <span class="o">=</span> <span class="n">root</span><span class="p">[</span><span class="s">&#39;site&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">StubSite</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sm</span> <span class="o">=</span> <span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">component</span><span class="o">.</span><span class="n">site</span><span class="o">.</span><span class="n">LocalSiteManager</span><span class="p">(</span><span class="n">site</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">site</span><span class="o">.</span><span class="n">setSiteManager</span><span class="p">(</span><span class="n">sm</span><span class="p">)</span>
+</pre></div>
+<div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.security.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.app.security.interfaces</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.interface</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">zope.location</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">class</span> <span class="nc">StubPrincipal</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">zope</span><span class="o">.</span><span class="n">interface</span><span class="o">.</span><span class="n">implements</span><span class="p">(</span><span class="n">zope</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IPrincipal</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">identifier</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="bp">self</span><span class="o">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">identifier</span>
+<span class="gp">... </span>        <span class="bp">self</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="n">title</span>
+<span class="gp">... </span>        <span class="bp">self</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">description</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">class</span> <span class="nc">StubPersistentAuth</span><span class="p">(</span><span class="n">persistent</span><span class="o">.</span><span class="n">Persistent</span><span class="p">,</span>
+<span class="gp">... </span>                         <span class="n">zope</span><span class="o">.</span><span class="n">location</span><span class="o">.</span><span class="n">Location</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">zope</span><span class="o">.</span><span class="n">interface</span><span class="o">.</span><span class="n">implements</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IAuthentication</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">_mapping</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;foo&#39;</span><span class="p">:</span> <span class="s">&#39;Foo Fighter&#39;</span><span class="p">,</span>
+<span class="gp">... </span>                <span class="s">&#39;jack&#39;</span><span class="p">:</span> <span class="s">&#39;Jack, Giant Killer&#39;</span><span class="p">,</span>
+<span class="gp">... </span>                <span class="s">&#39;mickey&#39;</span><span class="p">:</span> <span class="s">&#39;Mickey Mouse&#39;</span><span class="p">}</span>
+<span class="gp">... </span>    <span class="k">def</span> <span class="nf">getPrincipal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">principal_id</span><span class="p">):</span>
+<span class="gp">... </span>        <span class="k">return</span> <span class="n">StubPrincipal</span><span class="p">(</span><span class="n">principal_id</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mapping</span><span class="p">[</span><span class="n">principal_id</span><span class="p">])</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">auth</span> <span class="o">=</span> <span class="n">StubPersistentAuth</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sm</span><span class="o">.</span><span class="n">registerUtility</span><span class="p">(</span><span class="n">auth</span><span class="p">,</span> <span class="n">zope</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">security</span><span class="o">.</span><span class="n">interfaces</span><span class="o">.</span><span class="n">IAuthentication</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transaction</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mickey</span> <span class="o">=</span> <span class="n">auth</span><span class="o">.</span><span class="n">getPrincipal</span><span class="p">(</span><span class="s">&#39;mickey&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">jack</span> <span class="o">=</span> <span class="n">auth</span><span class="o">.</span><span class="n">getPrincipal</span><span class="p">(</span><span class="s">&#39;jack&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">foo</span> <span class="o">=</span> <span class="n">auth</span><span class="o">.</span><span class="n">getPrincipal</span><span class="p">(</span><span class="s">&#39;foo&#39;</span><span class="p">)</span>
+</pre></div>
+</td></tr>
+</tbody>
+</table>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><img class="logo" src="_static/zc_async.png" alt="Logo"/></p>
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="catastrophes.html" title="previous chapter">Recovering from Catastrophes</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="ftesting.html" title="next chapter">Zope 3 Testing Tips and Tricks</a></p>
+            <h3>This Page</h3>
+            <ul class="this-page-menu">
+              <li><a href="_sources/z3.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="modindex.html" title="Global Module Index"
+             accesskey="M">modules</a> |</li>
+        <li class="right" >
+          <a href="ftesting.html" title="Zope 3 Testing Tips and Tricks"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="catastrophes.html" title="Recovering from Catastrophes"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">zc.async v1.5.0 documentation</a> &raquo;</li>
+          <li><a href="tips.html" accesskey="U">Tips and Tricks</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2008, Gary Poster.
+      Last updated on Sep 21, 2008.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+    </div>
+  </body>
+</html>
