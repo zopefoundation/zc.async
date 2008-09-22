@@ -1,5 +1,5 @@
-``zc.async``
-~~~~~~~~~~~~
+|zc.async|_
+~~~~~~~~~~~
 
 ===========
 What is it?
@@ -53,3 +53,15 @@ zc.async participants can each run in their own process, or share a process
 
 The Twisted framework supplies some code (failures and reactor implementations,
 primarily) and some concepts to the package.
+
+======================
+Where can I read more?
+======================
+
+Quickstarts and in-depth documentation are available in the package and in
+the `new and exciting on-line documentation`_.
+
+.. _`new and exciting on-line documentation`: http://packages.python.org/zc.async/1.5.0/
+.. |zc.async| image:: http://packages.python.org/zc.async/1.5.0/_static/zc_async.png
+.. _zc.async: http://packages.python.org/zc.async/1.5.0/
+

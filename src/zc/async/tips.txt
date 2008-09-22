@@ -73,6 +73,12 @@ Testing Tips and Tricks
   doctests in this package, but should also be reasonably simple and
   self-explanatory.
 
+More Tips and Tricks
+====================
+
+The following documents describe specific tips and tricks for specific
+situations.
+
 .. toctree::
    :maxdepth: 2
 

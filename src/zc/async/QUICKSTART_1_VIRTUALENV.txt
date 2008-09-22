@@ -17,7 +17,7 @@ experiments.
 .. sidebar:: ``virtualenv`` and ``zc.buildout``
 
    I prefer |zc.buildout|_ for production deployments, but |virtualenv|_ is
-   very nice for quick experimentation.  Another quick-start uses
+   very nice for quick experimentation.  The other quick-start uses
    |zc.buildout|_.
 
 ::
@@ -175,13 +175,13 @@ Policy
 ------
 
 This second part is policy, and if you ever put zc.async in production, you'll
-want to understand what's going on here.  We'll talk about what's going on here
-a little later.
+want to understand what's going on here.
 
-    >>> zc.async.configure.start(
-    ...     db, poll_interval=1)
+    >>> zc.async.configure.start(db, poll_interval=1)
 
-Now the system has a ``dispatcher`` polling for jobs every second.
+Now the system has a ``dispatcher`` polling for jobs every second.  As we'll
+see below, a ``dispatcher`` polls for jobs in one or more queues, to assign
+them to worker threads.
 
 Using |async|
 =============
@@ -324,8 +324,8 @@ A Monte Carlo Simulation
 We've now seen some simple examples from the standard library.  But how do you
 get your own work done?
 
-Let's say we want to write an approach a chestnut of a problem: use a `Monte
-Carlo simulation`_ (read "throwing darts and analyzing the results") to
+Let's say we want to implement an old chestnut of a problem: use a `Monte
+Carlo simulation`_ (that is, "throwing darts and analyzing the results") to
 `calculate pi`_.  This will use |async| much like the map-reduce approach
 of `Hadoop`_: we will want to distribute the work of running the simulation to
 multiple machines so the result can be done faster.

@@ -1,6 +1,3 @@
-- verify that main docs now show that zc.monitor has much fewer dependencies,
-  so can be introduced without Zope 3.
-- fix up tips so that it looks better
 - write a zc.buildout/grok quickstart
 - would love a module-based API review of docs.
 

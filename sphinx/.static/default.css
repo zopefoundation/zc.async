@@ -589,8 +589,13 @@ ul.fakelist {
 
 /* "Footnotes" heading */
 p.rubric {
-    margin-top: 30px;
-    font-weight: bold;
+    margin-top: 150px;
+	border-top: 30px solid #e6e6e6;
+	font-style: italic;
+	font-weight: bold;
+	font-family: "American Typewriter", Georgia, "Times New Roman", Times, serif;
+	padding-top: 10px;
+	padding-bottom: 20px;
 }
 
 /* "Topics" */

@@ -24,6 +24,11 @@ a "client" process, and the full configuration a "client/server process". As
 you might expect, the configuration of a client process is a subset of the
 configuration of the client/server process.
 
+The ``zc.async.configure`` module helps with basic configuration.  The
+:ref:`quickstart-with-virtualenv` shows an example of using this for a very
+:quick start.  The current text uses some of those conveniences, but focuses
+more on understanding the underlying patterns, rather than the conveniences.
+
 We will first describe setting up a client, non-dispatcher process, in which
 you only can put items in a zc.async queue; and then describe setting up a
 dispatcher client/server process that can be used both to request and to
@@ -493,13 +498,16 @@ shutdown, and errors.  Poll and job logs are sent to ``zc.async.trace``.
 Configure the standard Python logging module as usual to send these logs where
 you need.  Be sure to auto-rotate the trace logs.
 
-The package supports monitoring using zc.z3monitor, but using this package
-includes more Zope 3 dependencies, so it is not included here. If you would
-like to use it, see monitor.txt in the package and our next section:
-:ref:`configuration-with-zope-3`. Otherwise, if you want to roll your own
-monitoring, glance at monitor.py--you'll see that most of the heavy lifting for
-the monitor support is done in the dispatcher, so it should be pretty easy to
-hook up the basic data another way.
+The package supports monitoring using zc.monitor.  Using this package includes
+only a very few additional dependencies: zc.monitor, simplejson, and zc.ngi. An
+example of setting it up without Zope 3 is in the end of
+:ref:`quickstart-with-virtualenv`.  If you would like to use it, see that
+document, monitor.txt in the package, and our next section:
+:ref:`configuration-with-zope-3`. 
+
+Otherwise, if you want to roll your own monitoring, glance at monitor.py and
+monitordb.py--you'll see that you should be able to reuse most of the heavy
+lifting, so it should be pretty easy to hook up the basic data another way.
 
     >>> reactor.stop()
 

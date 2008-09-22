@@ -72,14 +72,14 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.5.0b2',
+    version='1.5.0',
     namespace_packages=['zc'],
     packages=find_packages('src'),
     package_dir={'':'src'},
     package_data = {'': ['*.txt', '*.zcml']},
     zip_safe=False,
     author='Gary Poster',
-    author_email='gary@modernsongs.com',
+    author_email='gary.poster@canonical.com',
     description=
         'Schedule durable tasks across multiple processes and machines.',
     long_description=text(
