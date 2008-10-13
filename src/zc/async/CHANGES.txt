@@ -2,6 +2,15 @@
 Changes
 =======
 
+1.5.1 (2008-10-13)
+==================
+
+- Add a performance optimization with ``isinstance`` before ``providedBy``.
+
+- Add support for filters to ``AgentInstaller``.
+
+- Fix a bug which caused a condition to be always true in ``monitor.Encoder``.
+
 1.5.0 (2008-09-21)
 ==================
 
