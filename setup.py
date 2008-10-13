@@ -72,7 +72,7 @@ def text(*args, **kwargs):
 
 setup(
     name='zc.async',
-    version='1.5.1',
+    version='1.5.2a1',
     namespace_packages=['zc'],
     packages=find_packages('src'),
     package_dir={'':'src'},
