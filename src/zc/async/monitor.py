@@ -58,11 +58,14 @@ class Encoder(simplejson.JSONEncoder):
             return tuple(obj)
         # isinstance and providedBy are *not* redundant
         # it's a performance optimization
-        elif ((types.FunctionType, types.BuiltinFunctionType) or
-              isinstance(obj, persistent.Persistent) or
+        elif (isinstance(obj, (types.FunctionType, types.BuiltinFunctionType,
+                               persistent.Persistent)) or
               persistent.interfaces.IPersistent.providedBy(obj)):
             return zc.async.utils.custom_repr(obj)
-        return simplejson.JSONEncoder.default(self, obj)
+        try:
+            return simplejson.JSONEncoder.default(self, obj)
+        except TypeError:
+            return zc.async.utils.custom_repr(obj)
 
 encoder = Encoder(sort_keys=True, indent=4)
 

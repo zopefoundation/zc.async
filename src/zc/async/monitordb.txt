@@ -1364,6 +1364,9 @@ guess, ``lastcompleted`` just gets the first job from the merged list that
     ] 
     -> CLOSE
 
+
+We are going to test an edge case at the end. [#encoder_edge_case]_
+
 [#tearDown]_
 
 .. [#setUp] See the discussion in other documentation to explain this code.
@@ -1433,3 +1436,106 @@ guess, ``lastcompleted`` just gets the first job from the merged list that
     >>> for thread in threads:
     ...     thread.join(3)
     ...
+
+.. [#encoder_edge_case]
+    >>> import zc.async.agent
+    >>> import zc.async.utils
+    >>> class Stub(object):
+    ...     def __call__(self, j):
+    ...         return (zc.async.utils.custom_repr(j.callable) ==
+    ...                 'zc.async.doctest_test.active_pause2')
+    ...     def __repr__(self):
+    ...         return "I'm stubby"
+    >>> agent = zc.async.agent.Agent(filter=Stub())
+    >>> queue.dispatchers[alt_dispatcher.UUID]['filtered'] = agent
+    >>> transaction.commit()
+    >>> ignore = reactor.time_flies(1)
+    >>> connection.test_input('asyncdb status\n')
+    {
+        "": {
+            "dispatchers": {
+                "282b5a6c-5a84-11dd-a9af-0017f2c49bdd": {
+                    "agents": {
+                        "filtered": {
+                            "filter": "I'm stubby", 
+                            "len": 0, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:38.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 17.0
+                    }
+                }, 
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 1, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:52.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 3.0
+                    }
+                }
+            }, 
+            "len": 0
+        }, 
+        "alt": {
+            "dispatchers": {
+                "282b5a6c-5a84-11dd-a9af-0017f2c49bdd": {
+                    "agents": {
+                        "main": {
+                            "filter": null, 
+                            "len": 0, 
+                            "size": 3
+                        }
+                    }, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:43.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 12.0
+                    }
+                }, 
+                "d10f43dc-ffdf-11dc-abd4-0017f2c49bdd": {
+                    "agents": {}, 
+                    "dead": false, 
+                    "last ping": "2006-08-10T15:44:42.000211Z", 
+                    "ping death interval": {
+                        "minutes": 1
+                    }, 
+                    "ping interval": {
+                        "seconds": 30.0
+                    }, 
+                    "since ping": {
+                        "seconds": 13.0
+                    }
+                }
+            }, 
+            "len": 0
+        }
+    } 
+    -> CLOSE
+
