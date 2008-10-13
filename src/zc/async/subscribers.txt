@@ -305,7 +305,7 @@ how it deactivates the dispatcher's agents collection in the ZODB.
 
 
     A chooser can be used instead of a filter, but using the latter is preferred
-    as the zv.async monitoring code provides hooks for filters (and not
+    as the zc.async monitoring code provides hooks for filters (and not
     choosers). We now create an agent that uses a chooser instead of a filter.
 
     >>> def mock_work_chooser(agent):
