@@ -107,7 +107,7 @@ class ThreadedDispatcherInstaller(object):
         dispatcher.thread = thread = threading.Thread(target=start)
         thread.setDaemon(True)
         thread.start()
-    
+
         # The above is really sufficient. This signal registration, below, is
         # an optimization. The dispatcher, on its next run, will eventually
         # figure out that it is looking at a previous incarnation of itself if
@@ -120,11 +120,11 @@ class ThreadedDispatcherInstaller(object):
             reactor.callFromThread(reactor.stop)
             thread.join(3)
             curr_sigint_handler(*args)
-    
+
         def handler(*args):
             reactor.callFromThread(reactor.stop)
             raise SystemExit()
-    
+
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, handler)
         # Catch Ctrl-Break in windows
@@ -145,17 +145,20 @@ class TwistedDispatcherInstaller(object):
         dispatcher = zc.async.dispatcher.Dispatcher(
             ev.database, poll_interval=self.poll_interval)
         dispatcher.activate(threaded=True)
-    
+
 twisted_dispatcher_installer = TwistedDispatcherInstaller()
 
 class AgentInstaller(object):
 
-    def __init__(self, agent_name, chooser=None, size=3, queue_names=None):
+    def __init__(self, agent_name, chooser=None, size=3, queue_names=None, filter=None):
         zope.component.adapter(
             zc.async.interfaces.IDispatcherActivated)(self)
         self.queue_names = queue_names
         self.agent_name = agent_name
+        if filter is not None and chooser is not None:
+            raise ValueError('cannot set both chooser and filter to non-None')
         self.chooser = chooser
+        self.filter = filter
         self.size = size
 
     def __call__(self, ev):
@@ -164,7 +167,7 @@ class AgentInstaller(object):
             dispatcher.parent.name in self.queue_names):
             if self.agent_name not in dispatcher:
                 dispatcher[self.agent_name] = zc.async.agent.Agent(
-                    chooser=self.chooser, size=self.size)
+                    chooser=self.chooser, filter=self.filter, size=self.size)
                 zc.async.utils.log.info(
                     'agent %r added to queue %r',
                     self.agent_name,
