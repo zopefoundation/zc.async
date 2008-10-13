@@ -150,7 +150,8 @@ twisted_dispatcher_installer = TwistedDispatcherInstaller()
 
 class AgentInstaller(object):
 
-    def __init__(self, agent_name, chooser=None, size=3, queue_names=None, filter=None):
+    def __init__(self, agent_name, chooser=None, size=3, queue_names=None,
+                 filter=None):
         zope.component.adapter(
             zc.async.interfaces.IDispatcherActivated)(self)
         self.queue_names = queue_names
