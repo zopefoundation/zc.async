@@ -56,7 +56,10 @@ class Encoder(simplejson.JSONEncoder):
         elif getattr(obj, 'next', _marker) is not _marker:
             # iterator.  Duck typing too fuzzy, practically?
             return tuple(obj)
+        # isinstance and providedBy are *not* redundant
+        # it's a performance optimization
         elif ((types.FunctionType, types.BuiltinFunctionType) or
+              isinstance(obj, persistent.Persistent) or
               persistent.interfaces.IPersistent.providedBy(obj)):
             return zc.async.utils.custom_repr(obj)
         return simplejson.JSONEncoder.default(self, obj)

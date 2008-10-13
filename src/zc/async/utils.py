@@ -334,7 +334,10 @@ def try_five_times(call, identifier, tm, commit=True):
         return res
 
 def custom_repr(obj):
-    if persistent.interfaces.IPersistent.providedBy(obj):
+    # isinstance and providedBy are *not* redundant
+    # it's a performance optimization
+    if (isinstance(obj, persistent.Persistent) or
+        persistent.interfaces.IPersistent.providedBy(obj)):
         dbname = "?"
         if obj._p_jar is not None:
             dbname = getattr(obj._p_jar.db(), 'database_name', "?")
