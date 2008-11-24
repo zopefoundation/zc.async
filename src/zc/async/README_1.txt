@@ -304,8 +304,8 @@ What happens if a call raises an exception?  The return value is a Failure.
     >>> transaction.commit()
     >>> reactor.wait_for(job)
     >>> t = transaction.begin()
-    >>> job.result
-    <zc.twist.Failure exceptions.NameError>
+    >>> job.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...exceptions.NameError...
 
 Failures can provide useful information such as tracebacks.
 
@@ -358,8 +358,8 @@ a subsequent callback.
     >>> callback2 = callback1.addCallback(I_scribble_on_strings)
     >>> transaction.commit()
     >>> reactor.wait_for(job)
-    >>> job.result
-    <zc.twist.Failure exceptions.NameError>
+    >>> job.result  # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...exceptions.NameError...
     >>> callback1.result
     'I handled a name error'
     >>> callback2.result
@@ -917,8 +917,8 @@ Zope 3 [#stop_usage_reactor]_.
     ...     datetime.timedelta(hours=1))
     >>> transaction.commit()
     >>> reactor.wait_for(job)
-    >>> job.result
-    <zc.twist.Failure zc.async.interfaces.TimeoutError>
+    >>> job.result # doctest: +ELLIPSIS
+    <zc.twist.Failure ...zc.async.interfaces.TimeoutError...
     >>> import sys
     >>> job.result.printTraceback(sys.stdout) # doctest: +NORMALIZE_WHITESPACE
     Traceback (most recent call last):

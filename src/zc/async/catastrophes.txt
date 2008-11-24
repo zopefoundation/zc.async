@@ -462,7 +462,7 @@ poll, and then recuperating.
     >>> transaction.commit()
     >>> pprint.pprint(zc.async.testing.get_poll(dispatcher)) # doctest: +ELLIPSIS
     {'': {'main': {'active jobs': [],
-                   'error': <zc.twist.Failure ...ClientDisconnected>,
+                   'error': <zc.twist.Failure ...ClientDisconnected...,
                    'len': 0,
                    'new jobs': [],
                    'size': 3}}}

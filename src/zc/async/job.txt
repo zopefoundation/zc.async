@@ -105,8 +105,8 @@ a failure, because the wrapped call raises an exception.
     >>> j = root['j'] = zc.async.job.Job(callFailure)
     >>> transaction.commit()
     >>> res = j()
-    >>> j.result
-    <zc.twist.Failure exceptions.RuntimeError>
+    >>> j.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...RuntimeError...
 
 These are standard twisted Failures, except that frames in the stored
 traceback have been converted to reprs, so that we don't keep references
@@ -318,7 +318,7 @@ simultaneously.  This one causes a success...
     >>> j.addCallbacks(success, failure) # doctest: +ELLIPSIS
     <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j() # doctest: +ELLIPSIS
-    failure. [Failure instance: Traceback: exceptions.TypeError...]
+    failure. [Failure instance: Traceback: ...TypeError...]
 
 [#errback_log]_ You can also add multiple callbacks.
 
@@ -345,8 +345,8 @@ simultaneously.  This one causes a success...
     >>> j.addCallbacks(failure=also_failure) # doctest: +ELLIPSIS
     <zc.async.job.SuccessFailureCallbackProxy ...>
     >>> res = j() # doctest: +ELLIPSIS
-    failure. [Failure instance: Traceback: exceptions.TypeError...]
-    also a failure. [Failure instance: Traceback: exceptions.TypeError...]
+    failure. [Failure instance: Traceback: ...TypeError...]
+    also a failure. [Failure instance: Traceback: ...TypeError...]
 
 ------------------
 Chaining Callbacks
@@ -877,30 +877,30 @@ First, a few "normal" errors.  They just go to the result.
     ...
     >>> job = root['j'] = zc.async.job.Job(raiseAnError, ValueError)
     >>> transaction.commit()
-    >>> job()
-    <zc.twist.Failure exceptions.ValueError>
-    >>> job.result
-    <zc.twist.Failure exceptions.ValueError>
+    >>> job() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...ValueError...
+    >>> job.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...ValueError...
     >>> count
     1
     >>> count = 0
 
     >>> job = root['j'] = zc.async.job.Job(raiseAnError, TypeError)
     >>> transaction.commit()
-    >>> job()
-    <zc.twist.Failure exceptions.TypeError>
-    >>> job.result
-    <zc.twist.Failure exceptions.TypeError>
+    >>> job() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...TypeError...
+    >>> job.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...TypeError...
     >>> count
     1
     >>> count = 0
 
     >>> job = root['j'] = zc.async.job.Job(raiseAnError, RuntimeError)
     >>> transaction.commit()
-    >>> job()
-    <zc.twist.Failure exceptions.RuntimeError>
-    >>> job.result
-    <zc.twist.Failure exceptions.RuntimeError>
+    >>> job() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...RuntimeError...
+    >>> job.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...RuntimeError...
     >>> count
     1
     >>> count = 0
@@ -912,10 +912,10 @@ examples except for our ``count`` variable.
     >>> job = root['j'] = zc.async.job.Job(raiseAnError,
     ...                                    ZODB.POSException.ConflictError)
     >>> transaction.commit()
-    >>> job()
-    <zc.twist.Failure ZODB.POSException.ConflictError>
-    >>> job.result
-    <zc.twist.Failure ZODB.POSException.ConflictError>
+    >>> job() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...ZODB.POSException.ConflictError...
+    >>> job.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...ZODB.POSException.ConflictError...
     >>> count
     5
     >>> count = 0
@@ -1086,9 +1086,9 @@ Normal errors will simply pass through with only one try.
     >>> error = ValueError
     >>> j = root['j'] = zc.async.job.Job(count_calls)
     >>> transaction.commit()
-    >>> j()
+    >>> j() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     tried 2 time(s).  committing.
-    <zc.twist.Failure exceptions.ValueError>
+    <zc.twist.Failure ...exceptions.ValueError...
     >>> count
     1
 
@@ -1110,9 +1110,9 @@ This happens both for non-error results (as above) and for error results.
     >>> allow_commits = [1, 2, 3] # set to active, then get retry policy, then call
     >>> j = root['j'] = zc.async.job.Job(raiseAnError, RuntimeError)
     >>> transaction.commit()
-    >>> j()
+    >>> j() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     tried 2 time(s).  committing.
-    <zc.twist.Failure exceptions.ValueError>
+    <zc.twist.Failure ...exceptions.ValueError...
     >>> found = []
     >>> for r in reversed(event_logs.records):
     ...     if r.levelname == 'ERROR':
@@ -1142,9 +1142,9 @@ The conflict error will be tried five times.
     >>> error = ZODB.POSException.ConflictError
     >>> j = root['j'] = zc.async.job.Job(count_calls)
     >>> transaction.commit()
-    >>> j()
+    >>> j() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     tried 6 time(s).  committing.
-    <zc.twist.Failure ZODB.POSException.ConflictError>
+    <zc.twist.Failure ...ZODB.POSException.ConflictError...
     >>> count
     5
 
@@ -1255,9 +1255,9 @@ Here's an example with a ConflictError.
     >>> allow_commits = [1, 3, 4, 6, 7, 9, 10, 12, 13]
     >>> j = root['j'] = zc.async.job.Job(count_calls)
     >>> transaction.commit()
-    >>> j()
+    >>> j() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     tried 50 time(s).  committing.
-    <zc.twist.Failure ZODB.POSException.ConflictError>
+    <zc.twist.Failure ...ZODB.POSException.ConflictError...
     >>> count
     5
 
@@ -1306,8 +1306,8 @@ After 9 interruptions, the default policy will give up after the tenth try.
     >>> j.handleInterrupt()
     >>> j.status == zc.async.interfaces.COMPLETED
     True
-    >>> j.result
-    <zc.twist.Failure zc.async.interfaces.AbortedError>
+    >>> j.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...zc.async.interfaces.AbortedError...
 
 If the retry policy returns True, as happens above, this should be interpreted
 by the agent and queue as a request to immediately reschedule the job. The
@@ -1771,8 +1771,8 @@ Footnotes
     >>> res = j()
     >>> root['demo'].counter # it was not rolled back automatically
     2
-    >>> j.result
-    <zc.twist.Failure exceptions.RuntimeError>
+    >>> j.result # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...RuntimeError...
     >>> print j.result.getTraceback() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     Traceback (most recent call last):
     ...
@@ -2064,6 +2064,6 @@ scenario may be possible; however, also consider callbacks for this usecase.
     ...     zc.async.job.Job(call, j)).addCallbacks(failure=failure)
     >>> transaction.commit()
     >>> res = j() # doctest: +ELLIPSIS
-    failure. [Failure instance: Traceback: zc.async.interfaces.BadStatusError...]
+    failure. [Failure instance: Traceback: ...zc.async.interfaces.BadStatusError...]
     >>> j.result # the main job still ran to completion
     12

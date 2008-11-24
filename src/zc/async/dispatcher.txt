@@ -537,8 +537,8 @@ The db's pool size has returned to the original value.
     ...     zc.async.job.Job(operator.mul, 14, None))
     >>> transaction.commit()
 
-    >>> wait_for_result(bad_job)
-    <zc.twist.Failure exceptions.TypeError>
+    >>> wait_for_result(bad_job) # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    <zc.twist.Failure ...TypeError...
 
     >>> for r in reversed(event_logs.records):
     ...     if r.levelname == 'ERROR':
