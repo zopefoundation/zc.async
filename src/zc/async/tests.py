@@ -134,9 +134,9 @@ def test_long_to_dt():
 
 checker = renormalizing.RENormalizing([
                 (re.compile('\d+\.\d+'), '1216179006.856108'),
-                (re.compile('<type \''), ''),
-                (re.compile('\'>'), ''),
-                (re.compile('<class \''), '')
+                (re.compile("<type '"), ''),
+                (re.compile("'>"), ''),
+                (re.compile("<class '"), '')
                 ])
 
 def test_suite():
