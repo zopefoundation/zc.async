@@ -132,6 +132,12 @@ def test_long_to_dt():
     True
     """
 
+checker = renormalizing.RENormalizing([
+                (re.compile('\d+\.\d+'), '1216179006.856108'),
+                (re.compile('<type \''), ''),
+                (re.compile('\'>'), ''),
+                (re.compile('<class \''), '')
+                ])
 
 def test_suite():
     return unittest.TestSuite((
@@ -153,8 +159,7 @@ def test_suite():
             'QUICKSTART_1_VIRTUALENV.txt',
             setUp=modSetUp, tearDown=modTearDown,
             optionflags=doctest.INTERPRET_FOOTNOTES,
-            checker = renormalizing.RENormalizing([ # used by QUICKSTART only
-                (re.compile('\d+\.\d+'), '1216179006.856108')])),
+            checker = checker),
         ))
 
 
