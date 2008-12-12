@@ -132,11 +132,19 @@ def test_long_to_dt():
     True
     """
 
+normFailOne = r'failure\. \[Failure instance: Traceback: <type \'(\S+)\'>'
+normFailTwo = r'failure\. \[Failure instance: Traceback: <class \'(\S+)\'>'
+
 checker = renormalizing.RENormalizing([
                 (re.compile('\d+\.\d+'), '1216179006.856108'),
-                (re.compile("<type '"), ''),
-                (re.compile("'>"), ''),
-                (re.compile("<class '"), '')
+                (re.compile(r'<zc\.twist\.Failure <type \'(\S+)\'>>'),
+                    r'<zc.twist.Failure \1>'),
+                (re.compile(r'<zc\.twist\.Failure <class \'(\S+)\'>>'),
+                    r'<zc.twist.Failure \1>'),
+                (re.compile(normFailOne),
+                    r'failure. [Failure instance: Traceback: \1'),
+                (re.compile(normFailTwo),
+                    r'failure. [Failure instance: Traceback: \1')
                 ])
 
 def test_suite():
