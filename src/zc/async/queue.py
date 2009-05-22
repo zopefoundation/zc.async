@@ -202,7 +202,8 @@ class Dispatchers(zc.dict.Dict):
                 "or that some transactions in the system are taking too long "
                 "to commit. Activating, to correct the current problem, but "
                 "if the dispatcher was inappropriately viewed as ``dead`` and "
-                "deactivated, you should investigate the cause.",
+                "deactivated, you should investigate the cause (be sure to "
+                "check that time is synced on all participating machines).",
                 uuid)
             # we do this rather than calling ``activate`` because the semantics
             # are different.  ``activate`` is after a true deactivation, and

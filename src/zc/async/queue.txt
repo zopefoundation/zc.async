@@ -577,7 +577,8 @@ dispatcher being wrongfully declared dead ("I'm not dead yet!").
       that the dispatcher's ping_death_interval is set too short, or that some
       transactions in the system are taking too long to commit. Activating, to
       correct the current problem, but if the dispatcher was inappropriately
-      viewed as ``dead`` and deactivated, you should investigate the cause.
+      viewed as ``dead`` and deactivated, you should investigate the cause
+      (be sure to check that time is synced on all participating machines).
     >>> da.deactivate()
     >>> bool(da.activated)
     False
