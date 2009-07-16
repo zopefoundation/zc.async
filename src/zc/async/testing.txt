@@ -1,5 +1,9 @@
-Testing Edge Case
-=================
+Testing Edge Cases
+==================
+
+
+_datetime Edge Case
+-------------------
 
 This tests that the _datetime class provided in the zc.asynt.testing module
 takes correctly named arguments to its now method.
@@ -7,4 +11,7 @@ takes correctly named arguments to its now method.
     >>> import zc.async.testing
     >>> import datetime
     >>> dt_now = datetime.datetime.now(tz=None)
+    >>> zc.async.testing.set_now(dt_now) #set the frozen now
     >>> z_a_t_dt_now = zc.async.testing._datetime.now(tz=None)
+
+
