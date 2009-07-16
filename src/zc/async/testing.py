@@ -37,11 +37,11 @@ def set_now(dt):
 
 class _datetime(old_datetime):
     @classmethod
-    def now(klass, tzinfo=None):
-        if tzinfo is None:
+    def now(klass, tz=None):
+        if tz is None:
             return _now.replace(tzinfo=None)
         else:
-            return _now.astimezone(tzinfo)
+            return _now.astimezone(tz)
     @classmethod
     def utcnow(klass):
         return _now.replace(tzinfo=None)
