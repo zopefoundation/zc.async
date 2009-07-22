@@ -10,8 +10,13 @@ takes correctly named arguments to its now method.
 
     >>> import zc.async.testing
     >>> import datetime
-    >>> dt_now = datetime.datetime.now(tz=None)
+    >>> import pytz
+    >>> dt_now = datetime.datetime.now(tz=pytz.UTC)
     >>> zc.async.testing.set_now(dt_now) #set the frozen now
-    >>> z_a_t_dt_now = zc.async.testing._datetime.now(tz=None)
+    >>> z_a_t_dt_now = zc.async.testing._datetime.now(tz=pytz.UTC)
 
+This tests that the _datetime object provided in the zc.asynt.testing module
+takes correctly named arguments to its astimezone method.
 
+    >>> dt_now = dt_now.astimezone(tz=pytz.UTC)
+    >>> z_a_t_dt_now = z_a_t_dt_now.astimezone(tz=pytz.UTC)
