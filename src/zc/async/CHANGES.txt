@@ -2,11 +2,13 @@
 Changes
 =======
 
-1.5.2 (2009-07-17)
+1.5.2 (2009-07-22)
 ==================
 
 - Fix a bug were zc.async.testing._datetime.now did not accept the same keyword
   arguments as datetime.datetime, added tests.
+- Fix a bug were zc.async.testing._datetime.astimezone did not accept the same
+  keyword arguments as datetime.datetime, added tests.
 
 1.5.1 (2008-10-13)
 ==================
