@@ -45,9 +45,9 @@ class _datetime(old_datetime):
     @classmethod
     def utcnow(klass):
         return _now.replace(tzinfo=None)
-    def astimezone(self, tzinfo):
+    def astimezone(self, tz):
         return _datetime(
-            *super(_datetime,self).astimezone(tzinfo).__reduce__()[1])
+            *super(_datetime,self).astimezone(tz).__reduce__()[1])
     def replace(self, *args, **kwargs):
         return _datetime(
             *super(_datetime,self).replace(
