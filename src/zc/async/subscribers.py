@@ -76,6 +76,7 @@ class QueueInstaller(object):
 
 queue_installer = QueueInstaller()
 multidb_queue_installer = QueueInstaller(db_name='async')
+signal_handlers = {} # id(dispatcher) -> signal -> (prev handler, curr handler)
 
 class ThreadedDispatcherInstaller(object):
     def __init__(self,
@@ -125,11 +126,20 @@ class ThreadedDispatcherInstaller(object):
             reactor.callFromThread(reactor.stop)
             raise SystemExit()
 
-        signal.signal(signal.SIGINT, sigint_handler)
-        signal.signal(signal.SIGTERM, handler)
+        # We keep a record of the current signal handler and the one we're
+        # installing so that our handler can later be uninstalled and the old
+        # one reinstated (for instance, by zc.async.ftesting.tearDown).
+        key = id(dispatcher)
+        handlers = signal_handlers[key] = {}
+
+        handlers[signal.SIGINT] = (
+            signal.signal(signal.SIGINT, sigint_handler), sigint_handler,)
+        handlers[signal.SIGTERM] = (signal.signal(signal.SIGTERM, handler),
+                                    handler,)
         # Catch Ctrl-Break in windows
         if getattr(signal, "SIGBREAK", None) is not None:
-            signal.signal(signal.SIGBREAK, handler)
+            handlers[signal.SIGBREAK] = (
+                signal.signal(signal.SIGBREAK, handler), handler,)
 
 threaded_dispatcher_installer = ThreadedDispatcherInstaller()
 

@@ -303,7 +303,8 @@ def tear_down_dispatcher(dispatcher):
         problems = '\n' + '\n'.join(problems)
         raise TearDownDispatcherError(problems)
 
-def print_logs(log_file=sys.stdout, log_level=logging.CRITICAL):
+def print_logs(log_file=None, log_level=logging.CRITICAL):
+    log_file = log_file or sys.stdout
     # really more of a debugging tool
     logger = logging.getLogger('zc.async')
     # stashing this on the dispatcher is a hack, but at least we're doing

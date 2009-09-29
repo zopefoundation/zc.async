@@ -221,6 +221,72 @@ how it deactivates the dispatcher's agents collection in the ZODB.
     >>> bool(da.activated)
     False
 
+The dispatcher installer keeps track of the signal handlers it has
+registered, as well as the signal handlers that were replaced.  This makes
+it more convenient to restore the old signal handlers if needed.
+
+References to the handlers are stored in the module global signal_handlers,
+which is keyed by id(dispatcher).
+
+    >>> signal_handlers = zc.async.subscribers.signal_handlers[id(dispatcher)]
+
+The value is a mapping of signal to a tuple containing the old and new
+signal handlers.
+
+    >>> signal.SIGINT in signal_handlers
+    True
+    >>> signal.SIGTERM in signal_handlers
+    True
+    >>> has_sigbreak = hasattr(signal, "SIGBREAK")
+    >>> not has_sigbreak or signal.SIGBREAK in signal_handlers
+    True
+
+zc.async.ftesting.tearDown will restore the old signal handlers, unless
+the currently registered handler is different than the one that was
+registered by the installer.
+
+Let's register a newer SIGTERM handler to exercise this.
+
+    >>> old_sigterm_handler = signal.getsignal(signal.SIGTERM)
+    >>> def new_sigterm_handler(*args):
+    ...     old_sigterm_handler(*args)
+    >>> ignored = signal.signal(signal.SIGTERM, new_sigterm_handler)
+
+    >>> import zc.async.ftesting
+    >>> zc.async.ftesting.tearDown()
+
+The signal_handlers mapping has been cleared.
+
+    >>> zc.async.subscribers.signal_handlers
+    {}
+
+The old signal handlers have been restored.
+
+    >>> prev, curr = signal_handlers[signal.SIGINT]
+    >>> signal.getsignal(signal.SIGINT) is prev
+    True
+    >>> if has_sigbreak:
+    ...     prev, curr = signal_handlers[signal.SIGBREAK]
+    ...     signal.getsignal(signal.SIGBREAK) is prev
+    ... else:
+    ...     True
+    True
+
+...except for the SIGTERM handler, since we registered a newer one.
+
+    >>> prev, curr = signal_handlers[signal.SIGTERM]
+    >>> old_sigterm_handler is curr
+    True
+    >>> signal.getsignal(signal.SIGTERM) is prev
+    False
+    >>> signal.getsignal(signal.SIGTERM) is new_sigterm_handler
+    True
+    >>> ignore = signal.signal(signal.SIGTERM, prev) # restore original handler
+
+
+
+
+
 .. ......... ..
 .. Footnotes ..
 .. ......... ..

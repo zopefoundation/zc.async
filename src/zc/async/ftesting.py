@@ -1,4 +1,5 @@
 import logging
+import signal
 import sys
 import transaction
 import zope.component
@@ -9,13 +10,20 @@ import zc.async.testing
 
 # helper functions convenient for Zope 3 functional tests
 
+# setUp's default parameter for log_file used to be sys.stdout.
+# This could cause problems in tests, as Python evaluates default
+# arguments once, but sys.stdout may change across tests.  Passing
+# None for log_file is already used in order to signify no logging,
+# so we use a marker instead.
+_marker = object()
+
 def setUp(
     connection=None,
     queue_installer=zc.async.subscribers.queue_installer,
     dispatcher_installer=zc.async.subscribers.ThreadedDispatcherInstaller(
         poll_interval=0.1),
     agent_installer=zc.async.subscribers.agent_installer,
-    log_file=sys.stdout, log_level=logging.CRITICAL):
+    log_file=_marker, log_level=logging.CRITICAL):
     """Set up zc.async, as is needed for Zope 3 functional tests.
     """
     if connection is None:
@@ -32,6 +40,8 @@ def setUp(
     assert "" in zc.async.testing.get_poll(dispatcher)
     assert dispatcher.activated is not None
     if log_file is not None:
+        if log_file is _marker:
+            log_file = sys.stdout
         # this helps with debugging critical problems that happen in your
         # zc.async calls.  Of course, if your test
         # intentionally generates CRITICAL log messages, you may not want this;
@@ -49,3 +59,14 @@ def tearDown():
         del dispatcher._debug_handler
     zc.async.testing.tear_down_dispatcher(dispatcher)
     zc.async.dispatcher.clear()
+    # Restore previous signal handlers
+    key = id(dispatcher)
+    sighandlers = zc.async.subscribers.signal_handlers.get(key)
+    if sighandlers:
+        for _signal, handlers in sighandlers.items():
+            prev, cur = handlers
+            # The previous signal handler is only restored if the currently
+            # registered handler is the one we originally installed.
+            if signal.getsignal(_signal) is cur:
+                signal.signal(_signal, prev)
+        del zc.async.subscribers.signal_handlers[key]

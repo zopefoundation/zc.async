@@ -181,9 +181,15 @@ and the log is not usually monitored in functional tests.
 messages in the "zc.async" logger to stdout.
 
     >>> import logging
-    >>> logging.getLogger('zc.async.event').critical('Foo!')
+    >>> logging.getLogger('zc.async').critical('Foo!')
     Foo!
-    >>> logging.getLogger('zc.async.event').error('Bar!')
+    >>> logging.getLogger('zc.async').error('Bar!')
+
+The zc.async.* logs are configured to work the same way.
+
+   >>> logging.getLogger('zc.async.event').critical('Foo!')
+   Foo!
+   >>> logging.getLogger('zc.async.event').error('Bar!')
 
 Once you have finished your tests, make sure to shut down your dispatcher, or
 the testing framework will complain about an unstopped daemon thread.
@@ -222,7 +228,7 @@ performed.
     >>> zc.async.ftesting.tearDown() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     Traceback (most recent call last):
     ...
-    TearDownDispatcherError: 
+    TearDownDispatcherError:
     Job in pool 'main' failed to stop:
       <zc.async.job.Job (oid ..., db ...) ``zc.async.doctest_test.bad_job()``>
     >>> zc.async.testing.wait_for_result(job)
@@ -239,7 +245,7 @@ If the dispatcher isn't shutting down for some reason, the UUID is given.
     >>> zc.async.ftesting.tearDown() # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     Traceback (most recent call last):
     ...
-    TearDownDispatcherError: 
+    TearDownDispatcherError:
     Dispatcher (..., ...) failed to stop.
 
 Let's restore the original reactor.stop method and call tearDown again, which
