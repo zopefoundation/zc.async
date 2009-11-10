@@ -431,7 +431,7 @@ class Job(zc.async.utils.Base):
             res = _status_mapping[self._status_id]
         if res == zc.async.interfaces.NEW:
             ob = self.parent
-            while (ob is not None and
+            while (ob is not None and ob is not self and
                    zc.async.interfaces.IJob.providedBy(ob)):
                 ob = ob.parent
             if zc.async.interfaces.IAgent.providedBy(ob):

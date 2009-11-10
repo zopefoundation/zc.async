@@ -1636,6 +1636,39 @@ the top level).  Here's an example.
 
     >>> time.sleep = old_sleep # probably put in test tearDown
 
+
+Subclassing Job
+===============
+
+You can subclass zc.async.job.Job for your own purposes.
+
+    >>> class SpecialJob(zc.async.job.Job):
+    ...     def __init__(self, *args, **kwargs):
+    ...         super(SpecialJob, self).__init__(*args, **kwargs)
+
+    >>> special_job = SpecialJob(multiply, 3, 4)
+    >>> special_job.status
+    u'new-status'
+    >>> special_job.callable(*special_job.args)
+    12
+
+You may even decide to have your callable be an attribute on your job.
+
+    >>> class MultiplyJob(zc.async.job.Job):
+    ...     def __init__(self, arg1, arg2):
+    ...         super(MultiplyJob, self).__init__(self.do_multiply)
+    ...         self.arg1 = arg1
+    ...         self.arg2 = arg2
+    ...     def do_multiply(self):
+    ...         return self.arg1 * self.arg2
+
+    >>> multiply_job = MultiplyJob(5, 6)
+    >>> multiply_job.status
+    u'new-status'
+    >>> multiply_job.callable()
+    30
+
+
 =========
 Footnotes
 =========
