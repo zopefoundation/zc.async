@@ -153,7 +153,7 @@ def test_suite():
             'testing.txt',
             'QUICKSTART_1_VIRTUALENV.txt',
             setUp=modSetUp, tearDown=modTearDown,
-            optionflags=doctest.INTERPRET_FOOTNOTES,
+            optionflags=doctest.INTERPRET_FOOTNOTES|doctest.ELLIPSIS,
             checker = renormalizing.RENormalizing([ # used by QUICKSTART only
                 (re.compile('\d+\.\d+'), '1216179006.856108')])),
         ))
