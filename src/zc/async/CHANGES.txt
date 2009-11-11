@@ -21,6 +21,8 @@ Changes
 - zc.async.utils.dt_to_long coerces return value to long (test pass on 64-bit
   Python).
 
+- Tests pass on Python 2.6
+
 1.5.2 (2009-07-22)
 ==================
 
