@@ -18,6 +18,9 @@ Changes
 - Make the ftesting.txt test exercise the 'zc.async' logger in
   addition to 'zc.async.event'.
 
+- zc.async.utils.dt_to_long coerces return value to long (test pass on 64-bit
+  Python).
+
 1.5.2 (2009-07-22)
 ==================
 

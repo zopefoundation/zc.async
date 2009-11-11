@@ -102,7 +102,8 @@ def dt_to_long(dt):
     if dt.tzinfo is not None:
         dt = dt.astimezone(pytz.UTC).replace(tzinfo=None)
     delta = datetime.datetime.max - dt
-    return (delta.days << 41 | delta.seconds << 24 | delta.microseconds << 4)
+    return long((delta.days << 41 | delta.seconds << 24 |
+        delta.microseconds << 4))
 
 def long_to_dt(l):
     microseconds = (l >> 4) & (2**20-1)
