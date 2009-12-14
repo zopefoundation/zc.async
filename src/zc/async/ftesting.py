@@ -32,10 +32,9 @@ def setUp(
     zope.component.provideHandler(agent_installer)
     event = zc.async.interfaces.DatabaseOpened(db)
 
+    queue_installer(event)
     dispatcher_installer(event)
     dispatcher = zc.async.dispatcher.get()
-    _ = transaction.begin()
-    queue_installer(event)
     zc.async.testing.get_poll(dispatcher, count=0)
     assert "" in zc.async.testing.get_poll(dispatcher)
     assert dispatcher.activated is not None
