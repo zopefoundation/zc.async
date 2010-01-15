@@ -70,7 +70,7 @@ the first time, so you can get a broad idea of what is going on.
     ...         lock.release()
     ...     for thread in threads:
     ...         thread.join(3)
-    ...
+    ...     zc.async.subscribers.restore_signal_handlers(dispatcher)
 
 First we'll test ``serial``.  We stop the worker once while it is working on
 one of the serialized jobs, and once while it is working on the postprocess.

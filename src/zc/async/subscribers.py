@@ -78,6 +78,19 @@ queue_installer = QueueInstaller()
 multidb_queue_installer = QueueInstaller(db_name='async')
 signal_handlers = {} # id(dispatcher) -> signal -> (prev handler, curr handler)
 
+def restore_signal_handlers(dispatcher):
+    key = id(dispatcher)
+    sighandlers = signal_handlers.get(key)
+    if sighandlers:
+        for _signal, handlers in sighandlers.items():
+            prev, cur = handlers
+            # The previous signal handler is only restored if the currently
+            # registered handler is the one we originally installed.
+            if signal.getsignal(_signal) is cur:
+                signal.signal(_signal, prev)
+        del signal_handlers[key]
+
+
 class ThreadedDispatcherInstaller(object):
     def __init__(self,
                  poll_interval=5,

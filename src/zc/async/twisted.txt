@@ -41,3 +41,17 @@ can be used with the dispatcher.
     >>> import zc.async.testing
     >>> zc.async.testing.wait_for_result(j)
     42
+
+Clean Up
+========
+
+We do the following to avoid leaking file descriptors
+(see http://twistedmatrix.com/trac/ticket/3063).
+
+    >>> twisted.internet.reactor.removeReader(twisted.internet.reactor.waker)
+    >>> twisted.internet.reactor.waker.connectionLost(None)
+
+And we instantiate a new reactor because the Twisted reactors don't
+run correctly after being stopped.
+
+    >>> twisted.internet.reactor = twisted.internet.reactor.__class__()

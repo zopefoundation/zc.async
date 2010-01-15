@@ -14,19 +14,23 @@
 import os
 import unittest
 import re
+import signal
+
+import transaction
 
 from zope.testing import doctest, module, loggingsupport, renormalizing
 import zope.component
 import zope.component.testing
 import zope.component.eventtesting
+import zc.async.dispatcher
+import zc.async.instanceuuid
 import zc.async.interfaces
+import zc.async.subscribers
 import zc.async.testing
 
 def uuidSetUp(test):
-    import zc.async.interfaces
     os.environ['ZC_ASYNC_UUID'] = os.path.join(os.path.dirname(
         zc.async.interfaces.__file__), 'uuid.txt')
-    import zc.async.instanceuuid
     uuid = zc.async.instanceuuid.getUUID()
     if uuid != zc.async.instanceuuid.UUID: # test run changed it...
         zc.async.instanceuuid.UUID = uuid
@@ -45,15 +49,13 @@ def modSetUp(test):
         'zc.async.trace')
 
 def modTearDown(test):
-    import transaction
+    assert len(zc.async.subscribers.signal_handlers) == 0
     transaction.abort()
-    import zc.async.dispatcher
     zc.async.dispatcher.clear()
     uuidTearDown(test)
     zc.async.testing.tearDownDatetime()
     module.tearDown(test)
     zope.component.testing.tearDown(test)
-    import signal
     signal.signal(signal.SIGINT, signal.default_int_handler)
     if 'storage' in test.globs:
         test.globs['db'].close()

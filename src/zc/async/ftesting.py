@@ -59,13 +59,8 @@ def tearDown():
     zc.async.testing.tear_down_dispatcher(dispatcher)
     zc.async.dispatcher.clear()
     # Restore previous signal handlers
-    key = id(dispatcher)
-    sighandlers = zc.async.subscribers.signal_handlers.get(key)
-    if sighandlers:
-        for _signal, handlers in sighandlers.items():
-            prev, cur = handlers
-            # The previous signal handler is only restored if the currently
-            # registered handler is the one we originally installed.
-            if signal.getsignal(_signal) is cur:
-                signal.signal(_signal, prev)
-        del zc.async.subscribers.signal_handlers[key]
+    zc.async.subscribers.restore_signal_handlers(dispatcher)
+    # Avoid leaking file descriptors
+    # (see http://twistedmatrix.com/trac/ticket/3063).
+    dispatcher.reactor.removeReader(dispatcher.reactor.waker)
+    dispatcher.reactor.waker.connectionLost(None)

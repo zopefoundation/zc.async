@@ -299,6 +299,7 @@ def tear_down_dispatcher(dispatcher):
                 jobid = '[job unknown]'
             problems.append(
                 'Job in pool %r failed to stop: %s' % (pool.name, jobid))
+    zc.async.subscribers.restore_signal_handlers(dispatcher)
     if problems:
         problems = '\n' + '\n'.join(problems)
         raise TearDownDispatcherError(problems)

@@ -1022,3 +1022,4 @@ integration, for instance--but this is a quick start, so we'll end here.
     >>> reactor = dispatcher.reactor
     >>> reactor.callFromThread(reactor.stop)
     >>> dispatcher.thread.join(3)
+    >>> zc.async.subscribers.restore_signal_handlers(dispatcher)

@@ -676,8 +676,6 @@ Here are the revised stats.
     -> CLOSE
 
     >>> reactor.stop()
-    >>> import time
-    >>> time.sleep(1)
 
 .. [#setUp] See the discussion in other documentation to explain this code.
 
