@@ -136,6 +136,7 @@ class AgentThreadPool(object):
                                 else:
                                     job.fail() # moves the job off the agent
                                 try:
+                                    transaction.get().note(repr(job))
                                     transaction.commit()
                                 except (ZODB.POSException.TransactionError,
                                         ZODB.POSException.POSError):
