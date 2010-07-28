@@ -260,8 +260,8 @@ Another Job (And Closures)
 --------------------------
 
 You can also make closures.  The Job class accepts arguments similarly to
-the Python 2.5 :func:`functools.partial`: ``Job(func, \*args,
-\*\*keywords)``. This instantiates a new callable (a Job instance) with
+the Python 2.5 :func:`functools.partial`: ``Job(func, *args,
+**keywords)``. This instantiates a new callable (a Job instance) with
 partial application of the given arguments and keywords.  You can then
 pass the job instance to the
 :meth:`~zc.async.interfaces.IQueue.put` method.
@@ -651,8 +651,8 @@ are the imports, the three new functions, and setting up
 
 .. sidebar:: Code Walkthrough for Changes
 
-   We import three new modules from |async|, :mod:zc.async.queue,
-   :mod:zc.async.instanceuuid, and :mod:zc.async.agent.  The
+   We import three new modules from |async|, :mod:`zc.async.queue`,
+   :mod:`zc.async.instanceuuid`, and :mod:`zc.async.agent`.  The
    :class:`~zc.async.interfaces.IAgent`
    implementation (:class:`zc.async.agent.Agent`) uses a function called a
    :attr:`~zc.async.agent.Agent.chooser` to determine its
@@ -746,7 +746,7 @@ Wait a few seconds and then try these lines.
     _ = transaction.begin()
     j.result
 
-If the result is empty (None), repeat those two lines again (thatæ is, begin
+If the result is empty (None), repeat those two lines again (that is, begin
 the transaction again and check the result again).  Eventually, these lines
 should give you a result: an approximation of pi.
 
@@ -872,7 +872,7 @@ You should see something like this::
     $
 
 Hm, it dumped us straight back to the shell!  ``zc.monitor`` behaves that way
-tp be friendly to automated monitoring processes using the port.  We can use
+to be friendly to automated monitoring processes using the port.  We can use
 the ``interactive`` command to make things a bit more pleasant for ourselves.
 
 Reuse the telnet command shown above, or maybe connect to 9992 (``telnet
@@ -958,7 +958,7 @@ other configuration opportunities available that we haven't seen here.
 - You can specify that a job should :attr:`~zc.async.interfaces.IJob.begin_by`
   a given duration (datetime.timedelta) *after* the jobs's
   :attr:`~zc.async.interfaces.IJob.begin_after` value.  When the queue
-  :gets
+  gets
   ready to offer the job for an agent to choose, if the effective
   ``begin_by`` value has passed, the queue will instead offer a call to
   the job's
