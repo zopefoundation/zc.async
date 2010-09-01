@@ -683,7 +683,7 @@ class Dispatcher(object):
             stat_start = first_poll.utc_timestamp
             stat_end = poll.utc_timestamp
         else:
-            start_start = None
+            stat_start = None
             stat_end = None
         res.update({
             'shortest successful': successful_extremes[0][1],

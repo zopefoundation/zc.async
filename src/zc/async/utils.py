@@ -282,7 +282,7 @@ def wait_for_system_recovery(call, identifier, tm):
             if not trans_ct % 5:
                 log.warning(
                     '%d consecutive transaction errors while %s',
-                    ct, identifier, exc_info=True)
+                    trans_ct, identifier, exc_info=True)
                 res = None
         except EXPLOSIVE_ERRORS:
             tm.abort()

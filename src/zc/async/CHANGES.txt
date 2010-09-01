@@ -15,6 +15,9 @@ Changes
   Twisted's recalcitrance when it comes to stopping and subsequently
   starting a reactor instance.
 
+- Fix two undefined variables that could trigger exceptions in corner
+  cases.
+
 
 1.5.3 (2009-11-15)
 ==================
